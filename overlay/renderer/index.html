@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta
+			http-equiv="Content-Security-Policy"
+			content="default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+		/>
+		<title>Mercify</title>
+		<link rel="stylesheet" href="style.css" />
+	</head>
+	<body>
+		<div id="grid"></div>
+		<div id="guides"></div>
+
+		<div id="edit-bar" class="chrome">
+			<span class="edit-badge">Edit Mode</span>
+			<span class="edit-help">Drag to move · drag edges to resize · arrows nudge (Shift ×10) · hold Alt to skip snapping</span>
+			<label class="check"><input type="checkbox" id="snap-toggle" checked /> Snap</label>
+			<button id="reset-all" class="btn ghost">Reset layout</button>
+			<button id="edit-done" class="btn primary">Done</button>
+		</div>
+
+		<div id="panels"></div>
+
+		<div id="settings-pop" class="chrome" hidden>
+			<div class="pop-head"><span id="pop-title"></span></div>
+			<label class="check"><input type="checkbox" id="pop-enabled" /> Show this panel</label>
+			<label class="slider-row">
+				<span>Opacity when shown</span>
+				<input type="range" id="pop-shown" min="10" max="100" step="5" />
+				<output id="pop-shown-v"></output>
+			</label>
+			<label class="slider-row">
+				<span>Opacity when hidden</span>
+				<input type="range" id="pop-hidden" min="0" max="100" step="5" />
+				<output id="pop-hidden-v"></output>
+			</label>
+			<label class="slider-row">
+				<span>Scale</span>
+				<input type="range" id="pop-scale" min="70" max="150" step="5" />
+				<output id="pop-scale-v"></output>
+			</label>
+			<label class="check" id="pop-autohide-row"><input type="checkbox" id="pop-autohide" /> Only show while searching</label>
+			<div class="pop-foot"><button id="pop-reset" class="btn ghost small">Reset panel</button></div>
+		</div>
+
+		<div id="toast"></div>
+
+		<script src="app.js"></script>
+	</body>
+</html>

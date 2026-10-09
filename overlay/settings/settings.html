@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+		<title>Mercify</title>
+		<link rel="stylesheet" href="settings.css" />
+	</head>
+	<body>
+		<header>
+			<img class="logo" src="../assets/logo.png" alt="Mercify" />
+			<h1 class="sr-only">Mercify</h1>
+			<span id="conn" class="pill">Checking…</span>
+		</header>
+
+		<main>
+			<section id="setup-section">
+				<h2>Setup</h2>
+				<p class="hint">Install in this order. Steps that are done show a green dot.</p>
+				<div class="rows">
+					<div class="row" data-step="spotify">
+						<span class="dot"></span>
+						<div class="text"><b>Spotify desktop app</b><span class="sub"></span></div>
+						<button class="btn" data-act="spotx">Install with SpotX</button>
+					</div>
+					<div class="row" data-step="spotx">
+						<span class="dot neutral"></span>
+						<div class="text"><b>SpotX</b><span class="sub">Ad-free patches and blocks Spotify updates. Run it before Spicetify. Running it again reinstalls Spotify.</span></div>
+						<button class="btn ghost" data-act="spotx">Run SpotX</button>
+					</div>
+					<div class="row" data-step="spicetify">
+						<span class="dot"></span>
+						<div class="text"><b>Spicetify</b><span class="sub"></span></div>
+						<button class="btn" data-act="spicetify">Install Spicetify</button>
+					</div>
+					<div class="row" data-step="extension">
+						<span class="dot"></span>
+						<div class="text"><b>Mercify extension in Spotify</b><span class="sub"></span></div>
+						<button class="btn" data-act="apply">Install</button>
+					</div>
+				</div>
+				<pre id="log" hidden></pre>
+			</section>
+
+			<section>
+				<div class="section-head">
+					<h2>Only show over these apps</h2>
+					<label class="switch"><input type="checkbox" id="only-enabled" /><span></span></label>
+				</div>
+				<p class="hint" id="only-hint">The overlay hides whenever something else is in front, like your browser. Edit Mode always shows it.</p>
+				<div id="apps" class="chips"></div>
+				<div class="add-row">
+					<input type="text" id="app-input" placeholder="Program (Wow.exe) or exact window title" spellcheck="false" />
+					<button class="btn ghost" id="app-add">Add</button>
+				</div>
+				<button class="btn ghost wide" id="app-pick">Pick the app in front</button>
+				<label class="check"><input type="checkbox" id="hotkeys-only" /> Hotkeys only work over these apps <span class="muted">(frees Ctrl+` for other programs)</span></label>
+			</section>
+
+			<section>
+				<h2>Startup</h2>
+				<label class="check"><input type="checkbox" id="start-windows" /> Start with Windows</label>
+				<label class="check"><input type="checkbox" id="launch-spotify" /> Start Spotify with the overlay</label>
+			</section>
+
+			<section>
+				<div class="section-head">
+					<h2>Hotkeys</h2>
+					<button class="link" id="open-config">Change in settings file</button>
+				</div>
+				<div id="hotkeys" class="keys"></div>
+			</section>
+		</main>
+
+		<script src="settings.js"></script>
+	</body>
+</html>

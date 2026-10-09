@@ -1,0 +1,75 @@
+{
+  "name": "mercify",
+  "productName": "Mercify",
+  "version": "1.2.0",
+  "description": "Mercify: a Discord-style in-game overlay for the Spotify desktop client (SpotX + Spicetify).",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "demo": "node tools/mock-bridge.js",
+    "dist": "electron-builder --win nsis portable --x64 --publish never"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.kainmercer.mercify",
+    "productName": "Mercify",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "preload-settings.js",
+      "foreground.js",
+      "setup.js",
+      "renderer/**",
+      "settings/**",
+      "assets/**",
+      "package.json",
+      "node_modules/**",
+      "!node_modules/electron-builder/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../spicetify/overlay-bridge.js",
+        "to": "overlay-bridge.js"
+      },
+      {
+        "from": "bin/fgwatch.exe",
+        "to": "fgwatch.exe"
+      }
+    ],
+    "win": {
+      "icon": "assets/icon.png",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mercify",
+      "artifactName": "Mercify-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Mercify-${version}-portable.${ext}"
+    },
+    "publish": null
+  },
+  "author": "Kain-Mercer",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kain-Mercer/Mercify.git"
+  }
+}
