@@ -90,7 +90,7 @@ Settings and layout are stored in `%APPDATA%\Mercify\` (`config.json`, `layout.j
 
 ## Building
 
-**On GitHub:** push a tag such as `v1.2.0` and the [Build Windows exe](.github/workflows/build.yml) workflow builds both exes on Windows and publishes them as a release. You can also start it from the Actions tab (**Run workflow**) to get the exes as a download without making a release.
+**On GitHub:** every push to `main` runs the [Build Windows exe](.github/workflows/build.yml) workflow, which builds both exes on Windows. To publish a release, bump `version` in `overlay/package.json` (for example to `1.3.0`) and push: the workflow sees there's no `v1.3.0` release yet and publishes one with the exes attached. Builds that don't make a release still attach the exes to the run (Actions tab → the run → **Artifacts**).
 
 **Locally on Windows:** double-click `build-exe.bat`. The exes land in `overlay\dist`.
 
@@ -122,5 +122,5 @@ overlay/tools/mock-bridge.js    fake Spotify for testing (npm run demo)
 build-exe.bat                   builds the installer and portable exe on Windows
 setup-and-run.bat               older run-from-source script
 install-bridge.ps1              installs just the extension
-.github/workflows/build.yml     builds and releases the exe on GitHub
+.github/workflows/build.yml     builds the exe on GitHub; releases on a version bump
 ```
