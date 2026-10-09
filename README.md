@@ -1,126 +1,110 @@
 <p align="center"><img src="docs/logo.png" width="260" alt="Mercify" /></p>
 
-<p align="center"><b>A Discord-style in-game overlay for Spotify.</b><br/>Now playing, search and your playlists, floating over your game. Free accounts welcome.</p>
+<p align="center"><b>Your Spotify, right inside your game.</b><br/>See what's playing, search for songs and pick from your playlists without ever alt-tabbing.</p>
+
+> **⚠️ For evaluation only.** Mercify is an early test release, provided as-is with no warranty. Use it at your own risk. See the [disclaimer](#disclaimer) below.
 
 ---
 
-Mercify shows only the parts of Spotify you want (now playing, a search bar, search results and one playlist) as panels on top of your game. You can drag them around in a WoW-style Edit Mode, fade them in and out with a hotkey, and have them appear only while WoW (or another app you choose) is in front.
+## What it does
 
-It works with a **free** Spotify account and a **SpotX** client. It doesn't use the Spotify Web API, so there's no developer app, no Premium requirement and no 10-result search cap.
+Mercify puts small, see-through Spotify panels on top of your game, a bit like the Discord overlay:
 
-```
- Spotify (SpotX + Spicetify)                 Mercify
- ┌──────────────────────────┐   ws://127.0.0.1:7317   ┌──────────────────────────────┐
- │ overlay-bridge.js        │ ──── now playing ─────▶ │ transparent, always-on-top    │
- │ (Spicetify extension)    │ ◀─── play / search ──── │ window covering your monitor  │
- └──────────────────────────┘                         └──────────────────────────────┘
-```
+- **Now Playing:** album art, the song, a seek bar, and play/pause, skip, shuffle, repeat, like and volume buttons.
+- **Search:** type a song, artist or playlist and click a result to play it.
+- **Playlist:** browse any of your playlists or Liked Songs and click a song to play it.
 
-The extension runs inside Spotify and talks to the client's own player, library and search. Mercify draws the panels and stays click-through everywhere except over a panel.
+You choose where each panel goes and how see-through it is. Mercify only appears while you're in your game (World of Warcraft by default), and hides itself when you switch to anything else.
 
-## Install (Windows)
+It works with a **free** Spotify account.
 
-Download **`Mercify-Setup-x.y.z.exe`** from [Releases](https://github.com/Kain-Mercer/Mercify/releases) and run it. It installs for your user only, so there's no admin prompt (Spicetify refuses to run as admin anyway). It also adds Start menu and desktop shortcuts. Prefer not to install anything? **`Mercify-x.y.z-portable.exe`** runs as a single file, but starts a few seconds slower because it unpacks itself each launch.
+## Before you start
 
-The exe isn't code-signed, so Windows SmartScreen may warn the first time: choose **More info → Run anyway**.
+You'll need:
 
-On first launch, **Settings** opens with a setup checklist:
+- **Windows 10 or 11**
+- **The Spotify desktop app.** If you don't have it, Mercify can install it for you. The version from the Microsoft Store won't work.
+- **Your game set to "Windowed (Fullscreen)" or "Borderless"** in its graphics settings. Mercify can't appear over games running in true fullscreen.
 
-1. **Spotify desktop app**: if it's missing, **Install with SpotX** installs Spotify already patched.
-2. **SpotX**: run it before Spicetify. Running it again reinstalls Spotify.
-3. **Spicetify**: **Install Spicetify** opens its installer. It asks about Marketplace, and either answer is fine.
-4. **Mercify extension**: **Install** copies the bridge extension into Spicetify and applies it, which restarts Spotify once.
+## Install
 
-The installers open in their own window, because they ask questions. The checklist updates when they close. Settings opens again by itself whenever something needs attention, for example when a new version ships an updated extension. You can reopen it any time by clicking the tray icon.
+1. Go to the [**Releases page**](https://github.com/Kain-Mercer/Mercify/releases) and download **`Mercify-Setup`** (the newest version at the top).
+2. Run it. If Windows shows a blue "Windows protected your PC" box, click **More info**, then **Run anyway**. This appears because Mercify is new and not yet recognised by Windows.
+3. Mercify opens a **Settings** window with a short checklist. Work through it from top to bottom, clicking each button that appears:
+   - **Spotify desktop app**: installs Spotify if you don't have it yet.
+   - **SpotX**: an add-on for Spotify that Mercify relies on. Install it before the next step. If Mercify just installed Spotify for you in the step above, SpotX is already included, so skip this one.
+   - **Spicetify**: another add-on that lets Mercify talk to Spotify. When it asks about "Marketplace", you can answer either way.
+   - **Mercify extension**: connects Spotify to Mercify. Spotify restarts once.
 
-## Only show over games
+   Some steps open a separate window that asks you questions. Answer them, and when that window closes the checklist updates. When Spotify, Spicetify and the Mercify extension all show a green dot, you're done. (The SpotX dot always stays grey, because Mercify can't tell whether SpotX is installed.)
+4. Start your game. Your Spotify panels appear on top of it.
 
-By default Mercify only appears while WoW is the window in front, and hides over your browser, Discord and everything else. It recognises these programs:
+Prefer not to install anything? Download **`Mercify-portable`** instead. It runs straight from the file, but starts a little slower.
 
-`Wow.exe`, `WowClassic.exe`, `Wow-64.exe`, `WowB.exe`, `WowT.exe`, `Ascension.exe`, plus any window titled exactly **World of Warcraft**.
+## Using Mercify
 
-To add another game, open Settings, press **Pick the app in front**, and click into the game within 5 seconds. You can also type a program name (`Something.exe`) or an exact window title. Title matching is exact on purpose, so a browser tab called "World of Warcraft - Wowhead" doesn't count.
+### Keyboard shortcuts
 
-- **Edit Mode always shows the overlay**, wherever you are, so you can set things up.
-- **Hotkeys only work over these apps** (on by default). Outside the game, the show/hide and search hotkeys are released, so other programs can use them, like VS Code's terminal. The Edit Mode hotkey always works.
-- Switch the feature off in Settings, or with **Only show over games** in the tray menu.
-
-A tiny helper, `fgwatch.exe` (source in `overlay/native/fgwatch.c`), reports which window is in front. It closes by itself when Mercify quits.
-
-## Hotkeys
-
-| Default | What it does |
+| Press | To |
 |---|---|
-| `Ctrl` + `` ` `` | Show / hide. Each panel fades to its own "hidden" opacity, and everything becomes click-through. |
-| `Ctrl` + `Shift` + `` ` `` | Edit Mode |
-| `Ctrl` + `Shift` + `Space` | Search: puts the cursor in the search bar. `Enter` plays the top song, `Esc` clears the search (press it again to go back to the game). |
+| `Ctrl` + `` ` `` | Show or hide the panels (the `` ` `` key is under `Esc`) |
+| `Ctrl` + `Shift` + `` ` `` | Enter Edit Mode, to move and resize the panels |
+| `Ctrl` + `Shift` + `Space` | Jump to the search box. Type, then press `Enter` to play the top result, or `Esc` to go back to your game |
 
-To change these, or add `playPause`, `next` and `prev` hotkeys, use **Change in settings file** in Settings and restart Mercify. The format is Electron's accelerator syntax, for example `"Alt+F9"` or `"Control+Shift+P"`. If another app already owns a hotkey, you get a message on startup.
+These shortcuts only work while you're in your game, so they won't get in the way of other programs. The Edit Mode shortcut works everywhere.
 
-`Ctrl+Alt` combos are avoided on purpose. On a Polish keyboard (and many others) `Ctrl+Alt` is AltGr, so they would swallow ą, ę, ś and other letters.
+### Arranging your panels (Edit Mode)
 
-## Edit Mode
+Press `Ctrl` + `Shift` + `` ` `` to enter Edit Mode. It works much like World of Warcraft's own Edit Mode:
 
-Edit Mode works much like WoW's:
+- **Drag** a panel to move it, or drag its edges or corner to resize it. Panels line up neatly with each other and the screen edges. Hold `Alt` while dragging if you'd rather place them freely.
+- Use the **arrow keys** to nudge the selected panel one step at a time.
+- **Click** a panel to change its settings:
+  - Turn it on or off
+  - Set how see-through it is normally
+  - Set how see-through it is when you hide the overlay. For example, keep Now Playing faintly visible while everything else disappears.
+  - Make it bigger or smaller
 
-- Drag a panel to move it. Drag its right or bottom edge, or the corner, to resize it.
-- Panels snap to a 16px grid, to the screen edges and centre, and to the edges of other panels. Blue guide lines show what you snapped to. Hold `Alt` while dragging to skip snapping.
-- Arrow keys nudge the selected panel by 1px. Hold `Shift` to nudge by 10px.
-- Clicking a panel opens its settings:
-  - **Show this panel**
-  - **Opacity when shown**
-  - **Opacity when hidden**: this sets what the toggle hotkey does to that panel. For example, keep Now Playing at 75% while the playlist and search disappear.
-  - **Scale**
-  - **Only show while searching** (results panel only)
-- `Esc` or **Done** leaves Edit Mode. The layout saves automatically.
+Press `Esc` or **Done** when you're finished. Your layout saves automatically.
 
-## Panels
+### Using it with other games
 
-- **Now Playing:** cover art, title, artist, a seek bar you can click, shuffle, previous, play/pause, next, repeat, like and volume. Controls drop away as the panel gets narrow or short.
-- **Search Bar** and **Search Results:** songs (click to play, **+** to queue), playlists (click to open them in the Playlist panel) and albums (click to play). If a search comes back empty, the panel lists what it tried and why.
-- **Playlist:** any playlist from your library (folders included) or Liked Songs. Clicking a song plays it inside the playlist, so "next" continues through the list.
+Mercify shows up over World of Warcraft out of the box. To use it with another game:
 
-Settings and layout are stored in `%APPDATA%\Mercify\` (`config.json`, `layout.json`). Settings from the earlier "Spotify Overlay" name are carried over automatically.
+1. Click the Mercify icon in your system tray (bottom-right of the taskbar) to open **Settings**.
+2. Under **Only show over these apps**, press **Pick the app in front**.
+3. Within 5 seconds, click into your game. It's added to the list.
 
-## Known limits
+If you'd rather Mercify always stayed visible, switch **Only show over these apps** off.
 
-- **Exclusive fullscreen games** draw over every normal window, this one included. Set the game to **borderless windowed**. Discord gets around this by injecting into the game's renderer, which Mercify deliberately doesn't do (anti-cheat).
-- **Black background instead of transparent:** some Windows GPU drivers do this. Add `"disableHardwareAcceleration": true` to `config.json` and restart.
-- **Spotify updates can break the bridge.** SpotX blocks updates, which helps. If Mercify sits on "Waiting for Spotify" after an update, reinstall the extension from Settings. If that fails, run SpotX again and then reinstall the extension. To look inside Spotify, run `spicetify enable-devtools`, press `Ctrl+Shift+I` in Spotify and look for `[overlay-bridge]` lines.
+### Other settings
 
-## Building
+Open **Settings** from the tray icon to:
 
-**On GitHub:** every push to `main` runs the [Build Windows exe](.github/workflows/build.yml) workflow, which builds both exes on Windows. To publish a release, bump `version` in `overlay/package.json` (for example to `1.3.0`) and push: the workflow sees there's no `v1.3.0` release yet and publishes one with the exes attached. Builds that don't make a release still attach the exes to the run (Actions tab → the run → **Artifacts**).
+- Start Mercify automatically when Windows starts
+- Open Spotify automatically when Mercify starts
+- Re-run any setup step if something stops working
 
-**Locally on Windows:** double-click `build-exe.bat`. The exes land in `overlay\dist`.
+## Troubleshooting
 
-**From source** (Node.js 22.12 or newer):
+**The panels say "Waiting for Spotify".** Make sure Spotify is open. If it is, open Settings and press **Reinstall** next to *Mercify extension*. This is most often needed after Spotify updates itself.
 
-```
-cd overlay
-npm install
-npm start          # run from source
-npm run demo       # (second terminal) a fake Spotify with a made-up library
-npm run dist       # build the installer and portable exe into overlay\dist
-```
+**I can't see the panels in my game.** Check that your game is set to *Windowed (Fullscreen)* or *Borderless*, not *Fullscreen*. Also check the game is listed under **Only show over these apps** in Settings.
 
-`setup-and-run.bat` is the older all-in-one script that runs everything from source. `install-bridge.ps1` installs just the extension by hand.
+**The panels have a black box behind them.** Some graphics drivers cause this. Contact us via the Issues page and we'll help you switch on a fix.
 
-The helper is rebuilt with MinGW (`x86_64-w64-mingw32-gcc -O2 -municode -static -s -o bin/fgwatch.exe native/fgwatch.c`) or MSVC (`cl /O2 fgwatch.c user32.lib`). A prebuilt copy is in `overlay/bin`.
+**A shortcut doesn't work.** Another program may already be using it. Mercify tells you when it starts if a shortcut couldn't be set up.
 
-## Files
+**Something else is wrong?** Please [open an issue](https://github.com/Kain-Mercer/Mercify/issues) and describe what happened. A screenshot helps a lot.
 
-```
-spicetify/overlay-bridge.js     Spicetify extension (runs inside Spotify)
-overlay/main.js                 overlay window, click-through, app detection, hotkeys, tray, WebSocket server
-overlay/setup.js                setup checks and installers used by Settings
-overlay/foreground.js           reads fgwatch.exe's "app in front" reports
-overlay/native/fgwatch.c        source of the helper (prebuilt in overlay/bin/fgwatch.exe)
-overlay/settings/               Settings window
-overlay/renderer/               panels, Edit Mode, styles
-overlay/tools/mock-bridge.js    fake Spotify for testing (npm run demo)
-build-exe.bat                   builds the installer and portable exe on Windows
-setup-and-run.bat               older run-from-source script
-install-bridge.ps1              installs just the extension
-.github/workflows/build.yml     builds the exe on GitHub; releases on a version bump
-```
+## Disclaimer
+
+Mercify is provided **for evaluation purposes only**. It is test software, offered "as is", without warranty of any kind. It may contain bugs, may stop working at any time, and could affect how Spotify behaves on your computer. You use it entirely at your own risk, and the authors accept no responsibility for any loss, damage or account issues that may result.
+
+Mercify is an independent project. It is **not affiliated with, endorsed by or supported by** Spotify, Blizzard Entertainment, the SpotX project or the Spicetify project. All trademarks belong to their respective owners.
+
+Mercify relies on third-party tools (SpotX and Spicetify) that modify the Spotify desktop app. Modifying Spotify may go against Spotify's Terms of Use. Please review them and decide for yourself before installing. Mercify doesn't modify, read or inject anything into your games. It simply draws a window on top of them.
+
+---
+
+<sub>Want to build Mercify yourself or help develop it? See the [developer guide](docs/DEVELOPING.md).</sub>
