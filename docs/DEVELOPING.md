@@ -49,6 +49,17 @@ npm run dist       # build the installer and portable exe into overlay\dist
 
 The helper is rebuilt with MinGW (`x86_64-w64-mingw32-gcc -O2 -municode -static -s -o bin/fgwatch.exe native/fgwatch.c`) or MSVC (`cl /O2 fgwatch.c user32.lib`). A prebuilt copy lives in `overlay/bin`.
 
+## Listening lobbies
+
+`overlay/lobby.js` (no Electron dependency) implements lobbies; `main.js` wires it to the bridge and the UI.
+
+- **Transport:** MQTT over secure WebSockets to several public relays at once (`DEFAULT_RELAYS`: EMQX, HiveMQ, Mosquitto). Every message is published to every connected relay and de-duplicated on receipt by `(sender id, sequence number)`. `lobbyRelays` in `config.json` overrides the list (for example with your own Mosquitto or EMQX).
+- **Privacy:** topic = `mercify/v1/` + SHA-256(`"mercify-topic-v1:" + code`)[:32 hex]. Payloads are AES-256-GCM with a key from scrypt(code, `"mercify-lobby-v1"`, N=16384). Anyone with the code can read and join; others see random topics and ciphertext. Codes are normalised to A-Z/0-9 (4-16 characters); generated codes are 8 characters from a 31-letter alphabet.
+- **Messages:** `hello` (joining), `here` (heartbeat every 8 s, carries role), `bye`, `state` (host only: uri, position, playing, sentAt; on every change, on seeks and every 5 s), `ping`/`pong` (clock offset to the host, median of recent samples, re-measured when the host changes), `suggest` (to the host, queued with `addToQueue`).
+- **Roles:** a joiner listens for 2.5 s; if no host answers, it becomes host. Host = earliest `joinedAt` (each member's own clock), ties by id; everyone computes the same answer, so host hand-over on `bye` or a 25 s silence needs no negotiation, and two simultaneous hosts resolve themselves.
+- **Following:** listeners play the host's song, seek to the host's position (adjusted by the clock offset), match play/pause, and re-seek when more than 2 s off. Host messages are applied immediately; the listener's own player reports are ignored for 1.5 s after a correction, and out-of-order host messages are dropped.
+- **Testing:** `tools/lobby-test.js` runs three members in separate processes with clocks up to 7 s apart against real relays (`LOBBY_RELAYS=ws://127.0.0.1:9001,...` for local Mosquitto instances), covering sync, seek, pause, song change, suggestions, losing a relay, encryption, host leave and host crash. The [Check lobby relays](../.github/workflows/lobby-relays.yml) workflow runs it against the public relays weekly and on demand, and reports each relay as a run annotation.
+
 ## Configuration file
 
 `%APPDATA%\Mercify\config.json` (layout is in `layout.json`). Settings from the earlier "Spotify Overlay" name are migrated on first run.
@@ -60,6 +71,8 @@ The helper is rebuilt with MinGW (`x86_64-w64-mingw32-gcc -O2 -municode -static 
 | `hotkeysOnlyOverApps` | Release the gated hotkeys when no listed app is in front. The Edit Mode hotkey is always registered. |
 | `launchSpotify` | Start Spotify with Mercify. |
 | `minimiseSpotify` | Hide Spotify's window to the tray when Mercify opens. |
+| `lobbyName` | Your name in listening lobbies. |
+| `lobbyRelays` | Optional list of `wss://` MQTT relays to use instead of the public ones (everyone in a lobby must share at least one). |
 | `display` | `"primary"`, `"cursor"`, or a 0-based monitor index. |
 | `port` | WebSocket port (default 7317). The extension reads `localStorage["overlay-bridge:port"]` if you change it. |
 | `disableHardwareAcceleration` | Set `true` if transparency shows as black on your GPU driver. |
@@ -69,7 +82,7 @@ The helper is rebuilt with MinGW (`x86_64-w64-mingw32-gcc -O2 -municode -static 
 ## Debugging
 
 - Spotify side: run `spicetify enable-devtools`, press `Ctrl+Shift+I` in Spotify and look for `[overlay-bridge]` log lines. Empty searches also list each method tried in the results panel.
-- Test hooks (environment variables, used for headless testing): `OVERLAY_DEBUG_CAPTURE`, `OVERLAY_DEBUG_JS`, `OVERLAY_DEBUG_RESULT`, `OVERLAY_DEBUG_EDIT`, `OVERLAY_DEBUG_SETTINGS_CAPTURE`, `OVERLAY_DEBUG_FAKE_SETUP`, `OVERLAY_DEBUG_FG_FILE`, `OVERLAY_DEBUG_STATE_FILE`, `OVERLAY_DEBUG_UPDATE_FEED`, `OVERLAY_DEBUG_UPDATE_MODE`, `OVERLAY_DEBUG_UPDATE_DELAY`, `OVERLAY_DEBUG_RELEASE_API`.
+- Test hooks (environment variables, used for headless testing): `OVERLAY_DEBUG_CAPTURE`, `OVERLAY_DEBUG_JS`, `OVERLAY_DEBUG_RESULT`, `OVERLAY_DEBUG_EDIT`, `OVERLAY_DEBUG_SETTINGS_CAPTURE`, `OVERLAY_DEBUG_FAKE_SETUP`, `OVERLAY_DEBUG_FG_FILE`, `OVERLAY_DEBUG_STATE_FILE`, `OVERLAY_DEBUG_UPDATE_FEED`, `OVERLAY_DEBUG_UPDATE_MODE`, `OVERLAY_DEBUG_UPDATE_DELAY`, `OVERLAY_DEBUG_RELEASE_API`, `OVERLAY_DEBUG_USERDATA` (run a second copy with its own settings), `OVERLAY_DEBUG_LOBBY_RELAYS`, `OVERLAY_DEBUG_LOBBY_TRACE`.
 
 ## Focus and click-through
 

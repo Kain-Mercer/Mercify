@@ -13,6 +13,7 @@ Mercify puts small, see-through Spotify panels on top of your game, a bit like t
 - **Now Playing:** album art, the song, a seek bar, and play/pause, skip, shuffle, repeat, like and volume buttons. Shrink it to a small **compact** bar that you can still click while the rest of the overlay is hidden.
 - **Search:** type a song, artist or playlist and click a result to play it.
 - **Playlist:** browse any of your playlists or Liked Songs and click a song to play it.
+- **Listening lobbies:** share a code with friends and listen to the same music at the same time, each through your own Spotify.
 
 You choose where each panel goes and how see-through it is. Mercify only appears while you're in your game (World of Warcraft by default), and hides itself when you switch to anything else.
 
@@ -96,6 +97,33 @@ Open **Settings** from the tray icon to:
 - Choose whether Spotify's window is minimised to the tray when Mercify opens
 - Re-run any setup step if something stops working
 
+## Listening lobbies
+
+Listen along with friends: everyone hears the same song at the same moment, each in their own Spotify. It works with free accounts, and everyone needs Mercify.
+
+**Start or join a lobby**
+
+1. Open the **Lobby** panel in the overlay. If you can't see it, turn it on in Edit Mode.
+2. Enter **your name**. This is what others in the lobby see, and you can also set it in Settings.
+3. Enter a **lobby code**: make one up, or press the dice button to generate a random one.
+4. Press **Join lobby**.
+
+Everyone who enters the same code ends up in the same lobby. If nobody's there yet, you've started it and you're the **host**. Share the code with your friends (the copy button next to it helps), and they join by entering it.
+
+**Who controls the music**
+
+- **The host** plays, pauses, skips and seeks as normal, and everyone in the lobby follows along within a second or two.
+- **Everyone else listens.** Clicking a song suggests it to the host and adds it to the host's queue, and the host sees who suggested what. Play, pause and skip are greyed out for listeners, but you can still change your own volume.
+- If the host leaves, whoever has been in the lobby longest becomes the new host automatically.
+
+The Now Playing panel shows a small badge while you're in a lobby. You can leave the lobby from the Lobby panel, from Settings or from the tray icon.
+
+**Good to know**
+
+- Random codes are safest. Short, made-up codes like `RAID` are easy for strangers to guess, and anyone who knows a code can join.
+- Lobby messages travel through free public relay servers, the same kind many apps use for chat. They're **encrypted with your lobby code**, so the relay can't see your name or what you're playing, but they're run by third parties and can occasionally be slow or down. Mercify uses several at once in case one is having a bad day.
+- Songs that aren't available in a listener's country, and the host's own local files, can't be played along.
+
 ## Updates
 
 Mercify keeps itself up to date. A few times a day it checks for a new version, downloads it quietly in the background, and installs it the next time Mercify closes. You'll get a Windows notification when an update is ready. If you don't want to wait, open **Settings** and click **Restart and update**, or choose **Restart to update** from the tray icon.
@@ -113,6 +141,8 @@ The **Updates** section in Settings shows which version you have and lets you ch
 
 **The panels have a black box behind them.** Some graphics drivers cause this. Contact us via the Issues page and we'll help you switch on a fix.
 
+**Can't join a lobby ("Couldn't reach any lobby relay").** A firewall or school or work network may be blocking the relays. They use ports 8084, 8884 and 8081. Try another network, such as your phone's hotspot, to check.
+
 **A shortcut doesn't work.** Another program may already be using it. Mercify tells you when it starts if a shortcut couldn't be set up.
 
 **Something else is wrong?** Please [open an issue](https://github.com/Kain-Mercer/Mercify/issues) and describe what happened. A screenshot helps a lot.
@@ -122,6 +152,8 @@ The **Updates** section in Settings shows which version you have and lets you ch
 Mercify is provided **for evaluation purposes only**. It is test software, offered "as is", without warranty of any kind. It may contain bugs, may stop working at any time, and could affect how Spotify behaves on your computer. You use it entirely at your own risk, and the authors accept no responsibility for any loss, damage or account issues that may result.
 
 Mercify is an independent project. It is **not affiliated with, endorsed by or supported by** Spotify, Blizzard Entertainment, the SpotX project or the Spicetify project. All trademarks belong to their respective owners.
+
+Listening lobbies send messages, encrypted with your lobby code, through free public relay servers run by third parties (EMQX, HiveMQ and the Eclipse Mosquitto project). Mercify isn't affiliated with them and can't guarantee they're available.
 
 Mercify relies on third-party tools (SpotX and Spicetify) that modify the Spotify desktop app. Modifying Spotify may go against Spotify's Terms of Use. Please review them and decide for yourself before installing. Mercify doesn't modify, read or inject anything into your games. It simply draws a window on top of them.
 

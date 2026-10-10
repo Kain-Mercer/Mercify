@@ -46,5 +46,10 @@ jobs:
       - name: All relays together (as the app uses them)
         shell: bash
         run: |
-          node tools/lobby-test.js | tee all.txt
+          set +e
+          node tools/lobby-test.js > all.txt 2>&1
+          code=$?
+          cat all.txt
+          grep -E '^FAIL' all.txt | while read -r line; do echo "::error title=Lobby check failed::$line"; done
           echo "::notice title=All relays together::$(tail -1 all.txt) ($(grep -c '^PASS' all.txt) checks passed)"
+          exit $code
