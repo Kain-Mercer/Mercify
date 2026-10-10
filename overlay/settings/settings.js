@@ -109,6 +109,8 @@ function render(d) {
 		if (s.spotify) setRow("spotify", "ok", s.spotifyRunning ? "Installed and running" : "Installed", null);
 		else if (s.storeSpotify) setRow("spotify", "warn", "The Microsoft Store version can't be modded. SpotX replaces it with the desktop version.", "Install with SpotX");
 		else setRow("spotify", "", "Not installed. SpotX installs it for you.", "Install with SpotX");
+		if (s.spotx) setRow("spotx", "ok", "Installed. Run it again after Spotify reinstalls or updates.", "Run again");
+		else setRow("spotx", "neutral", s.spotify ? "Not found on this PC. Ad-free patch that blocks Spotify updates; run it before Spicetify." : "Ad-free patch that also blocks Spotify updates. Run before Spicetify; running it again reinstalls Spotify.", "Run SpotX");
 
 		if (s.spicetify) setRow("spicetify", "ok", "Installed", null);
 		else setRow("spicetify", "", "Not installed. It will ask about Marketplace: either answer is fine.", "Install Spicetify");

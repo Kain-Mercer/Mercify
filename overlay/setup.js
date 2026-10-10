@@ -48,6 +48,24 @@ function findSpicetify() {
 	return null;
 }
 
+// SpotX leaves traces we can look for (from its run.ps1): backups of the files it patches
+// (Spotify.bak / Spotify.dll.bak, chrome_elf.dll.bak, Apps\xpui.bak) and a "// Patched by SpotX"
+// line in xpui.js, which Spicetify keeps when it unpacks xpui.spa into Apps\xpui.
+// A Spotify reinstall or update clears them, which is also when SpotX needs running again.
+function detectSpotX() {
+	const backups = ["Spotify.bak", "Spotify.dll.bak", "chrome_elf.dll.bak", path.join("Apps", "xpui.bak")];
+	for (const b of backups) if (fs.existsSync(path.join(SPOTIFY_DIR, b))) return true;
+	try {
+		const fd = fs.openSync(path.join(SPOTIFY_DIR, "Apps", "xpui", "xpui.js"), "r");
+		const buf = Buffer.alloc(256 * 1024);
+		const n = fs.readSync(fd, buf, 0, buf.length, 0);
+		fs.closeSync(fd);
+		return /patched by spotx/i.test(buf.toString("utf8", 0, n));
+	} catch (_) {
+		return false;
+	}
+}
+
 function isSpotifyRunning() {
 	if (!IS_WIN) return Promise.resolve(false);
 	return new Promise((resolve) => {
@@ -86,6 +104,7 @@ async function status() {
 		spotifyPrefs: fs.existsSync(SPOTIFY_PREFS),
 		spotifyRunning: await isSpotifyRunning(),
 		spicetify: !!spicetify,
+		spotx: detectSpotX(),
 		extension: applied ? (bundled && applied.equals(bundled) ? "current" : "outdated") : "missing",
 		appliedVersion: extVersion(applied),
 		bundledVersion: extVersion(bundled),
@@ -183,4 +202,4 @@ async function applyExtension(log) {
 	return ok;
 }
 
-module.exports = { status, needsAttention, runSpotX, installSpicetify, applyExtension, startSpotify, openSpotify, isSpotifyRunning, IS_WIN };
+module.exports = { status, needsAttention, runSpotX, installSpicetify, applyExtension, startSpotify, openSpotify, isSpotifyRunning, IS_WIN, _detectSpotX: detectSpotX };

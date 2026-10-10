@@ -37,7 +37,7 @@ You'll need:
    - **Spicetify**: another add-on that lets Mercify talk to Spotify. When it asks about "Marketplace", you can answer either way.
    - **Mercify extension**: connects Spotify to Mercify. Spotify restarts once.
 
-   Some steps open a separate window that asks you questions. Answer them, and when that window closes the checklist updates. When Spotify, Spicetify and the Mercify extension all show a green dot, you're done. (The SpotX dot always stays grey, because Mercify can't tell whether SpotX is installed.)
+   Some steps open a separate window that asks you questions. Answer them, and when that window closes the checklist updates. When Spotify, Spicetify and the Mercify extension all show a green dot, you're done. SpotX turns green too once Mercify finds it, including if you installed it before Mercify. If it stays grey even though you've installed SpotX, you can ignore it; Mercify works either way.
 4. Start your game. Your Spotify panels appear on top of it.
 
 Whenever you open Mercify, it opens Spotify for you (if it isn't running yet) and tucks Spotify's own window away into the tray, since Mercify's panels do its job. To bring Spotify's window back, right-click the Mercify tray icon and choose **Show Spotify window**.
