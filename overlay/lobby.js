@@ -163,6 +163,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 	let advanceTimer = null;
 	let advancing = false; // we're starting the next queued song ourselves
 	let hostLast = null; // host: { uri, name, artists, image, duration, position } of the current song
+	let manualUntil = 0; // host just picked a song themselves (in Mercify): don't override it
 
 	// Our own player, kept up to date by the app.
 	let player = null; // { uri, name, artists, image, position, at, isPlaying, duration }
@@ -492,8 +493,10 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		);
 	}
 
-	// Host: notice song changes to keep the history, and catch the case where Spotify moved on
-	// by itself before we could start the next queued song.
+	// Host: notice song changes to keep the history, and keep the session playlist in charge:
+	// if Spotify moves on by itself (its own next song, crossfade or Automix starting the next
+	// song early), play the next song from the session playlist instead. Songs the host picks
+	// themselves in Mercify (markManual) are left alone.
 	function hostSongChanged(prev) {
 		if (prev) {
 			const entry = makeItem({ ...prev, qid: undefined }, nowItem && nowItem.uri === prev.uri ? nowItem.by : null, nowItem && nowItem.uri === prev.uri ? nowItem.byId : null);
@@ -503,9 +506,15 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 			}
 		}
 		if (nowItem && nowItem.uri !== player.uri) nowItem = null;
-		const prevEnded = prev && prev.duration && (prev.position || 0) > prev.duration - 4000;
-		if (!advancing && queue.length && prevEnded) playNext();
-		else sendQueue();
+		const manual = Date.now() < manualUntil;
+		if (!advancing && queue.length && player.uri === queue[0].uri) {
+			// Spotify happened to move on to exactly the next session song: take it as played
+			nowItem = queue.shift();
+			sendQueue();
+		} else if (!advancing && !manual && queue.length) {
+			log(`session playlist: Spotify moved on to ${player.uri} by itself; playing the next session song instead`);
+			playNext();
+		} else sendQueue();
 		changed();
 	}
 
@@ -724,6 +733,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		history = [];
 		nowItem = hostLast = null;
 		advancing = false;
+		manualUntil = 0;
 		settledAt = appliedSentAt = 0;
 		seen.clear();
 		seenOrder.length = 0;
@@ -807,6 +817,8 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		queueAdd,
 		queueRemove,
 		queueMoveTop: (qid) => role === "host" && hostMoveTop(qid),
+		// The app calls this when the host picks a song themselves, so the session playlist doesn't override it.
+		markManual: () => (manualUntil = Date.now() + 4000),
 		playNow,
 		playNext,
 		isHostWithQueue: () => status === "joined" && role === "host" && queue.length > 0,

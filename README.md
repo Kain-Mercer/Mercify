@@ -70,6 +70,8 @@ Press `Ctrl` + `Shift` + `` ` `` to enter Edit Mode. It works much like World of
 
 Press `Esc` or **Done** when you're finished. Your layout saves automatically.
 
+Notifications, such as "Kain added a song" in a lobby, appear in their own **Notifications** panel. Move it wherever suits you in Edit Mode. By default they still pop up while the overlay is hidden; set its *Opacity when hidden* to 0% if you'd rather they didn't, or untick *Show this panel* to turn them off.
+
 ### Compact Now Playing
 
 Hover over the Now Playing panel and click the small arrows in its top-right corner to shrink it into a compact bar showing the song and the previous, play/pause and next buttons. Click the arrows on the compact bar to make it full size again. It shrinks and grows in place, towards the nearest corner of your screen. You can also switch it with **Compact view** in Edit Mode, and move and resize the compact bar there like any other panel.
@@ -122,6 +124,7 @@ Every lobby has a shared playlist that everyone sees in the **Session Playlist**
 
 - **Add a song** with the **+** next to any song in search results or a playlist. Listeners can also just click a song. Each song shows who added it.
 - **Up next** lists what's coming, in order. When a song finishes, the next one from the list plays for everyone. If the list is empty, Spotify carries on as usual.
+- **The session playlist is in charge.** While it has songs, it decides what plays next, even if the host was playing one of their own playlists, or Spotify's crossfade or Automix tries to start the next song early. A song the host deliberately picks in Mercify still plays straight away, and the list carries on after it.
 - **Played** lists what's already played this session. Hover over a song and press **+** to add it again.
 - **The host** can hover over a song to play it now, move it to the top, or remove it, and the host's **Next** button plays the next song from the list. **Listeners** can remove songs they added themselves.
 

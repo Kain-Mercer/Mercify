@@ -772,39 +772,7 @@ body.edit .rh {
 
 /* ---------------------------------------------------------------- toast */
 
-#toast {
-	position: fixed;
-	left: 50%;
-	bottom: 48px;
-	transform: translate(-50%, 20px);
-	opacity: 0;
-	transition:
-		opacity 0.2s,
-		transform 0.2s;
-	padding: 9px 14px;
-	border-radius: 10px;
-	background: rgba(20, 22, 27, 0.95);
-	border: 1px solid var(--panel-border);
-	box-shadow: var(--shadow);
-	pointer-events: none;
-	max-width: 70vw;
-	text-align: center;
-	z-index: 200;
-}
-#toast.show {
-	opacity: 1;
-	transform: translate(-50%, 0);
-}
-#toast.error {
-	border-color: rgba(255, 90, 90, 0.5);
-}
-#toast kbd {
-	font: 600 11px var(--font);
-	padding: 1px 6px;
-	border-radius: 4px;
-	background: rgba(255, 255, 255, 0.1);
-	border: 1px solid rgba(255, 255, 255, 0.12);
-}
+
 
 .empty-note .tried {
 	margin-top: 10px;
@@ -1285,4 +1253,67 @@ body.edit .rh {
 	.sp-row .sp-by {
 		display: none;
 	}
+}
+
+/* ---------------------------------------------------------------- notifications panel */
+
+.panel.notices,
+.panel.passive {
+	background: transparent;
+	border-color: transparent;
+	box-shadow: none;
+	overflow: visible;
+}
+body:not(.edit) .panel.passive {
+	pointer-events: none;
+}
+.nt-stack {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 6px;
+	padding: 4px;
+	overflow: hidden;
+}
+.nt-stack.from-bottom {
+	justify-content: flex-end;
+}
+.notice {
+	max-width: 100%;
+	padding: 8px 14px;
+	border-radius: 10px;
+	background: rgba(20, 22, 27, 0.95);
+	border: 1px solid var(--panel-border);
+	box-shadow: var(--shadow);
+	text-align: center;
+	opacity: 0;
+	transform: translateY(6px);
+	transition:
+		opacity 0.2s,
+		transform 0.2s;
+	flex: none;
+}
+.notice.show {
+	opacity: 1;
+	transform: none;
+}
+.notice.error {
+	border-color: rgba(255, 90, 90, 0.5);
+}
+.notice kbd {
+	font: 600 11px var(--font);
+	padding: 1px 6px;
+	border-radius: 4px;
+	background: rgba(255, 255, 255, 0.1);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+}
+/* a sample so the panel has something to show while you place it */
+.notice.sample {
+	display: none;
+	color: var(--text-dim);
+}
+body.edit .notice.sample {
+	display: block;
 }

@@ -65,6 +65,7 @@ process.on("message", async (m) => {
 			reply = await lobby.join(m.code);
 		} else if (m.cmd === "leave") reply = await lobby.leave();
 		else if (m.cmd === "play") {
+			lobby.markManual(); // like picking a song in Mercify
 			Object.assign(player, { uri: m.uri, name: m.uri.split(":").pop(), position: m.at || 0, at: Date.now(), isPlaying: true, empty: false, duration: m.duration || 240000 });
 			lobby.onPlayerState(snap());
 		} else if (m.cmd === "seek") {
@@ -79,6 +80,11 @@ process.on("message", async (m) => {
 		} else if (m.cmd === "add") await lobby.queueAdd(m.track);
 		else if (m.cmd === "remove") lobby.queueRemove(m.qid);
 		else if (m.cmd === "next") await lobby.playNext();
+		else if (m.cmd === "spotifyMovesOn") {
+			// Spotify starting its own next song early (crossfade / Automix), not picked in Mercify
+			Object.assign(player, { uri: "spotify:track:playlistnext", name: "playlistnext", position: 0, at: Date.now(), duration: 240000, isPlaying: true });
+			lobby.onPlayerState(snap());
+		}
 		else if (m.cmd === "report") reply = { player: { uri: player.uri, position: Math.round(pos()), isPlaying: player.isPlaying }, lobby: lobby.state(), queue };
 		process.send({ id: m.id, ok: true, reply });
 	} catch (err) {

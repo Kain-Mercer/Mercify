@@ -143,6 +143,22 @@ async function inSync(label, host, listeners, { tolerance = 1500, uri } = {}) {
 	await sleep(3500);
 	await inSync("after the host presses Next", A, [B, C], { uri: "spotify:track:qthree" });
 
+	// Spotify moving on by itself (crossfade / Automix / its own next) doesn't beat the session playlist
+	await C.call("add", { track: { uri: "spotify:track:qfive", name: "Queue Five", artists: ["V"] } });
+	await sleep(1500);
+	await A.call("spotifyMovesOn");
+	await sleep(3500);
+	const take = await report(A);
+	check("the session playlist wins when Spotify moves on by itself", take.player.uri === "spotify:track:qfive" && take.lobby.now?.by === "Mira", `host playing ${take.player.uri}, now ${take.lobby.now?.name}/${take.lobby.now?.by}`);
+	await inSync("after the session playlist takes over", A, [B, C], { uri: "spotify:track:qfive" });
+	// ...but a song the host picks themselves is respected
+	await C.call("add", { track: { uri: "spotify:track:qsix", name: "Queue Six", artists: ["U"] } });
+	await sleep(1500);
+	await A.call("play", { uri: "spotify:track:hostpick", at: 5000 });
+	await sleep(3000);
+	const pick = await report(A);
+	check("a song the host picks themselves still plays", pick.player.uri === "spotify:track:hostpick" && names(pick) === "Queue Six/Mira", `host playing ${pick.player.uri}, list ${names(pick)}`);
+
 	// 7. lose one relay
 	if (process.env.KILL_RELAY_CMD) {
 		execSync(process.env.KILL_RELAY_CMD);
@@ -174,7 +190,7 @@ async function inSync(label, host, listeners, { tolerance = 1500, uri } = {}) {
 	const [newHost, other] = b2.lobby.role === "host" ? [B, C] : [C, B];
 	const nh = await report(newHost);
 	const ot = await report(other);
-	check("the new host carries on with the session playlist", names(nh) === "Queue Four/Kain" && names(ot) === "Queue Four/Kain", `new host: ${names(nh)} | other: ${names(ot)}`);
+	check("the new host carries on with the session playlist", names(nh) === "Queue Six/Mira, Queue Four/Kain" && names(ot) === names(nh), `new host: ${names(nh)} | other: ${names(ot)}`);
 	await newHost.call("play", { uri: "spotify:track:four", at: 10000 });
 	await sleep(4000);
 	await inSync("new host plays", newHost, [other]);

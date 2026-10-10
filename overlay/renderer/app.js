@@ -95,6 +95,14 @@ const PANELS = {
 		min: [200, 140],
 		def: (W, H) => ({ x: 24, y: 24, w: 380, h: Math.min(560, H - 24 - 112 - 48), shownAlpha: 1, hiddenAlpha: 0 }),
 	},
+	notices: {
+		title: "Notifications",
+		bare: true,
+		passive: true, // never takes clicks (except in Edit Mode)
+		min: [220, 56],
+		// shown at full strength even when the overlay is hidden, so "Kain added a song" still pops up
+		def: (W, H) => ({ x: Math.round(W / 2 - 210), y: H - 24 - 150, w: 420, h: 150, shownAlpha: 1, hiddenAlpha: 1 }),
+	},
 	session: {
 		title: "Session Playlist",
 		min: [240, 200],
@@ -167,7 +175,7 @@ const panelEls = {};
 
 function buildPanel(id) {
 	const def = PANELS[id];
-	const p = el("section", "panel" + (def.bare ? " bare" : ""));
+	const p = el("section", "panel" + (def.bare ? " bare" : "") + (def.passive ? " passive" : ""));
 	p.dataset.id = id;
 	const body = el("div", "panel-body");
 	p.append(body);
@@ -213,6 +221,7 @@ function applyPanel(id) {
 }
 
 function applyAll() {
+	applyNoticesDirection();
 	document.body.classList.toggle("edit", S.edit);
 	document.body.classList.toggle("hidden", !S.shown && !S.edit);
 	document.body.classList.toggle("snap", !!S.layout.snap);
@@ -401,6 +410,7 @@ document.addEventListener("pointermove", (e) => {
 		}
 	}
 	setRect(drag.id, c);
+	if (drag.id === "notices") applyNoticesDirection();
 	drawGuides(lines);
 	applyPanel(drag.id);
 	positionPopover();
@@ -519,13 +529,45 @@ function resetLayout() {
 
 // ------------------------------------------------------------------ toast
 
-let toastTimer = null;
-function toast(html, kind = "", ms = 2600) {
-	const t = $("#toast");
-	t.innerHTML = html;
-	t.className = "show " + kind;
-	clearTimeout(toastTimer);
-	toastTimer = setTimeout(() => (t.className = kind), ms);
+// Notifications show up in the Notifications panel, which can be moved, resized, faded or
+// switched off in Edit Mode like any other panel.
+const MAX_NOTICES = 3;
+
+function toast(html, kind = "", ms = 4000) {
+	const stack = nt.stack;
+	if (!stack || !S.layout?.panels?.notices?.enabled) return;
+	const card = el("div", "notice" + (kind ? " " + kind : ""), html);
+	const fromBottom = noticesFromBottom();
+	if (fromBottom) stack.append(card);
+	else stack.prepend(card);
+	const live = stack.querySelectorAll(".notice:not(.sample):not(.leaving)");
+	if (live.length > MAX_NOTICES) dismiss(fromBottom ? live[0] : live[live.length - 1]);
+	requestAnimationFrame(() => card.classList.add("show"));
+	setTimeout(() => dismiss(card), ms);
+}
+
+function dismiss(card) {
+	if (!card || card.classList.contains("leaving")) return;
+	card.classList.add("leaving");
+	card.classList.remove("show");
+	setTimeout(() => card.remove(), 250);
+}
+
+// New notifications appear nearest the screen edge the panel sits at.
+function noticesFromBottom() {
+	const r = rectOf("notices");
+	return r.y + r.h / 2 > innerHeight / 2;
+}
+
+const nt = {};
+function buildNotices() {
+	const body = buildPanel("notices");
+	body.innerHTML = `<div class="nt-stack"><div class="notice sample show">Notifications appear here, like <b>Kain added “Song name”</b></div></div>`;
+	nt.stack = $(".nt-stack", body);
+}
+
+function applyNoticesDirection() {
+	nt.stack?.classList.toggle("from-bottom", noticesFromBottom());
 }
 
 // ------------------------------------------------------------------ Spotify commands
@@ -1405,6 +1447,7 @@ window.addEventListener("resize", () => {
 	buildNowPlaying();
 	buildPlaylist();
 	buildSearch();
+	buildNotices();
 	buildSession();
 	buildLobby();
 	S.lobby = await api.lobbyGet();

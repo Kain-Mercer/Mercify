@@ -470,7 +470,11 @@ ipcMain.on("lobby:copy", () => {
 
 // ------------------------------------------------------------------ overlay IPC
 
+// Songs picked in the overlay are deliberate; the session playlist mustn't override them.
+const MANUAL_PLAY = new Set(["playTrack", "playContext", "prev", "next"]);
+
 ipcMain.handle("cmd", async (_e, { action, args }) => {
+	if (MANUAL_PLAY.has(action)) lobby.markManual();
 	try {
 		return { ok: true, data: await bridgeCommand(action, args) };
 	} catch (err) {
