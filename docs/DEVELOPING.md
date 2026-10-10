@@ -71,22 +71,4 @@ The helper is rebuilt with MinGW (`x86_64-w64-mingw32-gcc -O2 -municode -static 
 
 ## Focus and click-through
 
-The overlay window is created with `focusable: false`, so clicking a panel doesn't take keyboard focus from the game. It becomes focusable only for Edit Mode and text input (`takeFocus()` in `main.js`, triggered by the search hotkey or a click in a text box via the `want-focus` IPC), and goes back to non-focusable on `releaseFocus()` or blur. Click-through is decided per mouse move in the renderer; while hidden, only the compact Now Playing panel (`.live-hidden`) takes clicks.
-
-## Files
-
-```
-spicetify/overlay-bridge.js     Spicetify extension (runs inside Spotify)
-overlay/main.js                 overlay window, click-through, app detection, hotkeys, tray, WebSocket server
-overlay/setup.js                setup checks and installers used by Settings
-overlay/updater.js              update checks, background download and install (GitHub Releases)
-overlay/foreground.js           reads fgwatch.exe's "app in front" reports
-overlay/native/fgwatch.c        helper source (prebuilt in overlay/bin/fgwatch.exe)
-overlay/settings/               Settings window
-overlay/renderer/               panels, Edit Mode, styles
-overlay/tools/mock-bridge.js    fake Spotify for testing (npm run demo)
-build-exe.bat                   builds the installer and portable exe on Windows
-setup-and-run.bat               older run-from-source script
-install-bridge.ps1              installs just the extension
-.github/workflows/build.yml     builds the exe on GitHub; releases on a version bump
-```
+The overlay window stays `focusable: true`: on Windows, Chromium discards clicks on a window that can't be activated (`focusable: false` caused the 1.3.0 "can't click anything" bug). Clicking a panel therefore activates the overlay, and the renderer then sends `give-back-focus` about 120 ms after any click that didn't land in a text box; `win.blur()` on Windows activates the next window down, normally the game. Text boxes keep focus until `Enter`/`Esc` or a song is picked (`releaseFocus()`), and the search hotkey and the playlist filter use `takeFocus()` via `want-focus`. Click-through is decided per mouse move in the renderer; while hidden, only the compact Now Playing panel (`.live-hidden`) takes clicks.

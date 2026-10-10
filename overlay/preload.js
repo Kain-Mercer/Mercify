@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("overlay", {
 	setInteractive: (on) => ipcRenderer.send("set-interactive", on),
 	releaseFocus: () => ipcRenderer.send("release-focus"),
 	wantFocus: () => ipcRenderer.send("want-focus"),
+	giveBackFocus: () => ipcRenderer.send("give-back-focus"),
 	setEdit: (on) => ipcRenderer.send("set-edit", on),
 	loadLayout: () => ipcRenderer.invoke("load-layout"),
 	saveLayout: (layout) => ipcRenderer.send("save-layout", layout),

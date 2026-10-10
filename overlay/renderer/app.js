@@ -234,18 +234,31 @@ document.addEventListener("mouseleave", () => {
 	if (!S.edit) setInteractive(false);
 });
 
-// The overlay window doesn't take keyboard focus on click (so the game keeps it).
-// Text boxes ask for focus first, then focus themselves once the window has it.
+// Clicking a panel activates the overlay window, which takes the keyboard away from the game.
+// After a click on anything other than a text box, hand the keyboard straight back.
+// (Text boxes keep it until Enter/Esc or a song is picked.)
 function focusInput(input) {
 	api.wantFocus();
 	setTimeout(() => input.focus(), 40);
 }
-document.addEventListener("pointerdown", (e) => {
-	if (S.edit) return;
-	const input = e.target.closest?.('input[type="text"]');
-	if (!input || document.activeElement === input) return;
-	e.preventDefault();
-	focusInput(input);
+let giveBackTimer = null;
+document.addEventListener("click", (e) => {
+	if (S.edit || !e.target.closest?.(".panel")) return;
+	clearTimeout(giveBackTimer);
+	giveBackTimer = setTimeout(() => {
+		if (document.activeElement?.matches?.('input[type="text"]')) return; // typing: keep focus
+		api.giveBackFocus();
+	}, 120);
+});
+// Releasing the volume slider or a scrollbar counts too.
+document.addEventListener("pointerup", (e) => {
+	if (S.edit || !e.target.closest?.(".panel")) return;
+	if (e.target.matches?.('input[type="range"]') || e.target.closest?.(".scroll") === e.target) {
+		clearTimeout(giveBackTimer);
+		giveBackTimer = setTimeout(() => {
+			if (!document.activeElement?.matches?.('input[type="text"]')) api.giveBackFocus();
+		}, 120);
+	}
 });
 
 // ------------------------------------------------------------------ Edit Mode: select, drag, resize, snap

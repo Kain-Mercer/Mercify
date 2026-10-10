@@ -134,9 +134,10 @@ function createWindow() {
 		skipTaskbar: true,
 		hasShadow: false,
 		alwaysOnTop: true,
-		// Not focusable by default: clicking a panel (play, skip, volume...) then doesn't take keyboard
-		// focus away from the game. It becomes focusable only while you type or use Edit Mode.
-		focusable: false,
+		// Must stay focusable: on Windows, Chromium throws away clicks on windows that can't be
+		// activated (that was the 1.3.0 "can't click anything" bug). Instead, after a click on a
+		// button the renderer asks for focus to go straight back to the game (give-back-focus).
+		focusable: true,
 		show: false,
 		webPreferences: {
 			preload: path.join(__dirname, "preload.js"),
@@ -165,7 +166,6 @@ function createWindow() {
 	win.on("blur", () => {
 		if (!win || win.isDestroyed()) return;
 		win.setAlwaysOnTop(true, "screen-saver");
-		if (!editMode) win.setFocusable(false);
 	});
 
 	screen.on("display-metrics-changed", () => {
@@ -214,14 +214,12 @@ function releaseFocus() {
 	setInteractive(false);
 	sendToRenderer("interactive-reset");
 	if (win.isFocused()) win.blur();
-	win.setFocusable(false);
 }
 
 // Let the overlay take keyboard input (typing in a search box, Edit Mode arrow keys).
 function takeFocus() {
 	if (!win || win.isDestroyed()) return;
 	setInteractive(true);
-	win.setFocusable(true);
 	win.focus();
 }
 
@@ -376,6 +374,15 @@ ipcMain.on("set-interactive", (_e, on) => {
 });
 
 ipcMain.on("want-focus", () => takeFocus());
+
+// After a click on a button or list row: keep taking clicks, but give the keyboard back.
+// On Windows, blur() activates the next window down, which is normally the game.
+let giveBacks = 0; // counted for the debug state file
+ipcMain.on("give-back-focus", () => {
+	giveBacks++;
+	if (!win || win.isDestroyed() || editMode) return;
+	if (win.isFocused()) win.blur();
+});
 
 ipcMain.on("release-focus", () => {
 	if (!editMode) releaseFocus();
@@ -696,7 +703,7 @@ app.whenReady().then(async () => {
 	setInterval(tickGate, 200);
 	if (process.env.OVERLAY_DEBUG_STATE_FILE) {
 		setInterval(() => {
-			const st = { gateOpen, visible: win.isVisible(), toggleHotkey: globalShortcut.isRegistered(config.hotkeys.toggle), editHotkey: globalShortcut.isRegistered(config.hotkeys.edit), edit: editMode, update: updater.state() };
+			const st = { gateOpen, visible: win.isVisible(), toggleHotkey: globalShortcut.isRegistered(config.hotkeys.toggle), editHotkey: globalShortcut.isRegistered(config.hotkeys.edit), edit: editMode, update: updater.state(), giveBacks };
 			fs.writeFileSync(process.env.OVERLAY_DEBUG_STATE_FILE, JSON.stringify(st));
 		}, 100);
 	}
