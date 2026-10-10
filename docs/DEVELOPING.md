@@ -19,7 +19,7 @@ Technical notes for building and changing Mercify. Players don't need any of thi
 
 ## Building
 
-**On GitHub:** every push to `main` runs the [Build Windows exe](../.github/workflows/build.yml) workflow on a Windows runner. To publish a release, bump `version` in `overlay/package.json` and push: when there's no `v<version>` release yet, the workflow publishes one with both exes, `latest.yml` and the installer's `.blockmap` attached. Other builds attach the same files to the run (Actions tab → the run → **Artifacts**). Changes to Markdown files and `docs/` don't trigger a build.
+**On GitHub:** every push to `main` runs the [Build Windows exe](../.github/workflows/build.yml) workflow on a Windows runner. To publish a release, bump `version` in `overlay/package.json` and push: when there's no `v<version>` release yet, the workflow publishes one with both exes, `latest.yml` and the installer's `.blockmap` attached. Other builds attach the same files to the run (Actions tab → the run → **Artifacts**). Changes to Markdown files and `docs/` don't trigger a build. Before releasing, the build runs `tools/check-package.js`, which fails if any `require()` in the packaged app points at a file or package that didn't get packaged. All top-level `overlay/*.js` files are packaged automatically.
 
 ## Updates
 

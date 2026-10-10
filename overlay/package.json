@@ -1,7 +1,7 @@
 {
   "name": "mercify",
   "productName": "Mercify",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Mercify: a Discord-style in-game overlay for the Spotify desktop client (SpotX + Spicetify).",
   "main": "main.js",
   "private": true,
@@ -26,12 +26,7 @@
       "output": "dist"
     },
     "files": [
-      "main.js",
-      "preload.js",
-      "preload-settings.js",
-      "foreground.js",
-      "setup.js",
-      "updater.js",
+      "*.js",
       "renderer/**",
       "settings/**",
       "assets/**",

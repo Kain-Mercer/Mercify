@@ -56,6 +56,11 @@ jobs:
       - name: Build installer and portable exe
         run: npm run dist
 
+      # Stop before releasing if the packaged app is missing a file its code needs
+      # (1.4.0 shipped without lobby.js and crashed on start).
+      - name: Check the packaged app is complete
+        run: node tools/check-package.js dist/win-unpacked/resources/app.asar
+
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
