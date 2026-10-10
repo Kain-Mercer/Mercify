@@ -108,7 +108,7 @@ const senior = (a, b) => (a.joinedAt !== b.joinedAt ? a.joinedAt < b.joinedAt : 
  * @param {string[]} [opts.relays]
  * @param {(msg: string) => void} [opts.log]
  */
-function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace = false }) {
+function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace = false, connectTimeoutMs = CONNECT_TIMEOUT_MS }) {
 	const ev = new EventEmitter();
 
 	let name = "";
@@ -495,7 +495,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 
 	async function waitForRelay() {
 		const start = Date.now();
-		while (Date.now() - start < CONNECT_TIMEOUT_MS) {
+		while (Date.now() - start < connectTimeoutMs) {
 			if (clients.some((c) => c.connected)) {
 				await sleep(300); // give the subscribe a moment
 				return true;

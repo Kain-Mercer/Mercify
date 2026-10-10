@@ -16,9 +16,12 @@ const RELAYS = (process.env.LOBBY_RELAYS || DEFAULT_RELAYS.join(",")).split(",")
 const CODE = generateCode();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
+const children = [];
+process.on("exit", () => children.forEach((c) => c.kill())); // never leave members behind
 
 function member(name, skew) {
 	const child = fork(path.join(__dirname, "lobby-member.js"), [], { env: { ...process.env, CLOCK_SKEW_MS: String(skew), LOBBY_RELAYS: RELAYS.join(",") } });
+	children.push(child);
 	let n = 0;
 	const pending = new Map();
 	const ready = new Promise((r) => child.on("message", (m) => (m.ready ? r() : pending.get(m.id)?.(m))));
@@ -118,7 +121,8 @@ async function inSync(label, host, listeners, { tolerance = 1500, uri } = {}) {
 	const raw = Buffer.concat(sniffed.map((s) => s.b)).toString("latin1");
 	const topics = [...new Set(sniffed.map((s) => s.t))];
 	check("relay traffic is encrypted", sniffed.length > 0 && !raw.includes("spotify:track") && !raw.includes("Eva") && !raw.includes(CODE), `${sniffed.length} messages seen`);
-	check("relay topic doesn't reveal the code", topics.length === 1 && topics[0] === topicFor(CODE) && !topics[0].includes(CODE), topics.join(","));
+	// (other people's lobbies on a public relay show up here too; none may reveal a code)
+	check("relay topic doesn't reveal the code", topics.includes(topicFor(CODE)) && topics.every((t) => !t.includes(CODE)), topics.join(","));
 
 	// 9. host leaves: the longest-standing listener takes over, and everyone agrees who
 	//    (join times come from each member's own clock, so with skewed clocks either can win)

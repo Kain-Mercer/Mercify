@@ -41,7 +41,13 @@ async function command(action, args = {}) {
 	return null;
 }
 
-lobby = createLobby({ command, relays, log: (m) => process.env.LOBBY_DEBUG && console.error(`[${process.env.CLOCK_SKEW_MS}] ${m}`) });
+lobby = createLobby({
+	command,
+	relays,
+	log: (m) => process.env.LOBBY_DEBUG && console.error(`[${process.env.CLOCK_SKEW_MS}] ${m}`),
+	connectTimeoutMs: Number(process.env.LOBBY_CONNECT_TIMEOUT_MS) || undefined,
+});
+process.on("disconnect", () => process.exit(0)); // test runner gone: don't linger in the lobby
 setInterval(() => player.isPlaying && lobby.onPlayerProgress(pos(), Date.now()), 1000);
 
 process.on("message", async (m) => {
