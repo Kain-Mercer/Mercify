@@ -103,8 +103,12 @@ async function inSync(label, host, listeners, { tolerance = 1500, uri } = {}) {
 
 	// 6. session playlist: everyone adds, everyone sees the same list
 	const names = (r) => r.lobby.queue.map((q) => `${q.name}/${q.by}`).join(", ");
+	// (a second apart: on real relays a listener's add takes a moment to reach the host, so
+	//  adds sent at the same instant can land in either order; the list is the host's order)
 	await B.call("add", { track: { uri: "spotify:track:qone", name: "Queue One", artists: ["X"] } });
+	await sleep(1200);
 	await C.call("add", { track: { uri: "spotify:track:qtwo", name: "Queue Two", artists: ["Y"] } });
+	await sleep(1200);
 	await A.call("add", { track: { uri: "spotify:track:qthree", name: "Queue Three", artists: ["Z"] } });
 	await sleep(2000);
 	const want = "Queue One/Kain, Queue Two/Mira, Queue Three/Eva";
