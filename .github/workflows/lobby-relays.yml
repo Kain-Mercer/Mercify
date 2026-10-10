@@ -34,10 +34,17 @@ jobs:
         run: |
           for r in $(node -p "require('./lobby').DEFAULT_RELAYS.join(' ')"); do
             echo "::group::$r"
-            if LOBBY_RELAYS="$r" SKIP_CRASH=1 node tools/lobby-test.js; then echo "OK  $r" >> relay-summary.txt; else echo "DOWN  $r" >> relay-summary.txt; fi
+            if LOBBY_RELAYS="$r" SKIP_CRASH=1 node tools/lobby-test.js > out.txt 2>&1; then
+              echo "::notice title=Relay OK::$r ($(grep -c '^PASS' out.txt) checks passed)"
+            else
+              echo "::warning title=Relay DOWN::$r: $(grep -E '^FAIL|Error' out.txt | head -3 | tr '\n' ' ')"
+            fi
+            cat out.txt
             echo "::endgroup::"
           done
-          cat relay-summary.txt
 
       - name: All relays together (as the app uses them)
-        run: node tools/lobby-test.js
+        shell: bash
+        run: |
+          node tools/lobby-test.js | tee all.txt
+          echo "::notice title=All relays together::$(tail -1 all.txt) ($(grep -c '^PASS' all.txt) checks passed)"
