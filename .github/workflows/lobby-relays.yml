@@ -1,0 +1,43 @@
+name: Check lobby relays
+
+# Runs the three-member lobby test against the real public relays that listening lobbies use.
+# Start it from the Actions tab ("Run workflow") if lobbies seem broken; it also runs weekly.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  relays:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: overlay
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: overlay/package-lock.json
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Each relay on its own
+        shell: bash
+        run: |
+          for r in $(node -p "require('./lobby').DEFAULT_RELAYS.join(' ')"); do
+            echo "::group::$r"
+            if LOBBY_RELAYS="$r" SKIP_CRASH=1 node tools/lobby-test.js; then echo "OK  $r" >> relay-summary.txt; else echo "DOWN  $r" >> relay-summary.txt; fi
+            echo "::endgroup::"
+          done
+          cat relay-summary.txt
+
+      - name: All relays together (as the app uses them)
+        run: node tools/lobby-test.js

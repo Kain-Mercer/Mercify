@@ -81,9 +81,23 @@ function renderUpdate(u) {
 	if (u.status !== "ready" && u.status !== "available") delete btn.dataset.install;
 }
 
+function renderLobby(l) {
+	if (!l) return;
+	const nameEl = $("#lobby-name");
+	if (document.activeElement !== nameEl) nameEl.value = l.name || "";
+	const status = $("#lobby-status");
+	if (l.status === "joined") {
+		const who = l.role === "host" ? "hosting" : `with ${l.hostName || "the host"}`;
+		status.textContent = `In ${l.displayCode}, ${who} · ${l.members.length} here`;
+	} else if (l.status === "connecting") status.textContent = `Joining ${l.displayCode}…`;
+	else status.textContent = "Not in a lobby";
+	$("#lobby-leave").hidden = l.status !== "joined" && l.status !== "connecting";
+}
+
 function render(d) {
 	current = d;
 	renderUpdate(d.update);
+	renderLobby(d.lobby);
 	const s = d.setup;
 
 	$("#conn").textContent = d.connected ? "Connected to Spotify" : "Waiting for Spotify";
@@ -197,6 +211,14 @@ $("#update-check").addEventListener("click", async (e) => {
 	render(await S.action(install ? "installUpdate" : "checkUpdate"));
 });
 $("#update-banner-btn").addEventListener("click", async () => render(await S.action("installUpdate")));
+
+const saveLobbyName = async () => {
+	const v = $("#lobby-name").value.trim();
+	if (v !== (current?.lobby?.name || "")) render(await S.set("lobbyName", v));
+};
+$("#lobby-name").addEventListener("change", saveLobbyName);
+$("#lobby-name").addEventListener("keydown", (e) => e.key === "Enter" && e.target.blur());
+$("#lobby-leave").addEventListener("click", async () => render(await S.action("leaveLobby")));
 
 S.onLog(log);
 S.onChanged(render);

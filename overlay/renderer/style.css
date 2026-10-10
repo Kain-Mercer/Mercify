@@ -950,3 +950,220 @@ body.edit .rh {
 #pop-compact-row input {
 	margin-top: 2px;
 }
+
+/* ---------------------------------------------------------------- listening lobby */
+
+.lb {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	padding: 10px 12px 12px;
+}
+.lb-out,
+.lb-in {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-height: 0;
+	flex: 1;
+}
+.lb-label {
+	font-size: 10.5px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-faint);
+	margin-top: 2px;
+}
+.lb-input {
+	width: 100%;
+	min-width: 0;
+	padding: 7px 10px;
+	border-radius: 8px;
+	border: 1px solid var(--panel-border);
+	background: rgba(255, 255, 255, 0.05);
+	color: var(--text);
+	font: inherit;
+	outline: 0;
+}
+.lb-input:focus {
+	border-color: rgba(30, 215, 96, 0.55);
+}
+.lb-code {
+	font-family: "Cascadia Mono", Consolas, monospace;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+.lb-code::placeholder {
+	font-family: var(--font);
+	letter-spacing: 0;
+	text-transform: none;
+}
+.lb-coderow {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+}
+.lb-coderow .icon-btn {
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
+	background: rgba(255, 255, 255, 0.07);
+}
+.lb-btn {
+	border: 0;
+	border-radius: 8px;
+	padding: 8px 12px;
+	font: 600 12.5px var(--font);
+	cursor: pointer;
+	margin-top: 4px;
+}
+.lb-btn.primary {
+	background: var(--accent);
+	color: #04130a;
+}
+.lb-btn.primary:hover {
+	filter: brightness(1.08);
+}
+.lb-btn.ghost {
+	background: rgba(255, 255, 255, 0.07);
+	color: var(--text);
+}
+.lb-btn.ghost:hover {
+	background: rgba(255, 255, 255, 0.13);
+}
+.lb-btn.small {
+	padding: 4px 10px;
+	font-size: 11.5px;
+	margin: 0 0 0 auto;
+}
+.lb-hint {
+	color: var(--text-faint);
+	font-size: 11px;
+	margin-top: auto;
+}
+.lb-error {
+	color: #ff8a8a;
+	font-size: 11.5px;
+}
+.lb-relays.bad {
+	color: #ff8a8a;
+}
+.lb-connecting {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--text-dim);
+	padding: 6px 0;
+}
+.lb-codebox {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 6px 6px 12px;
+	border-radius: 9px;
+	background: var(--accent-dim);
+	border: 1px solid rgba(30, 215, 96, 0.3);
+}
+.lb-codeval {
+	flex: 1;
+	font: 700 16px "Cascadia Mono", Consolas, monospace;
+	letter-spacing: 0.12em;
+	color: var(--accent);
+	user-select: text;
+}
+.lb-codebox .icon-btn {
+	width: 28px;
+	height: 28px;
+}
+.lb-role {
+	color: var(--text-dim);
+	font-size: 12px;
+}
+.lb-role b {
+	color: var(--text);
+}
+.lb-members {
+	flex: 1;
+	min-height: 40px;
+	padding: 2px 0;
+}
+.lb-member {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 4px;
+	font-size: 12.5px;
+}
+.lb-mname {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.lb-member.host .lb-mname {
+	font-weight: 650;
+}
+.lb-crown svg {
+	width: 13px;
+	height: 13px;
+	fill: #f5c542;
+	display: block;
+}
+.lb-dot {
+	width: 7px;
+	height: 7px;
+	margin: 0 3px;
+	border-radius: 50%;
+	background: var(--accent);
+	flex: none;
+}
+.lb-you {
+	font-size: 10.5px;
+	color: var(--text-faint);
+	padding: 0 6px;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.06);
+}
+.lb-activity {
+	font-size: 11px;
+	color: var(--text-faint);
+	line-height: 1.45;
+}
+.lb-activity div {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.lb-in .lb-leave {
+	margin-top: 2px;
+}
+
+/* lobby badge on Now Playing, and listeners' host-only controls */
+.np-lobby {
+	position: absolute;
+	top: 7px;
+	right: 34px;
+	z-index: 2;
+	max-width: 45%;
+	padding: 1px 8px;
+	border-radius: 999px;
+	background: var(--accent-dim);
+	color: var(--accent);
+	font-size: 10.5px;
+	font-weight: 650;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.panel.compact .np-lobby {
+	display: none;
+}
+.panel.following [data-act="togglePlay"],
+.panel.following [data-act="next"],
+.panel.following [data-act="prev"],
+.panel.following [data-act="toggleShuffle"],
+.panel.following [data-act="toggleRepeat"],
+.panel.following .bar {
+	opacity: 0.4;
+}

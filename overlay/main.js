@@ -4,13 +4,14 @@
 // - shows only while a chosen app (e.g. WoW) is in front
 // - global hotkeys, tray menu, Settings window with built-in setup, config + layout persistence
 
-const { app, BrowserWindow, globalShortcut, ipcMain, screen, Tray, Menu, nativeImage, shell, Notification } = require("electron");
+const { app, BrowserWindow, globalShortcut, ipcMain, screen, Tray, Menu, nativeImage, shell, Notification, clipboard } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { WebSocketServer } = require("ws");
 const foreground = require("./foreground");
 const setup = require("./setup");
 const updater = require("./updater");
+const { createLobby, generateCode, formatCode, DEFAULT_RELAYS } = require("./lobby");
 
 // ------------------------------------------------------------------ config
 
@@ -35,8 +36,12 @@ const DEFAULT_CONFIG = {
 	hotkeysOnlyOverApps: true, // toggle/search/media hotkeys are released when you're not in one of those apps
 	launchSpotify: true, // start Spotify when the overlay starts
 	minimiseSpotify: true, // send Spotify's window to the tray when Mercify opens
+	lobbyName: "", // your name in listening lobbies
+	// lobbyRelays: ["wss://..."], // optional: use your own MQTT-over-WebSocket relays instead of the public ones
 };
 
+// Testing: run a second copy side by side with its own settings.
+if (process.env.OVERLAY_DEBUG_USERDATA) app.setPath("userData", process.env.OVERLAY_DEBUG_USERDATA);
 const userDir = app.getPath("userData");
 const CONFIG_PATH = path.join(userDir, "config.json");
 const LAYOUT_PATH = path.join(userDir, "layout.json");
@@ -331,6 +336,8 @@ function startBridgeServer() {
 				updateTrayMenu();
 			} else if (msg.type === "state" || msg.type === "progress") {
 				sendToRenderer("bridge", msg);
+				if (msg.type === "state") lobby.onPlayerState(msg.state);
+				else lobby.onPlayerProgress(msg.position, msg.at);
 			}
 		});
 
@@ -389,6 +396,68 @@ function bridgeCommand(action, args, timeoutMs = 15000) {
 		bridge.send(JSON.stringify({ type: "cmd", id, action, args: args || {} }));
 	});
 }
+
+// ------------------------------------------------------------------ listening lobbies
+
+const lobbyRelays = process.env.OVERLAY_DEBUG_LOBBY_RELAYS
+	? process.env.OVERLAY_DEBUG_LOBBY_RELAYS.split(",")
+	: Array.isArray(config.lobbyRelays) && config.lobbyRelays.length
+		? config.lobbyRelays
+		: DEFAULT_RELAYS;
+
+const lobby = createLobby({
+	command: (action, args) => bridgeCommand(action, args),
+	relays: lobbyRelays,
+	log: (m) => console.log("[lobby]", m),
+	trace: !!process.env.OVERLAY_DEBUG_LOBBY_TRACE,
+});
+lobby.setName(config.lobbyName);
+
+const lobbyView = () => ({ ...lobby.state(), name: config.lobbyName });
+
+lobby.on("change", () => {
+	sendToRenderer("lobby", lobbyView());
+	pushSettings();
+	updateTrayMenu();
+});
+lobby.on("toast", (text) => sendToRenderer("toast", { text }));
+
+function setLobbyName(name) {
+	config.lobbyName = String(name || "").trim().slice(0, 24);
+	saveConfig();
+	lobby.setName(config.lobbyName);
+}
+
+ipcMain.handle("lobby:get", () => lobbyView());
+ipcMain.handle("lobby:generate", () => formatCode(generateCode()));
+ipcMain.handle("lobby:set-name", (_e, name) => {
+	setLobbyName(name);
+	return lobbyView();
+});
+ipcMain.handle("lobby:join", async (_e, code) => {
+	try {
+		await lobby.join(code);
+		return { ok: true, state: lobbyView() };
+	} catch (err) {
+		return { ok: false, error: err.message, state: lobbyView() };
+	}
+});
+ipcMain.handle("lobby:leave", async () => {
+	await lobby.leave();
+	return lobbyView();
+});
+ipcMain.handle("lobby:suggest", async (_e, track) => {
+	try {
+		await lobby.suggest(track);
+		return { ok: true };
+	} catch (err) {
+		return { ok: false, error: err.message };
+	}
+});
+ipcMain.on("lobby:copy", () => {
+	const st = lobby.state();
+	if (st.displayCode) clipboard.writeText(st.displayCode);
+});
 
 // ------------------------------------------------------------------ overlay IPC
 
@@ -529,9 +598,9 @@ function openSettings() {
 	}
 	settingsWin = new BrowserWindow({
 		width: 1000,
-		height: 610,
+		height: 660,
 		minWidth: 940,
-		minHeight: 610,
+		minHeight: 660,
 		useContentSize: true,
 		center: true,
 		title: "Mercify",
@@ -568,6 +637,7 @@ function openSettings() {
 
 async function settingsState() {
 	return {
+		lobby: lobbyView(),
 		update: updater.state(),
 		setup: await setup.status(),
 		connected: !!bridge,
@@ -603,6 +673,7 @@ ipcMain.handle("settings:action", async (_e, name) => {
 	else if (name === "apply") await setup.applyExtension(settingsLog);
 	else if (name === "startSpotify") await setup.startSpotify();
 	else if (name === "checkUpdate") updater.check();
+	else if (name === "leaveLobby") await lobby.leave();
 	else if (name === "installUpdate") updater.installNow();
 	return settingsState();
 });
@@ -612,6 +683,7 @@ ipcMain.handle("settings:set", async (_e, key, value) => {
 	else if (key === "hotkeysOnlyOverApps") config.hotkeysOnlyOverApps = !!value;
 	else if (key === "launchSpotify") config.launchSpotify = !!value;
 	else if (key === "minimiseSpotify") config.minimiseSpotify = !!value;
+	else if (key === "lobbyName") setLobbyName(value);
 	else if (key === "startWithWindows") setStartWithWindows(value);
 	saveConfig();
 	tickGate();
@@ -700,11 +772,25 @@ function updateTrayMenu() {
 					pushSettings();
 				},
 			},
+			...lobbyTrayItems(),
 			{ label: "Reset layout", click: () => sendToRenderer("reset-layout") },
 			{ type: "separator" },
 			{ label: "Quit", click: () => app.quit() },
 		])
 	);
+}
+
+function lobbyTrayItems() {
+	const st = lobby.state();
+	if (st.status !== "joined") return [];
+	const who = st.role === "host" ? "hosting" : `with ${st.hostName || "the host"}`;
+	return [
+		{ type: "separator" },
+		{ label: `Lobby ${st.displayCode} (${who}, ${st.members.length} here)`, enabled: false },
+		{ label: "Copy lobby code", click: () => clipboard.writeText(st.displayCode) },
+		{ label: "Leave lobby", click: () => lobby.leave() },
+		{ type: "separator" },
+	];
 }
 
 function createTray() {
@@ -772,6 +858,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("second-instance", openSettings);
+app.on("before-quit", () => lobby.leaveNow()); // say goodbye so the lobby doesn't wait for a timeout
 app.on("will-quit", () => {
 	globalShortcut.unregisterAll();
 	foreground.stop();

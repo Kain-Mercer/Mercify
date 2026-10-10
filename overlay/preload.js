@@ -23,4 +23,12 @@ contextBridge.exposeInMainWorld("overlay", {
 	onResetLayout: on("reset-layout"),
 	onToast: on("toast"),
 	onInteractiveReset: on("interactive-reset"),
+	lobbyGet: () => ipcRenderer.invoke("lobby:get"),
+	lobbyGenerate: () => ipcRenderer.invoke("lobby:generate"),
+	lobbySetName: (name) => ipcRenderer.invoke("lobby:set-name", name),
+	lobbyJoin: (code) => ipcRenderer.invoke("lobby:join", code),
+	lobbyLeave: () => ipcRenderer.invoke("lobby:leave"),
+	lobbySuggest: (track) => ipcRenderer.invoke("lobby:suggest", track),
+	lobbyCopy: () => ipcRenderer.send("lobby:copy"),
+	onLobby: on("lobby"),
 });

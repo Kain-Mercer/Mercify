@@ -47,6 +47,9 @@ const ICON = {
 	close: I("M3.6 2.5 8 6.9l4.4-4.4 1.1 1.1L9.1 8l4.4 4.4-1.1 1.1L8 9.1l-4.4 4.4-1.1-1.1L6.9 8 2.5 3.6z"),
 	note: I("M6 2.5 14 1v9.3a2.2 2.2 0 1 1-1.5-2.1V3.5L7.5 4.4v7.8A2.2 2.2 0 1 1 6 10.1z"),
 	bars: I("M2.5 13V8h2v5zM7 13V3h2v10zM11.5 13V6h2v7z"),
+	copy: I("M5 1.5h7.5A1.5 1.5 0 0 1 14 3v8.5h-1.5V3H5zM2 5a1.5 1.5 0 0 1 1.5-1.5h6A1.5 1.5 0 0 1 11 5v8.5a1.5 1.5 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 2 13.5zm1.5 0v8.5h6V5z"),
+	crown: I("M2 5.2l3.1 2.6L8 3.2l2.9 4.6L14 5.2l-1.3 6.6H3.3zM3.3 12.8h9.4v1.4H3.3z"),
+	dice: `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M3.5 1.5h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2zm0 1.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5zM5.25 4a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm5.5 5.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM8 6.75a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5z"/></svg>`,
 	collapse: I("M2 9h5v5H5.5v-2.4L2.9 14.2 1.8 13.1l2.6-2.6H2zM14 7H9V2h1.5v2.4l2.6-2.6 1.1 1.1-2.6 2.6H14z"),
 	expand: I("M1.5 9.5H3v2.4l2.6-2.6 1.1 1.1-2.6 2.6h2.4v1.5h-5zM14.5 6.5H13V4.1l-2.6 2.6-1.1-1.1 2.6-2.6H9.5V1.5h5z"),
 };
@@ -64,6 +67,7 @@ const S = {
 	results: null,
 	layout: null,
 	selected: null,
+	lobby: null, // listening lobby state from the main process
 };
 
 // ------------------------------------------------------------------ panel registry + default layout
@@ -89,6 +93,11 @@ const PANELS = {
 		title: "Playlist",
 		min: [200, 140],
 		def: (W, H) => ({ x: 24, y: 24, w: 380, h: Math.min(560, H - 24 - 112 - 48), shownAlpha: 1, hiddenAlpha: 0 }),
+	},
+	lobby: {
+		title: "Lobby",
+		min: [240, 180],
+		def: (W, H) => ({ x: W - 24 - 300, y: H - 24 - 260, w: 300, h: 260, shownAlpha: 1, hiddenAlpha: 0 }),
 	},
 };
 
@@ -524,6 +533,23 @@ async function cmd(action, args) {
 }
 const fire = (action, args) => cmd(action, args).catch(() => {});
 
+// ------------------------------------------------------------------ listening lobby: listener rules
+// In someone else's lobby the host controls playback. Picking a song suggests it to the host instead.
+
+const following = () => S.lobby?.status === "joined" && S.lobby?.role === "listener";
+const HOST_ONLY = new Set(["togglePlay", "next", "prev", "toggleShuffle", "toggleRepeat"]);
+const hostName = () => esc(S.lobby?.hostName || "The host");
+
+function hostOnlyToast() {
+	toast(`${hostName()} controls playback in this lobby. Pick a song to suggest it.`);
+}
+
+async function suggestTrack(t) {
+	const r = await api.lobbySuggest({ uri: t.uri, name: t.name, artists: t.artists });
+	if (r.ok) toast(`Suggested <b>${esc(t.name)}</b> to ${hostName()}`);
+	else toast(esc(r.error), "error");
+}
+
 // ------------------------------------------------------------------ Now Playing panel
 
 const np = {};
@@ -556,6 +582,7 @@ function buildNowPlaying() {
 				</div>
 			</div>
 		</div>
+		<span class="np-lobby" hidden></span>
 		<button class="icon-btn np-collapse" data-act="collapse" title="Compact view">${ICON.collapse}</button>
 		<div class="npc">
 			<img class="npc-art" src="" alt="" />
@@ -590,6 +617,7 @@ function buildNowPlaying() {
 		cTitle: $(".npc-title", body),
 		cArtist: $(".npc-artist", body),
 		cFill: $(".npc-fill", body),
+		lobby: $(".np-lobby", body),
 	});
 
 	body.addEventListener("click", (e) => {
@@ -602,6 +630,7 @@ function buildNowPlaying() {
 			if (v > 0) np.lastVol = v;
 			return fire("setVolume", { level: v > 0 ? 0 : np.lastVol || 0.5 });
 		}
+		if (following() && HOST_ONLY.has(act)) return hostOnlyToast();
 		// Optimistic UI for play/pause so it feels instant.
 		if (act === "togglePlay" && S.player) {
 			S.player.position = currentPosition();
@@ -614,6 +643,7 @@ function buildNowPlaying() {
 
 	np.bar.addEventListener("click", (e) => {
 		if (S.edit || !S.player?.duration) return;
+		if (following()) return hostOnlyToast();
 		const r = np.bar.getBoundingClientRect();
 		const ms = ((e.clientX - r.left) / r.width) * S.player.duration;
 		S.player.position = ms;
@@ -709,6 +739,11 @@ function trackRow(t, { index = null, contextUri = null, showIndex = false } = {}
 		<span class="row-dur">${t.duration ? fmt(t.duration) : ""}</span>`;
 	r.addEventListener("click", (e) => {
 		if (S.edit) return;
+		if (following()) {
+			suggestTrack(t);
+			if (document.activeElement?.matches?.('input[type="text"]')) api.releaseFocus();
+			return;
+		}
 		if (e.target.closest(".icon-btn")) {
 			cmd("addToQueue", { uri: t.uri })
 				.then(() => toast(`Queued <b>${esc(t.name)}</b>`))
@@ -786,7 +821,8 @@ function buildSearch() {
 		} else if (e.key === "Enter") {
 			const top = S.results?.tracks?.[0];
 			if (top) {
-				fire("playTrack", { uri: top.uri });
+				if (following()) suggestTrack(top);
+				else fire("playTrack", { uri: top.uri });
 				api.releaseFocus();
 				sr.input.blur();
 			}
@@ -875,7 +911,11 @@ function renderResults() {
 				`<img src="${esc(a.image || "")}" alt="" loading="lazy" /><div class="row-text"><div class="row-title">${esc(a.name)}</div><div class="row-sub">${esc(["Album", ...(a.artists || [])].join(" · "))}</div></div><span class="row-dur" title="Play album">${ICON.play.replace("<svg", '<svg style="width:12px;height:12px;fill:currentColor"')}</span>`
 			);
 			row.title = "Play album";
-			row.addEventListener("click", () => !S.edit && fire("playContext", { uri: a.uri }));
+			row.addEventListener("click", () => {
+				if (S.edit) return;
+				if (following()) return hostOnlyToast();
+				fire("playContext", { uri: a.uri });
+			});
 			sr.list.append(row);
 		}
 	}
@@ -1014,6 +1054,166 @@ function setPickerArt(p) {
 	}
 }
 
+// ------------------------------------------------------------------ Lobby panel
+
+const lb = {};
+
+function buildLobby() {
+	const body = buildPanel("lobby");
+	body.innerHTML = `
+		<div class="list-head"><span class="title">Listening lobby</span><span class="meta lb-relays"></span></div>
+		<div class="lb">
+			<div class="lb-out">
+				<label class="lb-label" for="lb-name">Your name</label>
+				<input type="text" id="lb-name" class="lb-input lb-name" maxlength="24" placeholder="What your friends see" spellcheck="false" />
+				<label class="lb-label" for="lb-code">Lobby code</label>
+				<div class="lb-coderow">
+					<input type="text" id="lb-code" class="lb-input lb-code" maxlength="19" placeholder="Type one, or generate" spellcheck="false" />
+					<button class="icon-btn lb-gen" title="Generate a random code">${ICON.dice}</button>
+				</div>
+				<button class="lb-btn primary lb-join">Join lobby</button>
+				<div class="lb-error" hidden></div>
+				<div class="lb-hint">Everyone with the same code listens together. The first one in hosts.</div>
+			</div>
+			<div class="lb-connecting" hidden><span class="spinner"></span><span class="lb-connecting-text">Connecting…</span><button class="lb-btn ghost small lb-cancel">Cancel</button></div>
+			<div class="lb-in" hidden>
+				<div class="lb-codebox">
+					<span class="lb-codeval"></span>
+					<button class="icon-btn lb-copy" title="Copy code">${ICON.copy}</button>
+				</div>
+				<div class="lb-role"></div>
+				<div class="lb-members scroll"></div>
+				<div class="lb-activity"></div>
+				<button class="lb-btn ghost lb-leave">Leave lobby</button>
+			</div>
+		</div>`;
+	Object.assign(lb, {
+		relays: $(".lb-relays", body),
+		out: $(".lb-out", body),
+		name: $(".lb-name", body),
+		code: $(".lb-code", body),
+		join: $(".lb-join", body),
+		error: $(".lb-error", body),
+		connecting: $(".lb-connecting", body),
+		connectingText: $(".lb-connecting-text", body),
+		in: $(".lb-in", body),
+		codeval: $(".lb-codeval", body),
+		role: $(".lb-role", body),
+		members: $(".lb-members", body),
+		activity: $(".lb-activity", body),
+	});
+
+	const saveName = () => {
+		const v = lb.name.value.trim();
+		if (v !== (S.lobby?.name || "")) api.lobbySetName(v);
+	};
+	lb.name.addEventListener("change", saveName);
+	lb.name.addEventListener("blur", saveName);
+
+	const showError = (msg) => {
+		lb.error.textContent = msg || "";
+		lb.error.hidden = !msg;
+	};
+
+	async function join() {
+		if (S.edit) return;
+		showError("");
+		const name = lb.name.value.trim();
+		if (!name) {
+			showError("Enter your name first.");
+			return focusInput(lb.name);
+		}
+		if (name !== (S.lobby?.name || "")) await api.lobbySetName(name);
+		const code = lb.code.value.trim();
+		if (code.replace(/[^a-z0-9]/gi, "").length < 4) {
+			showError("Lobby codes need at least 4 letters or numbers.");
+			return focusInput(lb.code);
+		}
+		api.releaseFocus();
+		const r = await api.lobbyJoin(code);
+		if (!r.ok) showError(r.error);
+	}
+
+	lb.join.addEventListener("click", join);
+	$(".lb-gen", body).addEventListener("click", async () => {
+		if (S.edit) return;
+		lb.code.value = await api.lobbyGenerate();
+		showError("");
+	});
+	for (const input of [lb.name, lb.code]) {
+		input.addEventListener("keydown", (e) => {
+			if (e.key === "Enter") {
+				e.preventDefault();
+				if (input === lb.name) {
+					saveName();
+					focusInput(lb.code);
+				} else join();
+			} else if (e.key === "Escape") {
+				input.blur();
+				api.releaseFocus();
+				e.stopPropagation();
+			}
+		});
+	}
+	$(".lb-copy", body).addEventListener("click", () => {
+		if (S.edit) return;
+		api.lobbyCopy();
+		toast(`Lobby code <b>${esc(S.lobby?.displayCode || "")}</b> copied`);
+	});
+	$(".lb-leave", body).addEventListener("click", () => !S.edit && api.lobbyLeave());
+	$(".lb-cancel", body).addEventListener("click", () => !S.edit && api.lobbyLeave());
+	lb.showError = showError;
+}
+
+function renderLobby() {
+	const st = S.lobby;
+	if (!st || !lb.out) return;
+	const joined = st.status === "joined";
+	const connecting = st.status === "connecting";
+	lb.out.hidden = joined || connecting;
+	lb.connecting.hidden = !connecting;
+	lb.in.hidden = !joined;
+	if (document.activeElement !== lb.name) lb.name.value = st.name || "";
+	if (st.status === "error" && st.error) lb.showError(st.error);
+
+	const r = st.relays || { connected: 0, total: 0 };
+	lb.relays.textContent = joined || connecting ? `${r.connected}/${r.total} relays` : "";
+	lb.relays.classList.toggle("bad", (joined || connecting) && r.connected === 0);
+
+	if (connecting) lb.connectingText.textContent = `Joining ${st.displayCode}…`;
+	if (joined) {
+		lb.codeval.textContent = st.displayCode;
+		lb.role.innerHTML =
+			st.role === "host"
+				? `<b>You're hosting.</b> Share the code so friends can join.`
+				: `Listening with <b>${esc(st.hostName || "the host")}</b>. Pick a song to suggest it.`;
+		lb.members.innerHTML = st.members
+			.map(
+				(m) =>
+					`<div class="lb-member${m.role === "host" ? " host" : ""}">${m.role === "host" ? `<span class="lb-crown" title="Host">${ICON.crown}</span>` : `<span class="lb-dot"></span>`}<span class="lb-mname">${esc(m.name)}</span>${m.you ? '<span class="lb-you">you</span>' : ""}</div>`
+			)
+			.join("");
+		lb.activity.innerHTML = (st.activity || [])
+			.slice(-2)
+			.map((a) => `<div>${esc(a.text)}</div>`)
+			.join("");
+	}
+
+	// badge on Now Playing + listener styling
+	const p = panelEls.nowplaying;
+	p?.classList.toggle("following", following());
+	if (np.lobby) {
+		np.lobby.hidden = !joined;
+		np.lobby.textContent = !joined ? "" : st.role === "host" ? `Hosting · ${st.members.length}` : `With ${st.hostName || "host"}`;
+		np.lobby.title = joined ? `Lobby ${st.displayCode}` : "";
+	}
+}
+
+api.onLobby((st) => {
+	S.lobby = st;
+	renderLobby();
+});
+
 // ------------------------------------------------------------------ bridge events
 
 async function onConnected() {
@@ -1101,6 +1301,9 @@ window.addEventListener("resize", () => {
 	buildNowPlaying();
 	buildPlaylist();
 	buildSearch();
+	buildLobby();
+	S.lobby = await api.lobbyGet();
+	renderLobby();
 	bindPopover();
 	applyAll();
 	renderPlayer();
