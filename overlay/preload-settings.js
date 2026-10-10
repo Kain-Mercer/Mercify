@@ -16,4 +16,5 @@ contextBridge.exposeInMainWorld("settings", {
 	openConfig: () => ipcRenderer.send("settings:open-config"),
 	onLog: on("settings:log"),
 	onChanged: on("settings:changed"),
+	onGate: on("settings:gate"),
 });

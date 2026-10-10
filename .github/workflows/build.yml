@@ -53,6 +53,11 @@ jobs:
       - name: Install
         run: npm ci
 
+      # The window-in-front reporting that the "only show over these apps" gate runs on
+      # (1.6.0 shipped with it dropping the game's window and monitor).
+      - name: Test foreground reporting
+        run: node tools/fg-test.js
+
       - name: Build installer and portable exe
         run: npm run dist
 

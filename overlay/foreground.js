@@ -58,8 +58,7 @@ function start() {
 			buf = buf.slice(i + 1);
 			if (!line) continue;
 			try {
-				const j = JSON.parse(line);
-				latest = { pid: j.pid, exe: j.exe || null, title: j.title || "", at: Date.now() };
+				latest = toInfo(JSON.parse(line));
 				restarts = 0;
 			} catch (_) {}
 		}
@@ -121,7 +120,7 @@ function stop() {
 	child = null;
 }
 
-module.exports = { start, stop, getForeground, supported, setAnchor };
+module.exports = { start, stop, getForeground, supported, setAnchor, _toInfo: toInfo };
 
 // ------------------------------------------------------------------ hide / show another program's window
 // Used to send Spotify to the tray: the helper waits for the program's main window, hides it,

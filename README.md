@@ -90,7 +90,7 @@ Mercify shows up over World of Warcraft out of the box. To use it with another g
 
 If you'd rather Mercify always stayed visible, switch **Only show over these apps** off.
 
-**More than one monitor?** When you click over to something on another monitor (a browser, Discord), Mercify stays up over your game, as long as the game is still open on its own screen. It hides if you minimise or close the game, or put another window in front of it on the same screen. Your shortcuts go back to normal in the other program until you click back into the game. Untick **Stay up while I use another monitor** in Settings if you'd rather it hid.
+**More than one monitor?** When you click over to something on another monitor (a browser, Discord), Mercify stays up over your game, as long as the game is still open on its own screen. It hides if you minimise or close the game, or put another window in front of it on the same screen. Your shortcuts go back to normal in the other program until you click back into the game. Untick **Stay up while I use another monitor** in Settings if you'd rather it hid. Settings also shows a line saying why Mercify is showing or hidden right now, which helps if it isn't doing what you expect.
 
 ### Other settings
 

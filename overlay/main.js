@@ -283,16 +283,40 @@ function tickGate() {
 	gateWhy = "off";
 	if (filterActive()) {
 		if (editMode || win.isFocused() || Date.now() < forceOpenUntil) [open, gateWhy] = [true, "overlay"];
-		else if (settingsWin && !settingsWin.isDestroyed() && settingsWin.isFocused()) [open, gateWhy] = [false, "settings"];
+		// Settings in front: hide so the overlay doesn't cover it, unless it's on another monitor
+		// from the game (it's one of our windows, but the helper still reports its monitor)
+		else if (settingsWin && !settingsWin.isDestroyed() && settingsWin.isFocused()) [open, gateWhy] = fg && onOtherMonitor(fg) ? [true, "other-monitor"] : [false, "settings"];
 		else if (!fg || ours) [open, gateWhy] = [gateOpen, "unchanged"]; // tray menu etc.: leave as is
 		else if (gameInFront) [open, gateWhy] = [true, "game"];
 		else if (onOtherMonitor(fg)) [open, gateWhy] = [true, "other-monitor"];
 		else [open, gateWhy] = [false, "other-app"];
 	}
 	applyGate(open);
+	reportGate(fg);
 	// Hotkeys follow the game itself being in front, so they're yours again in other apps,
 	// even while the overlay stays up over the game on another monitor.
 	setHotkeysActive(!filterActive() || !config.hotkeysOnlyOverApps || gameInFront || editMode || win.isFocused());
+}
+
+// A line for Settings saying why the overlay is showing or hidden right now.
+let gateText = null;
+function reportGate(fg) {
+	let t = gateText;
+	const a = fg?.anchor;
+	if (gateWhy === "off") t = "";
+	else if (gateWhy === "game") t = "Showing: your game is in front.";
+	else if (gateWhy === "other-monitor") t = "Showing: your game is still up on its own screen.";
+	else if (gateWhy === "settings") t = a?.up && a.mon === fg?.mon ? "Hidden while Settings is on your game's screen." : "Hidden: your game isn't up on another screen.";
+	else if (gateWhy === "other-app") {
+		if (!a) t = "Hidden: none of these apps has been in front yet.";
+		else if (!a.up) t = "Hidden: your game is minimised or closed.";
+		else if (!config.onlyShowOver.stayOnOtherMonitor) t = "Hidden: another app is in front.";
+		else if (a.mon === fg.mon) t = "Hidden: another window is in front on your game's screen.";
+		else t = "Hidden: another app is in front.";
+	}
+	if (t === gateText) return;
+	gateText = t;
+	if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send("settings:gate", t);
 }
 
 // You alt-tabbed to a window on a different monitor while the game is still up (not
@@ -680,6 +704,7 @@ async function settingsState() {
 		foregroundSupported: foreground.supported(),
 		onlyShowOver: config.onlyShowOver,
 		hotkeysOnlyOverApps: config.hotkeysOnlyOverApps,
+		gateText,
 		launchSpotify: config.launchSpotify,
 		minimiseSpotify: config.minimiseSpotify,
 		startWithWindows: getStartWithWindows(),

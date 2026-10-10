@@ -401,3 +401,8 @@ kbd {
 	height: 0;
 	width: 0;
 }
+
+.gate-now {
+	margin: 10px 0 0;
+	color: var(--text, #ddd);
+}

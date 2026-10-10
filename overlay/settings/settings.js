@@ -139,6 +139,7 @@ function render(d) {
 	only.titles.forEach((t) => add(t, "window title"));
 	if (!only.apps.length && !only.titles.length) chips.innerHTML = '<span class="muted">No apps yet: the overlay will stay hidden.</span>';
 
+	if (d.gateText != null) showGate(only.enabled ? d.gateText : "");
 	$("#other-monitor").checked = only.stayOnOtherMonitor !== false;
 	$("#other-monitor").disabled = !only.enabled;
 	$("#hotkeys-only").checked = d.hotkeysOnlyOverApps;
@@ -225,4 +226,9 @@ $("#lobby-leave").addEventListener("click", async () => render(await S.action("l
 
 S.onLog(log);
 S.onChanged(render);
+function showGate(t) {
+	$("#gate-now").hidden = !t;
+	$("#gate-now").textContent = t || "";
+}
+S.onGate(showGate);
 S.get().then(render);
