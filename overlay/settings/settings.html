@@ -10,83 +10,91 @@
 		<header>
 			<img class="logo" src="../assets/logo.png" alt="Mercify" />
 			<h1 class="sr-only">Mercify</h1>
+			<div id="update-banner" hidden>
+				<span id="update-banner-text"></span>
+				<button class="btn" id="update-banner-btn"></button>
+			</div>
 			<span id="conn" class="pill">Checking…</span>
 		</header>
 
-		<div id="update-banner" hidden>
-			<span id="update-banner-text"></span>
-			<button class="btn" id="update-banner-btn"></button>
-		</div>
-
 		<main>
-			<section id="setup-section">
-				<h2>Setup</h2>
-				<p class="hint">Install in this order. Steps that are done show a green dot.</p>
-				<div class="rows">
-					<div class="row" data-step="spotify">
-						<span class="dot"></span>
-						<div class="text"><b>Spotify desktop app</b><span class="sub"></span></div>
-						<button class="btn" data-act="spotx">Install with SpotX</button>
+			<div class="col">
+				<section class="card" id="setup-section">
+					<div class="section-head">
+						<h2>Setup</h2>
+						<span class="hint">Top to bottom. Green means done.</span>
 					</div>
-					<div class="row" data-step="spotx">
-						<span class="dot neutral"></span>
-						<div class="text"><b>SpotX</b><span class="sub">Ad-free patches and blocks Spotify updates. Run it before Spicetify. Running it again reinstalls Spotify.</span></div>
-						<button class="btn ghost" data-act="spotx">Run SpotX</button>
+					<div class="rows">
+						<div class="row" data-step="spotify">
+							<span class="dot"></span>
+							<div class="text"><b>Spotify desktop app</b><span class="sub"></span></div>
+							<button class="btn" data-act="spotx">Install with SpotX</button>
+						</div>
+						<div class="row" data-step="spotx">
+							<span class="dot neutral"></span>
+							<div class="text"><b>SpotX</b><span class="sub">Ad-free patch that also blocks Spotify updates. Run before Spicetify; running it again reinstalls Spotify.</span></div>
+							<button class="btn ghost" data-act="spotx">Run SpotX</button>
+						</div>
+						<div class="row" data-step="spicetify">
+							<span class="dot"></span>
+							<div class="text"><b>Spicetify</b><span class="sub"></span></div>
+							<button class="btn" data-act="spicetify">Install Spicetify</button>
+						</div>
+						<div class="row" data-step="extension">
+							<span class="dot"></span>
+							<div class="text"><b>Mercify extension in Spotify</b><span class="sub"></span></div>
+							<button class="btn" data-act="apply">Install</button>
+						</div>
 					</div>
-					<div class="row" data-step="spicetify">
-						<span class="dot"></span>
-						<div class="text"><b>Spicetify</b><span class="sub"></span></div>
-						<button class="btn" data-act="spicetify">Install Spicetify</button>
+					<pre id="log" hidden></pre>
+				</section>
+
+				<section class="card">
+					<div class="section-head">
+						<h2>Updates</h2>
+						<span class="muted" id="update-version"></span>
 					</div>
-					<div class="row" data-step="extension">
-						<span class="dot"></span>
-						<div class="text"><b>Mercify extension in Spotify</b><span class="sub"></span></div>
-						<button class="btn" data-act="apply">Install</button>
+					<div class="update-row">
+						<span class="dot neutral" id="update-dot"></span>
+						<span id="update-status">Checking…</span>
+						<button class="btn ghost" id="update-check">Check now</button>
 					</div>
-				</div>
-				<pre id="log" hidden></pre>
-			</section>
+				</section>
+			</div>
 
-			<section>
-				<div class="section-head">
-					<h2>Only show over these apps</h2>
-					<label class="switch"><input type="checkbox" id="only-enabled" /><span></span></label>
-				</div>
-				<p class="hint" id="only-hint">The overlay hides whenever something else is in front, like your browser. Edit Mode always shows it.</p>
-				<div id="apps" class="chips"></div>
-				<div class="add-row">
-					<input type="text" id="app-input" placeholder="Program (Wow.exe) or exact window title" spellcheck="false" />
-					<button class="btn ghost" id="app-add">Add</button>
-				</div>
-				<button class="btn ghost wide" id="app-pick">Pick the app in front</button>
-				<label class="check"><input type="checkbox" id="hotkeys-only" /> Hotkeys only work over these apps <span class="muted">(frees Ctrl+` for other programs)</span></label>
-			</section>
+			<div class="col">
+				<section class="card">
+					<div class="section-head">
+						<h2>Only show over these apps</h2>
+						<label class="switch" title="On: Mercify hides when anything else is in front"><input type="checkbox" id="only-enabled" /><span></span></label>
+					</div>
+					<p class="hint" id="only-hint">Mercify hides when anything else is in front, like your browser. Edit Mode always shows it.</p>
+					<div id="apps" class="chips"></div>
+					<div class="add-row">
+						<input type="text" id="app-input" placeholder="Wow.exe or exact window title" spellcheck="false" />
+						<button class="btn ghost" id="app-add">Add</button>
+						<button class="btn ghost" id="app-pick">Pick the app in front</button>
+					</div>
+					<label class="check"><input type="checkbox" id="hotkeys-only" /> Hotkeys only work over these apps <span class="muted">(frees Ctrl+` elsewhere)</span></label>
+				</section>
 
-			<section>
-				<div class="section-head">
-					<h2>Updates</h2>
-					<span class="muted" id="update-version"></span>
-				</div>
-				<div class="update-row">
-					<span class="dot neutral" id="update-dot"></span>
-					<span id="update-status">Checking…</span>
-					<button class="btn ghost" id="update-check">Check now</button>
-				</div>
-			</section>
+				<div class="pair">
+					<section class="card">
+						<h2>Startup</h2>
+						<label class="check"><input type="checkbox" id="start-windows" /> Start with Windows</label>
+						<label class="check"><input type="checkbox" id="launch-spotify" /> Open Spotify with Mercify</label>
+						<label class="check"><input type="checkbox" id="minimise-spotify" /> Minimise Spotify to the tray</label>
+					</section>
 
-			<section>
-				<h2>Startup</h2>
-				<label class="check"><input type="checkbox" id="start-windows" /> Start with Windows</label>
-				<label class="check"><input type="checkbox" id="launch-spotify" /> Start Spotify with the overlay</label>
-			</section>
-
-			<section>
-				<div class="section-head">
-					<h2>Hotkeys</h2>
-					<button class="link" id="open-config">Change in settings file</button>
+					<section class="card">
+						<div class="section-head">
+							<h2>Hotkeys</h2>
+							<button class="link" id="open-config">Change</button>
+						</div>
+						<div id="hotkeys" class="keys"></div>
+					</section>
 				</div>
-				<div id="hotkeys" class="keys"></div>
-			</section>
+			</div>
 		</main>
 
 		<script src="settings.js"></script>

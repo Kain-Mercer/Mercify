@@ -57,9 +57,18 @@ function isSpotifyRunning() {
 	});
 }
 
-async function startSpotify() {
+// Start Spotify if it isn't running. "minimized" uses Spotify's own --minimized flag
+// (the one its "open at login" option uses), so its window doesn't pop up over the game.
+async function startSpotify({ minimized = false } = {}) {
 	if (!IS_WIN || !fs.existsSync(SPOTIFY_EXE)) return false;
 	if (await isSpotifyRunning()) return true;
+	spawn(SPOTIFY_EXE, minimized ? ["--minimized"] : [], { detached: true, stdio: "ignore" }).unref();
+	return true;
+}
+
+// Bring Spotify's window up (running Spotify.exe again focuses the existing one).
+function openSpotify() {
+	if (!IS_WIN || !fs.existsSync(SPOTIFY_EXE)) return false;
 	spawn(SPOTIFY_EXE, [], { detached: true, stdio: "ignore" }).unref();
 	return true;
 }
@@ -174,4 +183,4 @@ async function applyExtension(log) {
 	return ok;
 }
 
-module.exports = { status, needsAttention, runSpotX, installSpicetify, applyExtension, startSpotify, isSpotifyRunning, IS_WIN };
+module.exports = { status, needsAttention, runSpotX, installSpicetify, applyExtension, startSpotify, openSpotify, isSpotifyRunning, IS_WIN };

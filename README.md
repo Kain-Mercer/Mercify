@@ -39,6 +39,8 @@ You'll need:
    Some steps open a separate window that asks you questions. Answer them, and when that window closes the checklist updates. When Spotify, Spicetify and the Mercify extension all show a green dot, you're done. (The SpotX dot always stays grey, because Mercify can't tell whether SpotX is installed.)
 4. Start your game. Your Spotify panels appear on top of it.
 
+Whenever you open Mercify, it opens Spotify for you (if it isn't running yet) and tucks Spotify's own window away into the tray, since Mercify's panels do its job. To bring Spotify's window back, right-click the Mercify tray icon and choose **Show Spotify window**.
+
 Prefer not to install anything? Download **`Mercify-portable`** instead. It runs straight from the file, but starts a little slower and can't update itself (see [Updates](#updates)).
 
 ## Using Mercify
@@ -89,8 +91,9 @@ If you'd rather Mercify always stayed visible, switch **Only show over these app
 
 Open **Settings** from the tray icon to:
 
-- Start Mercify automatically when Windows starts
+- Start Mercify automatically when Windows starts. It then waits quietly in the tray instead of opening its Settings window.
 - Open Spotify automatically when Mercify starts
+- Choose whether Spotify's window is minimised to the tray when Mercify opens
 - Re-run any setup step if something stops working
 
 ## Updates

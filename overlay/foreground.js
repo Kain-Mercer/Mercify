@@ -84,3 +84,42 @@ function stop() {
 }
 
 module.exports = { start, stop, getForeground, supported };
+
+// ------------------------------------------------------------------ hide / show another program's window
+// Used to send Spotify to the tray: the helper waits for the program's main window, hides it,
+// and reports the window handles so they can be shown again later.
+
+function runHelper(args, timeoutMs) {
+	return new Promise((resolve) => {
+		if (process.platform !== "win32") return resolve("");
+		const exe = helperPath();
+		if (!fs.existsSync(exe)) return resolve("");
+		let out = "";
+		const child = spawn(exe, args, { windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
+		const timer = setTimeout(() => child.kill(), timeoutMs + 5000);
+		child.stdout.setEncoding("utf8");
+		child.stdout.on("data", (d) => (out += d));
+		child.on("error", () => resolve(""));
+		child.on("exit", () => {
+			clearTimeout(timer);
+			resolve(out);
+		});
+	});
+}
+
+async function hideWindowsOf(exeName, waitMs = 0) {
+	const out = await runHelper(["--hide", exeName, String(waitMs)], waitMs);
+	try {
+		return JSON.parse(out.trim()).hidden || [];
+	} catch (_) {
+		return [];
+	}
+}
+
+function showWindows(hwnds) {
+	if (!hwnds || !hwnds.length) return Promise.resolve();
+	return runHelper(["--show", ...hwnds.map(String)], 2000);
+}
+
+module.exports.hideWindowsOf = hideWindowsOf;
+module.exports.showWindows = showWindows;

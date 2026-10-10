@@ -34,6 +34,7 @@ const DEFAULT_CONFIG = {
 	},
 	hotkeysOnlyOverApps: true, // toggle/search/media hotkeys are released when you're not in one of those apps
 	launchSpotify: true, // start Spotify when the overlay starts
+	minimiseSpotify: true, // send Spotify's window to the tray when Mercify opens
 };
 
 const userDir = app.getPath("userData");
@@ -100,6 +101,10 @@ app.setAppUserModelId("com.kainmercer.mercify");
 // Transparent windows need hardware acceleration off on some Windows GPU drivers
 // to avoid a black background. Opt-in via config so the default stays fast.
 if (config.disableHardwareAcceleration) app.disableHardwareAcceleration();
+
+const startedAt = Date.now();
+// Started by Windows at login (see loginItemOptions) rather than by you: don't pop Settings up then.
+const AUTOSTART = process.argv.includes("--autostart");
 
 let win = null;
 let settingsWin = null;
@@ -321,6 +326,7 @@ function startBridgeServer() {
 				msg.ok ? p.resolve(msg.data) : p.reject(new Error(msg.error || "bridge error"));
 			} else if (msg.type === "hello") {
 				bridgeInfo = msg;
+				minimiseSpotifyOnce();
 				sendToRenderer("bridge-status", { connected: true, info: msg });
 				updateTrayMenu();
 			} else if (msg.type === "state" || msg.type === "progress") {
@@ -342,6 +348,33 @@ function startBridgeServer() {
 			pushSettings();
 		});
 	});
+}
+
+// ------------------------------------------------------------------ Spotify to the tray
+
+// When Mercify opens, Spotify's own window isn't needed: hide it to the tray once Spotify is
+// fully loaded (the extension saying hello means it's logged in, so a login screen is never hidden).
+// Only right after Mercify starts, so opening Spotify yourself later is left alone.
+let spotifyMinimisedOnce = false;
+let hiddenSpotify = [];
+
+async function minimiseSpotifyOnce() {
+	if (spotifyMinimisedOnce || !config.minimiseSpotify || !setup.IS_WIN) return;
+	if (Date.now() - startedAt > 120 * 1000) return;
+	spotifyMinimisedOnce = true;
+	hiddenSpotify = await foreground.hideWindowsOf("Spotify.exe", 15000);
+	if (settingsWin && !settingsWin.isDestroyed() && settingsWin.isVisible()) settingsWin.focus();
+	updateTrayMenu();
+}
+
+async function showSpotify() {
+	if (hiddenSpotify.length) {
+		await foreground.showWindows(hiddenSpotify);
+		hiddenSpotify = [];
+		updateTrayMenu();
+	} else {
+		setup.openSpotify();
+	}
 }
 
 function bridgeCommand(action, args, timeoutMs = 15000) {
@@ -459,10 +492,20 @@ function registerHotkeys() {
 
 // ------------------------------------------------------------------ start with Windows
 
-function loginItemOptions() {
+function loginItemOptions(args = ["--autostart"]) {
 	// Portable builds run from a temp folder; register the original .exe instead.
 	const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
-	return app.isPackaged ? { path: exe, args: [] } : { path: exe, args: [path.resolve(__dirname)] };
+	return app.isPackaged ? { path: exe, args } : { path: exe, args: [path.resolve(__dirname), ...args] };
+}
+
+// Versions before 1.3.2 registered "start with Windows" without --autostart; switch it over.
+function migrateLoginItem() {
+	if (process.platform !== "win32") return;
+	const old = loginItemOptions([]);
+	if (app.getLoginItemSettings(old).openAtLogin) {
+		app.setLoginItemSettings({ openAtLogin: false, ...old });
+		app.setLoginItemSettings({ openAtLogin: true, ...loginItemOptions() });
+	}
 }
 
 function getStartWithWindows() {
@@ -485,10 +528,12 @@ function openSettings() {
 		return;
 	}
 	settingsWin = new BrowserWindow({
-		width: 560,
-		height: 760,
-		minWidth: 460,
-		minHeight: 480,
+		width: 1000,
+		height: 610,
+		minWidth: 940,
+		minHeight: 610,
+		useContentSize: true,
+		center: true,
 		title: "Mercify",
 		backgroundColor: "#0f1115",
 		autoHideMenuBar: true,
@@ -508,6 +553,11 @@ function openSettings() {
 	if (process.env.OVERLAY_DEBUG_SETTINGS_CAPTURE) {
 		settingsWin.webContents.once("did-finish-load", () =>
 			setTimeout(async () => {
+				if (process.env.OVERLAY_DEBUG_SETTINGS_JS) {
+					const r = await settingsWin.webContents.executeJavaScript(process.env.OVERLAY_DEBUG_SETTINGS_JS).catch((e) => String(e));
+					if (process.env.OVERLAY_DEBUG_RESULT) fs.writeFileSync(process.env.OVERLAY_DEBUG_RESULT, JSON.stringify(r));
+					await new Promise((res) => setTimeout(res, 300));
+				}
 				const img = await settingsWin.webContents.capturePage();
 				fs.writeFileSync(process.env.OVERLAY_DEBUG_SETTINGS_CAPTURE, img.toPNG());
 				app.quit();
@@ -525,6 +575,7 @@ async function settingsState() {
 		onlyShowOver: config.onlyShowOver,
 		hotkeysOnlyOverApps: config.hotkeysOnlyOverApps,
 		launchSpotify: config.launchSpotify,
+		minimiseSpotify: config.minimiseSpotify,
 		startWithWindows: getStartWithWindows(),
 		hotkeys: config.hotkeys,
 	};
@@ -560,6 +611,7 @@ ipcMain.handle("settings:set", async (_e, key, value) => {
 	if (key === "onlyShowOver.enabled") config.onlyShowOver.enabled = !!value;
 	else if (key === "hotkeysOnlyOverApps") config.hotkeysOnlyOverApps = !!value;
 	else if (key === "launchSpotify") config.launchSpotify = !!value;
+	else if (key === "minimiseSpotify") config.minimiseSpotify = !!value;
 	else if (key === "startWithWindows") setStartWithWindows(value);
 	saveConfig();
 	tickGate();
@@ -633,6 +685,7 @@ function updateTrayMenu() {
 			{ label: status, enabled: false },
 			{ type: "separator" },
 			{ label: "Settings and setup…", click: openSettings },
+			{ label: hiddenSpotify.length ? "Show Spotify window" : "Open Spotify", click: showSpotify, visible: setup.IS_WIN },
 			{ label: "Edit Mode", type: "checkbox", checked: editMode, accelerator: config.hotkeys.edit || undefined, click: () => setEdit(!editMode) },
 			{ label: "Show / hide overlay", accelerator: config.hotkeys.toggle || undefined, click: () => setShown(!overlayShown) },
 			{
@@ -709,9 +762,11 @@ app.whenReady().then(async () => {
 	}
 
 	if (setup.IS_WIN) {
+		migrateLoginItem();
 		const s = await setup.status();
-		if (config.launchSpotify && s.spotify) setup.startSpotify();
-		if (firstRun || setup.needsAttention(s)) openSettings();
+		if (config.launchSpotify && s.spotify) setup.startSpotify({ minimized: config.minimiseSpotify });
+		// Opened by you: bring Mercify into view. Started with Windows: stay in the tray unless setup needs you.
+		if (!AUTOSTART || firstRun || setup.needsAttention(s)) openSettings();
 	}
 	if (process.env.OVERLAY_DEBUG_SETTINGS_CAPTURE) openSettings();
 });

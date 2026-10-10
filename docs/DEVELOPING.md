@@ -14,7 +14,8 @@ Technical notes for building and changing Mercify. Players don't need any of thi
 
 - The Spicetify extension runs inside Spotify and talks to the client's own player, library and search. It doesn't use the Spotify Web API, so there's no developer app, no Premium requirement and no 10-result search cap.
 - Mercify (Electron) runs the WebSocket server, draws the panels, and stays click-through everywhere except over a panel.
-- A tiny native helper, `fgwatch.exe`, reports which window is in front so Mercify can show only over chosen games. It exits by itself when Mercify quits.
+- A tiny native helper, `fgwatch.exe`, reports which window is in front so Mercify can show only over chosen games. It exits by itself when Mercify quits. It also has two one-shot modes: `--hide <exe> <waitMs>` waits for that program's main window (visible, titled, unowned), hides it and prints `{"hidden":[hwnd,...]}`; `--show <hwnd>...` shows them again. Mercify uses these to send Spotify's window to the tray once the bridge first says hello (only within 2 minutes of Mercify starting, and only if `minimiseSpotify` is on), and for the tray's **Show Spotify window**.
+- **Launch behaviour:** opened by the user, Mercify shows Settings. Started at Windows login it's launched with `--autostart` (registered via `setLoginItemSettings`) and stays in the tray unless setup needs attention. Spotify is started with its own `--minimized` flag.
 
 ## Building
 
@@ -58,6 +59,7 @@ The helper is rebuilt with MinGW (`x86_64-w64-mingw32-gcc -O2 -municode -static 
 | `onlyShowOver` | `enabled`, `apps` (program names, case-insensitive) and `titles` (exact window titles). |
 | `hotkeysOnlyOverApps` | Release the gated hotkeys when no listed app is in front. The Edit Mode hotkey is always registered. |
 | `launchSpotify` | Start Spotify with Mercify. |
+| `minimiseSpotify` | Hide Spotify's window to the tray when Mercify opens. |
 | `display` | `"primary"`, `"cursor"`, or a 0-based monitor index. |
 | `port` | WebSocket port (default 7317). The extension reads `localStorage["overlay-bridge:port"]` if you change it. |
 | `disableHardwareAcceleration` | Set `true` if transparency shows as black on your GPU driver. |

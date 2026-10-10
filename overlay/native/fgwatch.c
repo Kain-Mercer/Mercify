@@ -58,7 +58,68 @@ static const wchar_t *exe_for_pid(DWORD pid) {
 	return cached_exe;
 }
 
+// ---------------------------------------------------------------- --hide / --show
+//
+//   fgwatch.exe --hide Spotify.exe 30000
+//     Waits up to 30 s for the program's main window (visible, titled, not owned by another
+//     window), hides it (like "minimise to tray") and prints {"hidden":[hwnd,...]}.
+//   fgwatch.exe --show 1234 5678
+//     Shows and restores the given windows again.
+
+typedef struct {
+	const wchar_t *exe;
+	HWND found[16];
+	int count;
+} FindCtx;
+
+static BOOL CALLBACK find_main_windows(HWND hwnd, LPARAM lp) {
+	FindCtx *ctx = (FindCtx *)lp;
+	if (ctx->count >= 16) return FALSE;
+	if (!IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER) != NULL) return TRUE;
+	if (GetWindowTextLengthW(hwnd) == 0) return TRUE;
+	DWORD pid = 0;
+	GetWindowThreadProcessId(hwnd, &pid);
+	if (!pid) return TRUE;
+	cached_pid = 0; // always look the name up fresh here
+	if (_wcsicmp(exe_for_pid(pid), ctx->exe) != 0) return TRUE;
+	ctx->found[ctx->count++] = hwnd;
+	return TRUE;
+}
+
+static int hide_windows(const wchar_t *exe, DWORD timeout_ms) {
+	FindCtx ctx = { exe, { 0 }, 0 };
+	DWORD start = GetTickCount();
+	for (;;) {
+		ctx.count = 0;
+		EnumWindows(find_main_windows, (LPARAM)&ctx);
+		if (ctx.count > 0 || GetTickCount() - start >= timeout_ms) break;
+		Sleep(250);
+	}
+	printf("{\"hidden\":[");
+	for (int i = 0; i < ctx.count; i++) {
+		ShowWindowAsync(ctx.found[i], SW_HIDE);
+		printf("%s%llu", i ? "," : "", (unsigned long long)(ULONG_PTR)ctx.found[i]);
+	}
+	printf("]}\n");
+	fflush(stdout);
+	return 0;
+}
+
+static int show_windows(int argc, wchar_t **argv) {
+	for (int i = 2; i < argc; i++) {
+		HWND hwnd = (HWND)(ULONG_PTR)_wcstoui64(argv[i], NULL, 10);
+		if (!IsWindow(hwnd)) continue;
+		ShowWindowAsync(hwnd, SW_SHOW);
+		ShowWindowAsync(hwnd, SW_RESTORE);
+		SetForegroundWindow(hwnd);
+	}
+	return 0;
+}
+
 int wmain(int argc, wchar_t **argv) {
+	if (argc >= 3 && wcscmp(argv[1], L"--hide") == 0) return hide_windows(argv[2], argc >= 4 ? (DWORD)_wtoi(argv[3]) : 0);
+	if (argc >= 2 && wcscmp(argv[1], L"--show") == 0) return show_windows(argc, argv);
+
 	HANDLE parent = NULL;
 	if (argc > 1) {
 		DWORD ppid = (DWORD)_wtoi(argv[1]);

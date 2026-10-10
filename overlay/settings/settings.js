@@ -128,8 +128,9 @@ function render(d) {
 	$("#hotkeys-only").checked = d.hotkeysOnlyOverApps;
 	$("#start-windows").checked = d.startWithWindows;
 	$("#launch-spotify").checked = d.launchSpotify;
+	$("#minimise-spotify").checked = d.minimiseSpotify;
 
-	const names = { toggle: "Show / hide", edit: "Edit Mode", search: "Search", playPause: "Play / pause", next: "Next track", prev: "Previous track" };
+	const names = { toggle: "Show / hide", edit: "Edit Mode", search: "Search", playPause: "Play / pause", next: "Next track", prev: "Previous" };
 	$("#hotkeys").innerHTML = Object.entries(d.hotkeys)
 		.filter(([, v]) => v)
 		.map(([k, v]) => `<kbd>${esc(v.replace("Control", "Ctrl"))}</kbd><span>${esc(names[k] || k)}</span>`)
@@ -165,6 +166,7 @@ $("#only-enabled").addEventListener("change", async (e) => render(await S.set("o
 $("#hotkeys-only").addEventListener("change", async (e) => render(await S.set("hotkeysOnlyOverApps", e.target.checked)));
 $("#start-windows").addEventListener("change", async (e) => render(await S.set("startWithWindows", e.target.checked)));
 $("#launch-spotify").addEventListener("change", async (e) => render(await S.set("launchSpotify", e.target.checked)));
+$("#minimise-spotify").addEventListener("change", async (e) => render(await S.set("minimiseSpotify", e.target.checked)));
 $("#open-config").addEventListener("click", () => S.openConfig());
 
 async function addApp() {
@@ -180,7 +182,7 @@ $("#app-pick").addEventListener("click", async () => {
 	const b = $("#app-pick");
 	b.disabled = true;
 	for (let i = 5; i > 0; i--) {
-		b.textContent = `Switch to the game now… ${i}`;
+		b.textContent = `Click into your game… ${i}`;
 		await new Promise((r) => setTimeout(r, 1000));
 	}
 	const res = await S.pickApp();
