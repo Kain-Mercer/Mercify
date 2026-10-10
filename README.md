@@ -13,7 +13,7 @@ Mercify puts small, see-through Spotify panels on top of your game, a bit like t
 - **Now Playing:** album art, the song, a seek bar, and play/pause, skip, shuffle, repeat, like and volume buttons. Shrink it to a small **compact** bar that you can still click while the rest of the overlay is hidden.
 - **Search:** type a song, artist or playlist and click a result to play it.
 - **Playlist:** browse any of your playlists or Liked Songs and click a song to play it.
-- **Listening lobbies:** share a code with friends and listen to the same music at the same time, each through your own Spotify.
+- **Listening lobbies:** share a code with friends and listen to the same music at the same time, each through your own Spotify, with a shared session playlist everyone can add to.
 
 You choose where each panel goes and how see-through it is. Mercify only appears while you're in your game (World of Warcraft by default), and hides itself when you switch to anything else.
 
@@ -113,8 +113,17 @@ Everyone who enters the same code ends up in the same lobby. If nobody's there y
 **Who controls the music**
 
 - **The host** plays, pauses, skips and seeks as normal, and everyone in the lobby follows along within a second or two.
-- **Everyone else listens.** Clicking a song suggests it to the host and adds it to the host's queue, and the host sees who suggested what. Play, pause and skip are greyed out for listeners, but you can still change your own volume.
-- If the host leaves, whoever has been in the lobby longest becomes the new host automatically.
+- **Everyone else listens**, and adds songs to the session playlist (below). Play, pause and skip are greyed out for listeners, but you can still change your own volume.
+- If the host leaves, whoever has been in the lobby longest becomes the new host automatically, and the session playlist carries on.
+
+**The session playlist**
+
+Every lobby has a shared playlist that everyone sees in the **Session Playlist** panel, which appears while you're in a lobby.
+
+- **Add a song** with the **+** next to any song in search results or a playlist. Listeners can also just click a song. Each song shows who added it.
+- **Up next** lists what's coming, in order. When a song finishes, the next one from the list plays for everyone. If the list is empty, Spotify carries on as usual.
+- **Played** lists what's already played this session. Hover over a song and press **+** to add it again.
+- **The host** can hover over a song to play it now, move it to the top, or remove it, and the host's **Next** button plays the next song from the list. **Listeners** can remove songs they added themselves.
 
 The Now Playing panel shows a small badge while you're in a lobby. You can leave the lobby from the Lobby panel, from Settings or from the tray icon.
 

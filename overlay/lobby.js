@@ -11,7 +11,10 @@
 // - The host's Mercify broadcasts what's playing (song, position, playing/paused) on every change
 //   and every few seconds. Listeners play the same song and stay within a couple of seconds of
 //   the host, correcting for each machine's clock difference.
-// - Listeners can't change the song; picking a song sends it to the host's queue as a suggestion.
+// - Listeners can't change the song. Instead there's a shared session playlist: anyone can add
+//   songs, everyone sees the same "up next" list and history, and when a song ends the host's
+//   Mercify plays the next one from the list (so everyone follows). The host owns the list and
+//   broadcasts it; if the host leaves, the new host carries on with its copy.
 //
 // This module has no Electron dependency so it can be tested on its own (tools/lobby-test.js).
 
@@ -35,6 +38,28 @@ const CONNECT_TIMEOUT_MS = 10000;
 const DRIFT_MS = 2000; // listeners re-seek when further off than this
 const SETTLE_MS = 1500; // after a correction, ignore our own player's reports this long (they may be stale)
 const SEEK_DETECT_MS = 2500; // host: a jump this big in position is a seek
+const QUEUE_MAX = 100;
+const HISTORY_MAX = 50;
+const QUEUE_RESEND_MS = 15000; // host repeats the list now and then, in case a message was lost
+const ADVANCE_EARLY_MS = 350; // start the next queued song this long before the current one ends
+
+const URI_RE = /^spotify:(track|episode):[A-Za-z0-9]{1,64}$/;
+
+// A queue/history entry, built from untrusted input: keep only what we show, in safe shapes.
+function makeItem(t, by, byId) {
+	if (!t || typeof t.uri !== "string" || !URI_RE.test(t.uri)) return null;
+	const str = (v, n) => String(v ?? "").slice(0, n);
+	return {
+		qid: typeof t.qid === "string" && /^[0-9a-f]{12}$/.test(t.qid) ? t.qid : crypto.randomBytes(6).toString("hex"),
+		uri: t.uri,
+		name: str(t.name, 200) || "Unknown song",
+		artists: (Array.isArray(t.artists) ? t.artists : []).slice(0, 5).map((a) => str(a, 100)),
+		image: typeof t.image === "string" && /^https:\/\/[^\s"'<>]+$/.test(t.image) ? t.image.slice(0, 300) : null,
+		duration: Math.max(0, Number(t.duration) || 0),
+		by: cleanName(by ?? t.by) || null,
+		byId: typeof (byId ?? t.byId) === "string" ? String(byId ?? t.byId).slice(0, 32) : null,
+	};
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -129,6 +154,15 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 	let settledAt = 0; // when our last correction finished
 	let appliedSentAt = 0; // which host message that correction was for
 	const lastStateN = new Map(); // host id -> newest state message number seen
+	const lastQueueN = new Map(); // host id -> newest queue message number seen
+
+	// Session playlist. The host's copy is the real one; everyone else mirrors it.
+	let queue = []; // up next
+	let history = []; // played, newest first
+	let nowItem = null; // the queue item that's playing right now (to show who added it)
+	let advanceTimer = null;
+	let advancing = false; // we're starting the next queued song ourselves
+	let hostLast = null; // host: { uri, name, artists, image, duration, position } of the current song
 
 	// Our own player, kept up to date by the app.
 	let player = null; // { uri, name, artists, image, position, at, isPlaying, duration }
@@ -154,6 +188,10 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 			relays: { connected: clients.filter((c) => c.connected).length, total: clients.length },
 			activity: activity.slice(-12),
 			hostTrack: role === "listener" ? hostTrack : null,
+			meId: me ? me.id : null,
+			queue,
+			history,
+			now: nowItem,
 		};
 	}
 
@@ -209,7 +247,10 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 			case "hello": {
 				const { m } = upsertMember(msg);
 				send("here", { role, to: msg.id });
-				if (role === "host") sendState();
+				if (role === "host") {
+					sendState();
+					sendQueue();
+				}
 				if (status === "joined") note(`${m.name} joined`);
 				break;
 			}
@@ -253,11 +294,27 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 				break;
 			}
 			case "suggest": {
-				if (role !== "host" || typeof msg.uri !== "string" || !/^spotify:(track|episode):/.test(msg.uri)) return;
-				const who = cleanName(msg.name) || "Someone";
-				command("addToQueue", { uri: msg.uri })
-					.then(() => note(`${who} added “${msg.trackName || "a song"}” to the queue`, true))
-					.catch(() => note(`Couldn't queue ${who}'s suggestion`));
+				// a listener adding a song to the session playlist
+				if (role !== "host") return;
+				const item = makeItem({ uri: msg.uri, name: msg.trackName, artists: msg.artists, image: msg.image, duration: msg.duration }, msg.name, msg.id);
+				if (item) hostAdd(item);
+				break;
+			}
+			case "queue-op": {
+				if (role !== "host") return;
+				const item = queue.find((q) => q.qid === msg.qid);
+				// listeners may only take out songs they added themselves
+				if (msg.op === "remove" && item && item.byId === msg.id) hostRemove(msg.qid);
+				break;
+			}
+			case "queue": {
+				if (msg.id !== hostId || role === "host") return;
+				if (msg.n <= (lastQueueN.get(msg.id) || 0)) return;
+				lastQueueN.set(msg.id, msg.n);
+				queue = (Array.isArray(msg.items) ? msg.items : []).slice(0, QUEUE_MAX).map((t) => makeItem(t)).filter(Boolean);
+				history = (Array.isArray(msg.history) ? msg.history : []).slice(0, HISTORY_MAX).map((t) => makeItem(t)).filter(Boolean);
+				nowItem = msg.now ? makeItem(msg.now) : null;
+				changed();
 				break;
 			}
 		}
@@ -303,8 +360,12 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		role = "host";
 		setHost(me.id);
 		hostTrack = null;
+		// carry on with the session playlist as we last saw it
+		hostLast = player && !player.empty ? { uri: player.uri, name: player.name, artists: player.artists, image: player.image, duration: player.duration, position: playerPosition() } : null;
 		send("here", { role: "host" });
 		sendState();
+		sendQueue();
+		scheduleAdvance();
 		if (why) note(why, true);
 		changed();
 	}
@@ -312,6 +373,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 	function becomeListener(newHostId, why) {
 		const wasHost = role === "host";
 		role = "listener";
+		clearTimeout(advanceTimer);
 		if (hostId === newHostId && !wasHost) syncClock();
 		else setHost(newHostId);
 		if (why) note(why);
@@ -351,6 +413,100 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		};
 		lastBroadcast = { uri: s.uri, playing: s.playing, position: s.position, at: s.sentAt };
 		send("state", s);
+	}
+
+	// ---------------------------------------------------------------- session playlist (host)
+
+	function sendQueue() {
+		if (role !== "host") return;
+		send("queue", { items: queue, history, now: nowItem });
+	}
+
+	function hostAdd(item) {
+		if (queue.length >= QUEUE_MAX) return note("The session playlist is full");
+		queue.push(item);
+		const mine = item.byId === me.id;
+		note(mine ? `You added “${item.name}”` : `${item.by || "Someone"} added “${item.name}”`, !mine);
+		sendQueue();
+		scheduleAdvance();
+	}
+
+	function hostRemove(qid) {
+		const i = queue.findIndex((q) => q.qid === qid);
+		if (i < 0) return;
+		queue.splice(i, 1);
+		sendQueue();
+		changed();
+		scheduleAdvance();
+	}
+
+	function hostMoveTop(qid) {
+		const i = queue.findIndex((q) => q.qid === qid);
+		if (i <= 0) return;
+		queue.unshift(...queue.splice(i, 1));
+		sendQueue();
+		changed();
+	}
+
+	async function playItem(item) {
+		advancing = true;
+		clearTimeout(advanceTimer);
+		nowItem = item;
+		try {
+			await command("playTrack", { uri: item.uri });
+		} catch (err) {
+			note(`Couldn't play “${item.name}”`);
+		}
+		sendQueue();
+		changed();
+		setTimeout(() => (advancing = false), 2500);
+	}
+
+	// Next song from the session playlist (or Spotify's own next if the list is empty).
+	async function playNext() {
+		if (role !== "host") return;
+		if (!queue.length) return command("next");
+		await playItem(queue.shift());
+	}
+
+	async function playNow(qid) {
+		if (role !== "host") return;
+		const i = queue.findIndex((q) => q.qid === qid);
+		if (i < 0) return;
+		await playItem(queue.splice(i, 1)[0]);
+	}
+
+	// Start the next queued song just before the current one ends, so Spotify doesn't
+	// move on to its own next song first.
+	function scheduleAdvance() {
+		clearTimeout(advanceTimer);
+		if (role !== "host" || !queue.length || advancing || !player || !player.isPlaying || !player.duration) return;
+		const remaining = player.duration - playerPosition();
+		advanceTimer = setTimeout(
+			() => {
+				if (role !== "host" || !queue.length || advancing || !player?.isPlaying) return;
+				if (player.duration - playerPosition() < ADVANCE_EARLY_MS + 900) playNext();
+				else scheduleAdvance(); // the song was seeked; aim again
+			},
+			Math.max(0, remaining - ADVANCE_EARLY_MS)
+		);
+	}
+
+	// Host: notice song changes to keep the history, and catch the case where Spotify moved on
+	// by itself before we could start the next queued song.
+	function hostSongChanged(prev) {
+		if (prev) {
+			const entry = makeItem({ ...prev, qid: undefined }, nowItem && nowItem.uri === prev.uri ? nowItem.by : null, nowItem && nowItem.uri === prev.uri ? nowItem.byId : null);
+			if (entry && (prev.position || 0) > 15000) {
+				history.unshift(entry);
+				if (history.length > HISTORY_MAX) history.length = HISTORY_MAX;
+			}
+		}
+		if (nowItem && nowItem.uri !== player.uri) nowItem = null;
+		const prevEnded = prev && prev.duration && (prev.position || 0) > prev.duration - 4000;
+		if (!advancing && queue.length && prevEnded) playNext();
+		else sendQueue();
+		changed();
 	}
 
 	// ---------------------------------------------------------------- listener: follow the host
@@ -433,6 +589,11 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		timers.push(setInterval(() => send("here", { role }), HEARTBEAT_MS));
 		timers.push(
 			setInterval(() => {
+				if (role === "host") sendQueue();
+			}, QUEUE_RESEND_MS)
+		);
+		timers.push(
+			setInterval(() => {
 				if (role === "host") sendState();
 			}, HOST_SYNC_MS)
 		);
@@ -463,6 +624,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		timers.forEach(clearInterval);
 		timers = [];
 		clearTimeout(followTimer);
+		clearTimeout(advanceTimer);
 	}
 
 	// ---------------------------------------------------------------- connections
@@ -557,6 +719,11 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		code = key = topic = me = role = hostId = hostTrack = lastBroadcast = null;
 		members.clear();
 		lastStateN.clear();
+		lastQueueN.clear();
+		queue = [];
+		history = [];
+		nowItem = hostLast = null;
+		advancing = false;
 		settledAt = appliedSentAt = 0;
 		seen.clear();
 		seenOrder.length = 0;
@@ -581,13 +748,30 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		changed();
 	}
 
-	function suggest(track) {
-		if (!track?.uri) return Promise.reject(new Error("Nothing to suggest"));
-		if (role === "host" || !code) return command("addToQueue", { uri: track.uri });
+	// Add a song to the session playlist (outside a lobby: Spotify's own queue).
+	function queueAdd(track) {
+		if (!track?.uri) return Promise.reject(new Error("Nothing to add"));
+		if (status !== "joined") return command("addToQueue", { uri: track.uri });
+		const item = makeItem(track, me.name, me.id);
+		if (!item) return Promise.reject(new Error("That can't be added to the session playlist"));
+		if (role === "host") {
+			hostAdd(item);
+			return Promise.resolve();
+		}
 		if (!hostId) return Promise.reject(new Error("There's no host right now"));
-		send("suggest", { to: hostId, uri: track.uri, trackName: track.name, artists: track.artists });
-		note(`You suggested “${track.name}”`);
+		send("suggest", { to: hostId, uri: item.uri, trackName: item.name, artists: item.artists, image: item.image, duration: item.duration });
+		note(`You added “${item.name}”`);
 		return Promise.resolve();
+	}
+
+	function queueRemove(qid) {
+		if (role === "host") return hostRemove(qid);
+		const item = queue.find((q) => q.qid === qid);
+		if (item && item.byId === me?.id && hostId) {
+			send("queue-op", { to: hostId, op: "remove", qid });
+			queue = queue.filter((q) => q.qid !== qid); // show it gone right away
+			changed();
+		}
 	}
 
 	// The app reports our own Spotify's state here.
@@ -595,6 +779,9 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		player = state ? { ...state, at: state.at || Date.now() } : null;
 		if (role === "host" && player && !player.empty) {
 			if (!lastBroadcast || lastBroadcast.uri !== player.uri || lastBroadcast.playing !== !!player.isPlaying) sendState();
+			if (hostLast && hostLast.uri !== player.uri) hostSongChanged(hostLast);
+			hostLast = { uri: player.uri, name: player.name, artists: player.artists, image: player.image, duration: player.duration, position: playerPosition() };
+			scheduleAdvance();
 		} else if (role === "listener") {
 			follow();
 		}
@@ -605,7 +792,11 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		const expected = playerPosition();
 		player.position = position;
 		player.at = at || Date.now();
-		if (role === "host" && Math.abs(position - expected) > SEEK_DETECT_MS) sendState(); // host seeked
+		if (role === "host") {
+			if (Math.abs(position - expected) > SEEK_DETECT_MS) sendState(); // host seeked
+			if (hostLast && hostLast.uri === player.uri) hostLast.position = position;
+			scheduleAdvance();
+		}
 	}
 
 	return {
@@ -613,7 +804,12 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		leave,
 		leaveNow,
 		setName,
-		suggest,
+		queueAdd,
+		queueRemove,
+		queueMoveTop: (qid) => role === "host" && hostMoveTop(qid),
+		playNow,
+		playNext,
+		isHostWithQueue: () => status === "joined" && role === "host" && queue.length > 0,
 		onPlayerState,
 		onPlayerProgress,
 		state: snapshot,

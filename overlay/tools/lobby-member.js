@@ -22,7 +22,7 @@ async function command(action, args = {}) {
 	await new Promise((r) => setTimeout(r, 40)); // bridge round trip
 	switch (action) {
 		case "playTrack":
-			Object.assign(player, { uri: args.uri, name: args.uri.split(":").pop(), position: 0, at: Date.now(), isPlaying: true, empty: false });
+			Object.assign(player, { uri: args.uri, name: args.uri.split(":").pop(), position: 0, at: Date.now(), isPlaying: true, empty: false, duration: 240000 });
 			break;
 		case "seek":
 			player.position = args.ms;
@@ -49,6 +49,13 @@ lobby = createLobby({
 });
 process.on("disconnect", () => process.exit(0)); // test runner gone: don't linger in the lobby
 setInterval(() => player.isPlaying && lobby.onPlayerProgress(pos(), Date.now()), 1000);
+// Like real Spotify: at the end of a song, move on to Spotify's own next song.
+setInterval(() => {
+	if (player.isPlaying && player.uri && pos() >= player.duration) {
+		Object.assign(player, { uri: "spotify:track:spotifysownnext", name: "spotifysownnext", position: 0, at: Date.now(), duration: 240000 });
+		lobby.onPlayerState(snap());
+	}
+}, 100);
 
 process.on("message", async (m) => {
 	let reply = {};
@@ -69,7 +76,9 @@ process.on("message", async (m) => {
 			player.at = Date.now();
 			player.isPlaying = m.cmd === "resume";
 			lobby.onPlayerState(snap());
-		} else if (m.cmd === "suggest") await lobby.suggest(m.track);
+		} else if (m.cmd === "add") await lobby.queueAdd(m.track);
+		else if (m.cmd === "remove") lobby.queueRemove(m.qid);
+		else if (m.cmd === "next") await lobby.playNext();
 		else if (m.cmd === "report") reply = { player: { uri: player.uri, position: Math.round(pos()), isPlaying: player.isPlaying }, lobby: lobby.state(), queue };
 		process.send({ id: m.id, ok: true, reply });
 	} catch (err) {

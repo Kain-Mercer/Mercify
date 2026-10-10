@@ -446,13 +446,22 @@ ipcMain.handle("lobby:leave", async () => {
 	await lobby.leave();
 	return lobbyView();
 });
-ipcMain.handle("lobby:suggest", async (_e, track) => {
+ipcMain.handle("lobby:queue-add", async (_e, track) => {
 	try {
-		await lobby.suggest(track);
+		await lobby.queueAdd(track);
 		return { ok: true };
 	} catch (err) {
 		return { ok: false, error: err.message };
 	}
+});
+ipcMain.on("lobby:queue-remove", (_e, qid) => lobby.queueRemove(qid));
+ipcMain.on("lobby:queue-top", (_e, qid) => lobby.queueMoveTop(qid));
+ipcMain.on("lobby:queue-play", (_e, qid) => lobby.playNow(qid));
+// Host pressing Next while the session playlist has songs: play the next one from it.
+ipcMain.handle("lobby:next", async () => {
+	if (!lobby.isHostWithQueue()) return false;
+	await lobby.playNext();
+	return true;
 });
 ipcMain.on("lobby:copy", () => {
 	const st = lobby.state();

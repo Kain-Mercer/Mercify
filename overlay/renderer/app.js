@@ -50,6 +50,7 @@ const ICON = {
 	copy: I("M5 1.5h7.5A1.5 1.5 0 0 1 14 3v8.5h-1.5V3H5zM2 5a1.5 1.5 0 0 1 1.5-1.5h6A1.5 1.5 0 0 1 11 5v8.5a1.5 1.5 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 2 13.5zm1.5 0v8.5h6V5z"),
 	crown: I("M2 5.2l3.1 2.6L8 3.2l2.9 4.6L14 5.2l-1.3 6.6H3.3zM3.3 12.8h9.4v1.4H3.3z"),
 	dice: `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M3.5 1.5h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2zm0 1.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5zM5.25 4a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm5.5 5.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM8 6.75a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5z"/></svg>`,
+	top: I("M3 2.5h10V4H3zM8 5.5l4.5 4.5-1.1 1.1-2.65-2.65V14h-1.5V8.45L4.6 11.1 3.5 10z"),
 	collapse: I("M2 9h5v5H5.5v-2.4L2.9 14.2 1.8 13.1l2.6-2.6H2zM14 7H9V2h1.5v2.4l2.6-2.6 1.1 1.1-2.6 2.6H14z"),
 	expand: I("M1.5 9.5H3v2.4l2.6-2.6 1.1 1.1-2.6 2.6h2.4v1.5h-5zM14.5 6.5H13V4.1l-2.6 2.6-1.1-1.1 2.6-2.6H9.5V1.5h5z"),
 };
@@ -94,10 +95,15 @@ const PANELS = {
 		min: [200, 140],
 		def: (W, H) => ({ x: 24, y: 24, w: 380, h: Math.min(560, H - 24 - 112 - 48), shownAlpha: 1, hiddenAlpha: 0 }),
 	},
+	session: {
+		title: "Session Playlist",
+		min: [240, 200],
+		def: (W, H) => ({ x: W - 24 - 300 - 12 - 320, y: H - 24 - 380, w: 320, h: 380, shownAlpha: 1, hiddenAlpha: 0 }),
+	},
 	lobby: {
 		title: "Lobby",
 		min: [240, 180],
-		def: (W, H) => ({ x: W - 24 - 300, y: H - 24 - 260, w: 300, h: 260, shownAlpha: 1, hiddenAlpha: 0 }),
+		def: (W, H) => ({ x: W - 24 - 300, y: H - 24 - 300, w: 300, h: 300, shownAlpha: 1, hiddenAlpha: 0 }),
 	},
 };
 
@@ -193,6 +199,7 @@ function applyPanel(id) {
 
 	let visible = c.enabled;
 	if (id === "results" && c.autoHide && !S.edit && !S.query) visible = false;
+	if (id === "session" && !S.edit && S.lobby?.status !== "joined") visible = false;
 	p.classList.toggle("off", !visible);
 
 	let alpha;
@@ -541,12 +548,15 @@ const HOST_ONLY = new Set(["togglePlay", "next", "prev", "toggleShuffle", "toggl
 const hostName = () => esc(S.lobby?.hostName || "The host");
 
 function hostOnlyToast() {
-	toast(`${hostName()} controls playback in this lobby. Pick a song to suggest it.`);
+	toast(`${hostName()} controls playback in this lobby. Click a song to add it to the session playlist.`);
 }
 
-async function suggestTrack(t) {
-	const r = await api.lobbySuggest({ uri: t.uri, name: t.name, artists: t.artists });
-	if (r.ok) toast(`Suggested <b>${esc(t.name)}</b> to ${hostName()}`);
+const inLobby = () => S.lobby?.status === "joined";
+
+// Add a song to the lobby's session playlist (everyone sees it; it plays when its turn comes).
+async function addToSession(t) {
+	const r = await api.lobbyQueueAdd({ uri: t.uri, name: t.name, artists: t.artists, image: t.image, duration: t.duration });
+	if (r.ok) toast(`Added <b>${esc(t.name)}</b> to the session playlist`);
 	else toast(esc(r.error), "error");
 }
 
@@ -631,6 +641,11 @@ function buildNowPlaying() {
 			return fire("setVolume", { level: v > 0 ? 0 : np.lastVol || 0.5 });
 		}
 		if (following() && HOST_ONLY.has(act)) return hostOnlyToast();
+		// Host with songs in the session playlist: Next plays the next one from it.
+		if (act === "next" && inLobby()) {
+			api.lobbyNext().then((handled) => handled || fire("next"));
+			return;
+		}
 		// Optimistic UI for play/pause so it feels instant.
 		if (act === "togglePlay" && S.player) {
 			S.player.position = currentPosition();
@@ -739,12 +754,14 @@ function trackRow(t, { index = null, contextUri = null, showIndex = false } = {}
 		<span class="row-dur">${t.duration ? fmt(t.duration) : ""}</span>`;
 	r.addEventListener("click", (e) => {
 		if (S.edit) return;
-		if (following()) {
-			suggestTrack(t);
+		const plus = !!e.target.closest(".icon-btn");
+		// In a lobby, + adds to the session playlist; listeners add by clicking the song too.
+		if (following() || (plus && inLobby())) {
+			addToSession(t);
 			if (document.activeElement?.matches?.('input[type="text"]')) api.releaseFocus();
 			return;
 		}
-		if (e.target.closest(".icon-btn")) {
+		if (plus) {
 			cmd("addToQueue", { uri: t.uri })
 				.then(() => toast(`Queued <b>${esc(t.name)}</b>`))
 				.catch(() => {});
@@ -821,7 +838,7 @@ function buildSearch() {
 		} else if (e.key === "Enter") {
 			const top = S.results?.tracks?.[0];
 			if (top) {
-				if (following()) suggestTrack(top);
+				if (following()) addToSession(top);
 				else fire("playTrack", { uri: top.uri });
 				api.releaseFocus();
 				sr.input.blur();
@@ -1054,6 +1071,92 @@ function setPickerArt(p) {
 	}
 }
 
+// ------------------------------------------------------------------ Session playlist panel
+
+const sp = { tab: "next" };
+
+function buildSession() {
+	const body = buildPanel("session");
+	body.innerHTML = `
+		<div class="list-head sp-head">
+			<button class="sp-tab on" data-tab="next">Up next <span class="sp-count"></span></button>
+			<button class="sp-tab" data-tab="played">Played</button>
+		</div>
+		<div class="sp-now" hidden></div>
+		<div class="scroll sp-list"></div>`;
+	sp.now = $(".sp-now", body);
+	sp.list = $(".sp-list", body);
+	sp.count = $(".sp-count", body);
+	body.querySelectorAll(".sp-tab").forEach((b) =>
+		b.addEventListener("click", () => {
+			if (S.edit) return;
+			sp.tab = b.dataset.tab;
+			body.querySelectorAll(".sp-tab").forEach((x) => x.classList.toggle("on", x === b));
+			renderSession();
+		})
+	);
+	sp.list.addEventListener("click", (e) => {
+		if (S.edit) return;
+		const btn = e.target.closest("[data-op]");
+		if (!btn) return;
+		const qid = btn.closest("[data-qid]")?.dataset.qid;
+		if (!qid) return;
+		if (btn.dataset.op === "play") api.lobbyQueuePlay(qid);
+		else if (btn.dataset.op === "top") api.lobbyQueueTop(qid);
+		else if (btn.dataset.op === "remove") api.lobbyQueueRemove(qid);
+	});
+}
+
+function sessionRow(item, { index, host, mine, played }) {
+	const ops = played
+		? `<button class="icon-btn" data-op="readd" title="Add again">${ICON.plus}</button>`
+		: [
+				host ? `<button class="icon-btn" data-op="play" title="Play now">${ICON.play}</button>` : "",
+				host && index > 0 ? `<button class="icon-btn" data-op="top" title="Play next">${ICON.top}</button>` : "",
+				host || mine ? `<button class="icon-btn" data-op="remove" title="Remove">${ICON.close}</button>` : "",
+			].join("");
+	return `<div class="row sp-row" data-qid="${esc(item.qid)}" data-uri="${esc(item.uri)}">
+		${played ? "" : `<span class="row-idx">${index + 1}</span>`}
+		${item.image ? `<img src="${esc(item.image)}" alt="" loading="lazy" />` : `<span class="sp-noart">${ICON.note}</span>`}
+		<div class="row-text">
+			<div class="row-title">${esc(item.name)}</div>
+			<div class="row-sub">${esc((item.artists || []).join(", "))}</div>
+		</div>
+		${item.by ? `<span class="sp-by" title="Added by ${esc(item.by)}">${esc(item.by)}</span>` : ""}
+		<span class="sp-ops">${ops}</span>
+	</div>`;
+}
+
+function renderSession() {
+	const st = S.lobby;
+	if (!sp.list || !st) return;
+	applyPanel("session");
+	const host = st.role === "host";
+	const queue = st.queue || [];
+	const history = st.history || [];
+	sp.count.textContent = queue.length ? `· ${queue.length}` : "";
+	if (st.now) {
+		sp.now.hidden = false;
+		sp.now.innerHTML = `<span class="sp-now-label">Now</span><span class="sp-now-title">${esc(st.now.name)}</span>${st.now.by ? `<span class="sp-by">${esc(st.now.by)}</span>` : ""}`;
+	} else sp.now.hidden = true;
+
+	if (sp.tab === "next") {
+		sp.list.innerHTML = queue.length
+			? queue.map((q, i) => sessionRow(q, { index: i, host, mine: q.byId && q.byId === st.meId })).join("")
+			: `<div class="empty-note">Nothing queued yet.<br />Click <b>+</b> on any song${host ? "" : ", or just click it,"} to add it for everyone.</div>`;
+	} else {
+		sp.list.innerHTML = history.length ? history.map((h) => sessionRow(h, { played: true })).join("") : `<div class="empty-note">Songs played in this session show up here.</div>`;
+	}
+	// "add again" from the history
+	sp.list.querySelectorAll('[data-op="readd"]').forEach((b) =>
+		b.addEventListener("click", () => {
+			const h = history.find((x) => x.qid === b.closest("[data-qid]").dataset.qid);
+			if (h && !S.edit) addToSession(h);
+		})
+	);
+	markPlayingRows();
+}
+
 // ------------------------------------------------------------------ Lobby panel
 
 const lb = {};
@@ -1186,7 +1289,7 @@ function renderLobby() {
 		lb.role.innerHTML =
 			st.role === "host"
 				? `<b>You're hosting.</b> Share the code so friends can join.`
-				: `Listening with <b>${esc(st.hostName || "the host")}</b>. Pick a song to suggest it.`;
+				: `Listening with <b>${esc(st.hostName || "the host")}</b>. Click a song to add it to the playlist.`;
 		lb.members.innerHTML = st.members
 			.map(
 				(m) =>
@@ -1212,6 +1315,7 @@ function renderLobby() {
 api.onLobby((st) => {
 	S.lobby = st;
 	renderLobby();
+	renderSession();
 });
 
 // ------------------------------------------------------------------ bridge events
@@ -1301,9 +1405,11 @@ window.addEventListener("resize", () => {
 	buildNowPlaying();
 	buildPlaylist();
 	buildSearch();
+	buildSession();
 	buildLobby();
 	S.lobby = await api.lobbyGet();
 	renderLobby();
+	renderSession();
 	bindPopover();
 	applyAll();
 	renderPlayer();

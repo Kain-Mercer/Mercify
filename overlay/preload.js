@@ -28,7 +28,11 @@ contextBridge.exposeInMainWorld("overlay", {
 	lobbySetName: (name) => ipcRenderer.invoke("lobby:set-name", name),
 	lobbyJoin: (code) => ipcRenderer.invoke("lobby:join", code),
 	lobbyLeave: () => ipcRenderer.invoke("lobby:leave"),
-	lobbySuggest: (track) => ipcRenderer.invoke("lobby:suggest", track),
+	lobbyQueueAdd: (track) => ipcRenderer.invoke("lobby:queue-add", track),
+	lobbyQueueRemove: (qid) => ipcRenderer.send("lobby:queue-remove", qid),
+	lobbyQueueTop: (qid) => ipcRenderer.send("lobby:queue-top", qid),
+	lobbyQueuePlay: (qid) => ipcRenderer.send("lobby:queue-play", qid),
+	lobbyNext: () => ipcRenderer.invoke("lobby:next"),
 	lobbyCopy: () => ipcRenderer.send("lobby:copy"),
 	onLobby: on("lobby"),
 });

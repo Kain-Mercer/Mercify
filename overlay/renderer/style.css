@@ -1086,7 +1086,7 @@ body.edit .rh {
 }
 .lb-members {
 	flex: 1;
-	min-height: 40px;
+	min-height: 52px;
 	padding: 2px 0;
 }
 .lb-member {
@@ -1166,4 +1166,123 @@ body.edit .rh {
 .panel.following [data-act="toggleRepeat"],
 .panel.following .bar {
 	opacity: 0.4;
+}
+
+/* ---------------------------------------------------------------- session playlist */
+
+.sp-head {
+	gap: 4px;
+	padding: 8px 8px 6px;
+}
+.sp-tab {
+	border: 0;
+	background: transparent;
+	color: var(--text-dim);
+	font: 650 12.5px var(--font);
+	padding: 5px 10px;
+	border-radius: 7px;
+	cursor: pointer;
+}
+.sp-tab:hover {
+	background: var(--hover);
+	color: var(--text);
+}
+.sp-tab.on {
+	background: rgba(255, 255, 255, 0.09);
+	color: var(--text);
+}
+.sp-count {
+	color: var(--text-faint);
+	font-weight: 500;
+}
+.sp-now {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 6px 8px 2px;
+	padding: 6px 8px;
+	border-radius: 8px;
+	background: var(--accent-dim);
+	min-width: 0;
+	flex: none;
+}
+.sp-now-label {
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--accent);
+	flex: none;
+}
+.sp-now-title {
+	flex: 1;
+	min-width: 0;
+	font-size: 12.5px;
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.sp-by {
+	flex: none;
+	max-width: 80px;
+	padding: 1px 7px;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.07);
+	color: var(--text-dim);
+	font-size: 10.5px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.sp-row {
+	cursor: default;
+	position: relative;
+}
+/* the buttons appear over the right end of the row on hover, so they don't take space */
+.sp-ops {
+	position: absolute;
+	right: 4px;
+	top: 50%;
+	transform: translateY(-50%);
+	display: flex;
+	padding-left: 18px;
+	background: linear-gradient(90deg, transparent, rgb(31, 33, 37) 18px);
+	border-radius: 0 8px 8px 0;
+	opacity: 0;
+	pointer-events: none;
+}
+.sp-row:hover .sp-ops {
+	opacity: 1;
+	pointer-events: auto;
+}
+.sp-ops:empty {
+	display: none;
+}
+.sp-noart {
+	width: 34px;
+	height: 34px;
+	border-radius: 5px;
+	background: rgba(255, 255, 255, 0.06);
+	display: grid;
+	place-items: center;
+	flex: none;
+}
+.sp-noart svg {
+	width: 14px;
+	height: 14px;
+	fill: var(--text-faint);
+}
+.sp-ops .icon-btn {
+	width: 24px;
+	height: 24px;
+}
+.sp-ops .icon-btn svg {
+	width: 12px;
+	height: 12px;
+}
+@container (max-width: 270px) {
+	.sp-row .sp-by {
+		display: none;
+	}
 }

@@ -101,12 +101,43 @@ async function inSync(label, host, listeners, { tolerance = 1500, uri } = {}) {
 	await sleep(3500);
 	await inSync("after song change", A, [B, C]);
 
-	// 6. listener suggests a song
-	await B.call("suggest", { track: { uri: "spotify:track:suggested", name: "Suggested Song", artists: ["X"] } });
+	// 6. session playlist: everyone adds, everyone sees the same list
+	const names = (r) => r.lobby.queue.map((q) => `${q.name}/${q.by}`).join(", ");
+	await B.call("add", { track: { uri: "spotify:track:qone", name: "Queue One", artists: ["X"] } });
+	await C.call("add", { track: { uri: "spotify:track:qtwo", name: "Queue Two", artists: ["Y"] } });
+	await A.call("add", { track: { uri: "spotify:track:qthree", name: "Queue Three", artists: ["Z"] } });
+	await sleep(2000);
+	const want = "Queue One/Kain, Queue Two/Mira, Queue Three/Eva";
+	const [qa, qb, qc] = [await report(A), await report(B), await report(C)];
+	check("everyone sees the same session playlist, with who added what", names(qa) === want && names(qb) === want && names(qc) === want, `host: ${names(qa)} | Kain: ${names(qb)} | Mira: ${names(qc)}`);
+	check("nothing went into Spotify's own queue", qa.queue.length === 0, `queue ${JSON.stringify(qa.queue)}`);
+
+	// listeners can remove only their own songs
+	const qoneId = qc.lobby.queue.find((q) => q.name === "Queue One").qid;
+	const qtwoId = qc.lobby.queue.find((q) => q.name === "Queue Two").qid;
+	await C.call("remove", { qid: qoneId }); // Kain's song: not allowed
+	await C.call("remove", { qid: qtwoId }); // her own
 	await sleep(1500);
-	const aq = await report(A);
-	check("suggestion lands in the host's queue", aq.queue.includes("spotify:track:suggested"), `queue ${JSON.stringify(aq.queue)}`);
-	check("host sees who suggested it", aq.lobby.activity.some((x) => /Kain added “Suggested Song”/.test(x.text)));
+	const qa2 = await report(A);
+	const qb2 = await report(B);
+	check("a listener can remove their own song but not others'", names(qa2) === "Queue One/Kain, Queue Three/Eva" && names(qb2) === names(qa2), `host: ${names(qa2)} | Kain: ${names(qb2)}`);
+
+	// when the song ends, the host plays the next one from the list, and everyone follows
+	await A.call("play", { uri: "spotify:track:ending", at: 16000, duration: 20000 });
+	await sleep(7000);
+	const adv = await report(A);
+	check("at the end of a song the next one comes from the session playlist", adv.player.uri === "spotify:track:qone", `host now playing ${adv.player.uri}`);
+	check("the finished song goes into the history", adv.lobby.history[0]?.uri === "spotify:track:ending", `history: ${adv.lobby.history.map((h) => h.name).join(", ")}`);
+	check("the playing song still shows who added it", adv.lobby.now?.by === "Kain", `now: ${JSON.stringify(adv.lobby.now && { name: adv.lobby.now.name, by: adv.lobby.now.by })}`);
+	await sleep(3000);
+	await inSync("after the playlist moves on", A, [B, C], { uri: "spotify:track:qone" });
+	const lb = await report(B);
+	check("listeners see the list move on too", names(lb) === "Queue Three/Eva" && lb.lobby.now?.name === "Queue One", `Kain sees: ${names(lb)}, now ${lb.lobby.now?.name}`);
+
+	// host's Next plays the next song from the list
+	await A.call("next");
+	await sleep(3500);
+	await inSync("after the host presses Next", A, [B, C], { uri: "spotify:track:qthree" });
 
 	// 7. lose one relay
 	if (process.env.KILL_RELAY_CMD) {
@@ -124,6 +155,10 @@ async function inSync(label, host, listeners, { tolerance = 1500, uri } = {}) {
 	// (other people's lobbies on a public relay show up here too; none may reveal a code)
 	check("relay topic doesn't reveal the code", topics.includes(topicFor(CODE)) && topics.every((t) => !t.includes(CODE)), topics.join(","));
 
+	// a song waiting in the list when the host leaves
+	await B.call("add", { track: { uri: "spotify:track:qfour", name: "Queue Four", artists: ["W"] } });
+	await sleep(1500);
+
 	// 9. host leaves: the longest-standing listener takes over, and everyone agrees who
 	//    (join times come from each member's own clock, so with skewed clocks either can win)
 	await A.call("leave");
@@ -133,6 +168,9 @@ async function inSync(label, host, listeners, { tolerance = 1500, uri } = {}) {
 	const hosts = [b2, c2].filter((r) => r.lobby.role === "host");
 	check("host leaves: exactly one new host, and both agree", hosts.length === 1 && b2.lobby.hostName === c2.lobby.hostName, `Kain ${b2.lobby.role}, Mira ${c2.lobby.role}, both see ${b2.lobby.hostName}/${c2.lobby.hostName}`);
 	const [newHost, other] = b2.lobby.role === "host" ? [B, C] : [C, B];
+	const nh = await report(newHost);
+	const ot = await report(other);
+	check("the new host carries on with the session playlist", names(nh) === "Queue Four/Kain" && names(ot) === "Queue Four/Kain", `new host: ${names(nh)} | other: ${names(ot)}`);
 	await newHost.call("play", { uri: "spotify:track:four", at: 10000 });
 	await sleep(4000);
 	await inSync("new host plays", newHost, [other]);
