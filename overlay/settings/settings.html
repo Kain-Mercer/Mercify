@@ -13,6 +13,11 @@
 			<span id="conn" class="pill">Checking…</span>
 		</header>
 
+		<div id="update-banner" hidden>
+			<span id="update-banner-text"></span>
+			<button class="btn" id="update-banner-btn"></button>
+		</div>
+
 		<main>
 			<section id="setup-section">
 				<h2>Setup</h2>
@@ -55,6 +60,18 @@
 				</div>
 				<button class="btn ghost wide" id="app-pick">Pick the app in front</button>
 				<label class="check"><input type="checkbox" id="hotkeys-only" /> Hotkeys only work over these apps <span class="muted">(frees Ctrl+` for other programs)</span></label>
+			</section>
+
+			<section>
+				<div class="section-head">
+					<h2>Updates</h2>
+					<span class="muted" id="update-version"></span>
+				</div>
+				<div class="update-row">
+					<span class="dot neutral" id="update-dot"></span>
+					<span id="update-status">Checking…</span>
+					<button class="btn ghost" id="update-check">Check now</button>
+				</div>
 			</section>
 
 			<section>

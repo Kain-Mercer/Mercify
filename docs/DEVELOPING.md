@@ -18,7 +18,19 @@ Technical notes for building and changing Mercify. Players don't need any of thi
 
 ## Building
 
-**On GitHub:** every push to `main` runs the [Build Windows exe](../.github/workflows/build.yml) workflow on a Windows runner. To publish a release, bump `version` in `overlay/package.json` and push: when there's no `v<version>` release yet, the workflow publishes one with both exes attached. Other builds attach the exes to the run (Actions tab → the run → **Artifacts**). Changes to Markdown files and `docs/` don't trigger a build.
+**On GitHub:** every push to `main` runs the [Build Windows exe](../.github/workflows/build.yml) workflow on a Windows runner. To publish a release, bump `version` in `overlay/package.json` and push: when there's no `v<version>` release yet, the workflow publishes one with both exes, `latest.yml` and the installer's `.blockmap` attached. Other builds attach the same files to the run (Actions tab → the run → **Artifacts**). Changes to Markdown files and `docs/` don't trigger a build.
+
+## Updates
+
+`overlay/updater.js` handles updates; installed copies use electron-updater with the GitHub provider (`build.publish` in `package.json`, which bakes `app-update.yml` into the app).
+
+- **Installer builds** check the latest *published, non-prerelease* release 15 s after start and every 6 h. They read `latest.yml`, download the new `Mercify-Setup-x.y.z.exe` in the background (differentially via the `.blockmap` when the previous release has one), verify its SHA-512, and install silently when Mercify quits, or immediately with **Restart and update**, which relaunches the app.
+- **Portable builds** (detected by `PORTABLE_EXECUTABLE_FILE`) only call the GitHub releases API and offer a download link.
+- **Running from source:** updates are off.
+- The exe isn't code-signed, so there's no publisher check on downloads (`publisherName` isn't set): integrity comes from the SHA-512 in `latest.yml` served over HTTPS from GitHub. Protect the GitHub account (2FA); anyone who can publish a release can ship an update.
+- Releases must stay **published** (not draft or pre-release), and the release must include `latest.yml`, or installed copies won't see it. Don't rename release assets.
+
+To test locally, serve a folder containing `latest-linux.yml` (the updater names its feed file after the OS it runs on; Windows uses `latest.yml`) and a matching exe, put a `dev-app-update.yml` (`provider: generic`, `url`, `updaterCacheDirName`) in `overlay/`, and run with `OVERLAY_DEBUG_UPDATE_FEED=<url>`. `OVERLAY_DEBUG_UPDATE_MODE=portable` with `OVERLAY_DEBUG_RELEASE_API=<url>` tests the portable check.
 
 **Locally on Windows:** double-click `build-exe.bat`. The exes land in `overlay\dist`.
 
@@ -55,7 +67,11 @@ The helper is rebuilt with MinGW (`x86_64-w64-mingw32-gcc -O2 -municode -static 
 ## Debugging
 
 - Spotify side: run `spicetify enable-devtools`, press `Ctrl+Shift+I` in Spotify and look for `[overlay-bridge]` log lines. Empty searches also list each method tried in the results panel.
-- Test hooks (environment variables, used for headless testing): `OVERLAY_DEBUG_CAPTURE`, `OVERLAY_DEBUG_JS`, `OVERLAY_DEBUG_EDIT`, `OVERLAY_DEBUG_SETTINGS_CAPTURE`, `OVERLAY_DEBUG_FAKE_SETUP`, `OVERLAY_DEBUG_FG_FILE`, `OVERLAY_DEBUG_STATE_FILE`.
+- Test hooks (environment variables, used for headless testing): `OVERLAY_DEBUG_CAPTURE`, `OVERLAY_DEBUG_JS`, `OVERLAY_DEBUG_RESULT`, `OVERLAY_DEBUG_EDIT`, `OVERLAY_DEBUG_SETTINGS_CAPTURE`, `OVERLAY_DEBUG_FAKE_SETUP`, `OVERLAY_DEBUG_FG_FILE`, `OVERLAY_DEBUG_STATE_FILE`, `OVERLAY_DEBUG_UPDATE_FEED`, `OVERLAY_DEBUG_UPDATE_MODE`, `OVERLAY_DEBUG_UPDATE_DELAY`, `OVERLAY_DEBUG_RELEASE_API`.
+
+## Focus and click-through
+
+The overlay window is created with `focusable: false`, so clicking a panel doesn't take keyboard focus from the game. It becomes focusable only for Edit Mode and text input (`takeFocus()` in `main.js`, triggered by the search hotkey or a click in a text box via the `want-focus` IPC), and goes back to non-focusable on `releaseFocus()` or blur. Click-through is decided per mouse move in the renderer; while hidden, only the compact Now Playing panel (`.live-hidden`) takes clicks.
 
 ## Files
 
@@ -63,6 +79,7 @@ The helper is rebuilt with MinGW (`x86_64-w64-mingw32-gcc -O2 -municode -static 
 spicetify/overlay-bridge.js     Spicetify extension (runs inside Spotify)
 overlay/main.js                 overlay window, click-through, app detection, hotkeys, tray, WebSocket server
 overlay/setup.js                setup checks and installers used by Settings
+overlay/updater.js              update checks, background download and install (GitHub Releases)
 overlay/foreground.js           reads fgwatch.exe's "app in front" reports
 overlay/native/fgwatch.c        helper source (prebuilt in overlay/bin/fgwatch.exe)
 overlay/settings/               Settings window

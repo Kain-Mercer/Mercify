@@ -10,6 +10,7 @@ const fs = require("fs");
 const { WebSocketServer } = require("ws");
 const foreground = require("./foreground");
 const setup = require("./setup");
+const updater = require("./updater");
 
 // ------------------------------------------------------------------ config
 
@@ -133,7 +134,9 @@ function createWindow() {
 		skipTaskbar: true,
 		hasShadow: false,
 		alwaysOnTop: true,
-		focusable: true,
+		// Not focusable by default: clicking a panel (play, skip, volume...) then doesn't take keyboard
+		// focus away from the game. It becomes focusable only while you type or use Edit Mode.
+		focusable: false,
 		show: false,
 		webPreferences: {
 			preload: path.join(__dirname, "preload.js"),
@@ -160,7 +163,9 @@ function createWindow() {
 
 	// Windows sometimes drops topmost when another topmost app activates; re-assert.
 	win.on("blur", () => {
-		if (win && !win.isDestroyed()) win.setAlwaysOnTop(true, "screen-saver");
+		if (!win || win.isDestroyed()) return;
+		win.setAlwaysOnTop(true, "screen-saver");
+		if (!editMode) win.setFocusable(false);
 	});
 
 	screen.on("display-metrics-changed", () => {
@@ -195,7 +200,7 @@ function setEdit(on) {
 		overlayShown = true;
 		applyGate(true);
 		setInteractive(true);
-		win.focus(); // so arrow-key nudging works
+		takeFocus(); // so arrow-key nudging works
 	} else {
 		releaseFocus();
 	}
@@ -207,7 +212,17 @@ function setEdit(on) {
 function releaseFocus() {
 	if (!win || win.isDestroyed()) return;
 	setInteractive(false);
+	sendToRenderer("interactive-reset");
 	if (win.isFocused()) win.blur();
+	win.setFocusable(false);
+}
+
+// Let the overlay take keyboard input (typing in a search box, Edit Mode arrow keys).
+function takeFocus() {
+	if (!win || win.isDestroyed()) return;
+	setInteractive(true);
+	win.setFocusable(true);
+	win.focus();
 }
 
 // ------------------------------------------------------------------ show only over chosen apps
@@ -354,10 +369,13 @@ ipcMain.handle("cmd", async (_e, { action, args }) => {
 	}
 });
 
+// The renderer decides which spots are clickable (including the compact widget while hidden).
 ipcMain.on("set-interactive", (_e, on) => {
 	if (editMode) return setInteractive(true);
-	setInteractive(!!on && overlayShown && gateOpen);
+	setInteractive(!!on && gateOpen);
 });
+
+ipcMain.on("want-focus", () => takeFocus());
 
 ipcMain.on("release-focus", () => {
 	if (!editMode) releaseFocus();
@@ -396,8 +414,7 @@ const hotkeyActions = {
 		overlayShown = true;
 		applyGate(true);
 		sendToRenderer("overlay", { shown: true, edit: false });
-		setInteractive(true);
-		win.focus();
+		takeFocus();
 		sendToRenderer("focus-search");
 	},
 	playPause: () => bridgeCommand("togglePlay").catch(() => {}),
@@ -494,6 +511,7 @@ function openSettings() {
 
 async function settingsState() {
 	return {
+		update: updater.state(),
 		setup: await setup.status(),
 		connected: !!bridge,
 		foregroundSupported: foreground.supported(),
@@ -526,6 +544,8 @@ ipcMain.handle("settings:action", async (_e, name) => {
 	else if (name === "spicetify") await waitForInstaller(setup.installSpicetify);
 	else if (name === "apply") await setup.applyExtension(settingsLog);
 	else if (name === "startSpotify") await setup.startSpotify();
+	else if (name === "checkUpdate") updater.check();
+	else if (name === "installUpdate") updater.installNow();
 	return settingsState();
 });
 
@@ -593,8 +613,16 @@ function updateTrayMenu() {
 	if (!tray) return;
 	const status = bridge ? `Connected to Spotify${bridgeInfo?.spotify ? " " + bridgeInfo.spotify : ""}` : "Waiting for Spotify…";
 	tray.setToolTip(`Mercify: ${status}`);
+	const u = updater.state();
+	const updateItems =
+		u.status === "ready"
+			? [{ label: `Restart to update to ${u.newVersion}`, click: () => updater.installNow() }, { type: "separator" }]
+			: u.status === "available"
+				? [{ label: `Download Mercify ${u.newVersion}…`, click: () => updater.installNow() }, { type: "separator" }]
+				: [];
 	tray.setContextMenu(
 		Menu.buildFromTemplate([
+			...updateItems,
 			{ label: status, enabled: false },
 			{ type: "separator" },
 			{ label: "Settings and setup…", click: openSettings },
@@ -630,6 +658,10 @@ function createTray() {
 function debugCapture(file) {
 	if (process.env.OVERLAY_DEBUG_JS) setTimeout(() => win.webContents.executeJavaScript(process.env.OVERLAY_DEBUG_JS).catch(console.error), 1500);
 	setTimeout(async () => {
+		if (process.env.OVERLAY_DEBUG_RESULT) {
+			const r = await win.webContents.executeJavaScript("document.body.dataset.result || ''").catch((e) => String(e));
+			fs.writeFileSync(process.env.OVERLAY_DEBUG_RESULT, r);
+		}
 		const img = await win.webContents.capturePage();
 		fs.writeFileSync(file, img.toPNG());
 		app.quit();
@@ -638,7 +670,23 @@ function debugCapture(file) {
 
 // ------------------------------------------------------------------ lifecycle
 
+function notify(title, body) {
+	if (!Notification.isSupported()) return;
+	const n = new Notification({ title, body, icon: path.join(__dirname, "assets", "icon.png") });
+	n.on("click", openSettings);
+	n.show();
+}
+
+updater.on("change", () => {
+	pushSettings();
+	updateTrayMenu();
+});
+updater.on("ready", (v) => notify(`Mercify ${v} is ready`, "It installs the next time Mercify closes. To update now, open Settings and choose Restart and update."));
+updater.on("available", (v) => notify(`Mercify ${v} is available`, "Click to open Settings and download it."));
+updater.on("before-install", () => foreground.stop());
+
 app.whenReady().then(async () => {
+	updater.start();
 	foreground.start();
 	startBridgeServer();
 	createWindow();
@@ -648,7 +696,7 @@ app.whenReady().then(async () => {
 	setInterval(tickGate, 200);
 	if (process.env.OVERLAY_DEBUG_STATE_FILE) {
 		setInterval(() => {
-			const st = { gateOpen, visible: win.isVisible(), toggleHotkey: globalShortcut.isRegistered(config.hotkeys.toggle), editHotkey: globalShortcut.isRegistered(config.hotkeys.edit), edit: editMode };
+			const st = { gateOpen, visible: win.isVisible(), toggleHotkey: globalShortcut.isRegistered(config.hotkeys.toggle), editHotkey: globalShortcut.isRegistered(config.hotkeys.edit), edit: editMode, update: updater.state() };
 			fs.writeFileSync(process.env.OVERLAY_DEBUG_STATE_FILE, JSON.stringify(st));
 		}, 100);
 	}

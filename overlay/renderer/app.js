@@ -47,6 +47,8 @@ const ICON = {
 	close: I("M3.6 2.5 8 6.9l4.4-4.4 1.1 1.1L9.1 8l4.4 4.4-1.1 1.1L8 9.1l-4.4 4.4-1.1-1.1L6.9 8 2.5 3.6z"),
 	note: I("M6 2.5 14 1v9.3a2.2 2.2 0 1 1-1.5-2.1V3.5L7.5 4.4v7.8A2.2 2.2 0 1 1 6 10.1z"),
 	bars: I("M2.5 13V8h2v5zM7 13V3h2v10zM11.5 13V6h2v7z"),
+	collapse: I("M2 9h5v5H5.5v-2.4L2.9 14.2 1.8 13.1l2.6-2.6H2zM14 7H9V2h1.5v2.4l2.6-2.6 1.1 1.1-2.6 2.6H14z"),
+	expand: I("M1.5 9.5H3v2.4l2.6-2.6 1.1 1.1-2.6 2.6h2.4v1.5h-5zM14.5 6.5H13V4.1l-2.6 2.6-1.1-1.1 2.6-2.6H9.5V1.5h5z"),
 };
 
 // ------------------------------------------------------------------ app state
@@ -70,7 +72,7 @@ const PANELS = {
 	nowplaying: {
 		title: "Now Playing",
 		min: [200, 56],
-		def: (W, H) => ({ x: 24, y: H - 24 - 112, w: 460, h: 112, shownAlpha: 1, hiddenAlpha: 0.75 }),
+		def: (W, H) => ({ x: 24, y: H - 24 - 112, w: 460, h: 112, shownAlpha: 1, hiddenAlpha: 0.75, compact: false, cx: 24, cy: H - 24 - 56, cw: 300, ch: 56 }),
 	},
 	search: {
 		title: "Search Bar",
@@ -106,6 +108,44 @@ function saveLayout() {
 	saveTimer = setTimeout(() => api.saveLayout(S.layout), 300);
 }
 
+// ------------------------------------------------------------------ panel geometry
+// Now Playing has a compact view with its own size (cw/ch) and position (cx/cy).
+// Everything that moves or measures panels goes through rectOf/setRect so it works in both views.
+
+const COMPACT_MIN = [150, 40];
+const isCompact = (id) => id === "nowplaying" && !!S.layout.panels[id].compact;
+
+function rectOf(id) {
+	const c = S.layout.panels[id];
+	return isCompact(id) ? { x: c.cx, y: c.cy, w: c.cw, h: c.ch } : { x: c.x, y: c.y, w: c.w, h: c.h };
+}
+
+function setRect(id, r) {
+	const c = S.layout.panels[id];
+	if (isCompact(id)) Object.assign(c, { cx: r.x, cy: r.y, cw: r.w, ch: r.h });
+	else Object.assign(c, { x: r.x, y: r.y, w: r.w, h: r.h });
+}
+
+const minOf = (id) => (isCompact(id) ? COMPACT_MIN : PANELS[id].min);
+
+// Switch Now Playing between full and compact. It shrinks/grows in place towards the
+// nearest screen corner, so a widget in the bottom-left stays in the bottom-left.
+function setCompact(on) {
+	const c = S.layout.panels.nowplaying;
+	if (!!c.compact === on) return;
+	const from = rectOf("nowplaying");
+	const right = from.x + from.w / 2 > innerWidth / 2;
+	const bottom = from.y + from.h / 2 > innerHeight / 2;
+	c.compact = on;
+	const w = on ? c.cw : c.w;
+	const h = on ? c.ch : c.h;
+	setRect("nowplaying", { x: right ? from.x + from.w - w : from.x, y: bottom ? from.y + from.h - h : from.y, w, h });
+	clampPanel("nowplaying");
+	applyPanel("nowplaying");
+	if (S.selected === "nowplaying") showPopover();
+	saveLayout();
+}
+
 // ------------------------------------------------------------------ panel DOM
 
 const panelEls = {};
@@ -130,11 +170,17 @@ function buildPanel(id) {
 function applyPanel(id) {
 	const c = S.layout.panels[id];
 	const p = panelEls[id];
-	p.style.left = c.x + "px";
-	p.style.top = c.y + "px";
-	p.style.width = c.w + "px";
-	p.style.height = c.h + "px";
+	const r = rectOf(id);
+	p.style.left = r.x + "px";
+	p.style.top = r.y + "px";
+	p.style.width = r.w + "px";
+	p.style.height = r.h + "px";
 	p.style.setProperty("--scale", c.scale ?? 1);
+	p.style.setProperty("--shown-alpha", c.shownAlpha);
+	const compact = isCompact(id);
+	p.classList.toggle("compact", compact);
+	// The compact widget stays clickable while the overlay is toggled hidden.
+	p.classList.toggle("live-hidden", compact);
 
 	let visible = c.enabled;
 	if (id === "results" && c.autoHide && !S.edit && !S.query) visible = false;
@@ -147,7 +193,7 @@ function applyPanel(id) {
 	p.style.visibility = alpha <= 0.001 && !S.edit ? "hidden" : "";
 
 	const label = p.querySelector(".edit-label");
-	label.innerHTML = esc(PANELS[id].title) + (c.enabled ? "" : '<span class="muted">hidden</span>');
+	label.innerHTML = esc(PANELS[id].title) + (compact ? '<span class="muted">compact</span>' : "") + (c.enabled ? "" : '<span class="muted">hidden</span>');
 }
 
 function applyAll() {
@@ -158,12 +204,14 @@ function applyAll() {
 }
 
 // Keep panels on-screen after a resolution change or a layout from another monitor.
-function clampPanel(c, id) {
-	const [mw, mh] = PANELS[id].min;
-	c.w = clamp(c.w, mw, innerWidth);
-	c.h = clamp(c.h, mh, innerHeight);
-	c.x = clamp(c.x, 0, innerWidth - c.w);
-	c.y = clamp(c.y, 0, innerHeight - c.h);
+function clampPanel(id) {
+	const r = rectOf(id);
+	const [mw, mh] = minOf(id);
+	r.w = clamp(r.w, mw, innerWidth);
+	r.h = clamp(r.h, mh, innerHeight);
+	r.x = clamp(r.x, 0, innerWidth - r.w);
+	r.y = clamp(r.y, 0, innerHeight - r.h);
+	setRect(id, r);
 }
 
 // ------------------------------------------------------------------ click-through
@@ -177,12 +225,27 @@ function setInteractive(on) {
 
 document.addEventListener("mousemove", (e) => {
 	if (S.edit) return;
-	if (!S.shown) return setInteractive(false);
 	const over = e.target.closest?.(".panel:not(.off)");
-	setInteractive(!!over && over.style.visibility !== "hidden");
+	// While hidden, only the compact Now Playing widget takes clicks (others have pointer-events: none).
+	const usable = !!over && over.style.visibility !== "hidden" && (S.shown || over.classList.contains("live-hidden"));
+	setInteractive(usable);
 });
 document.addEventListener("mouseleave", () => {
 	if (!S.edit) setInteractive(false);
+});
+
+// The overlay window doesn't take keyboard focus on click (so the game keeps it).
+// Text boxes ask for focus first, then focus themselves once the window has it.
+function focusInput(input) {
+	api.wantFocus();
+	setTimeout(() => input.focus(), 40);
+}
+document.addEventListener("pointerdown", (e) => {
+	if (S.edit) return;
+	const input = e.target.closest?.('input[type="text"]');
+	if (!input || document.activeElement === input) return;
+	e.preventDefault();
+	focusInput(input);
 });
 
 // ------------------------------------------------------------------ Edit Mode: select, drag, resize, snap
@@ -219,8 +282,9 @@ function snapTargets(exceptId) {
 	const ys = [0, innerHeight, innerHeight / 2];
 	for (const [id, c] of Object.entries(S.layout.panels)) {
 		if (id === exceptId || !c.enabled) continue;
-		xs.push(c.x, c.x + c.w);
-		ys.push(c.y, c.y + c.h);
+		const r = rectOf(id);
+		xs.push(r.x, r.x + r.w);
+		ys.push(r.y, r.y + r.h);
 	}
 	return { xs, ys };
 }
@@ -252,13 +316,12 @@ document.addEventListener("pointerdown", (e) => {
 	}
 	const id = panel.dataset.id;
 	select(id);
-	const c = S.layout.panels[id];
 	drag = {
 		id,
 		edge: e.target.dataset.edge || null,
 		sx: e.clientX,
 		sy: e.clientY,
-		start: { ...c },
+		start: rectOf(id),
 		pointerId: e.pointerId,
 	};
 	panel.setPointerCapture(e.pointerId);
@@ -267,12 +330,12 @@ document.addEventListener("pointerdown", (e) => {
 
 document.addEventListener("pointermove", (e) => {
 	if (!drag) return;
-	const c = S.layout.panels[drag.id];
+	const c = rectOf(drag.id); // working copy of the active rect, written back with setRect
 	const dx = e.clientX - drag.sx;
 	const dy = e.clientY - drag.sy;
 	const useSnap = S.layout.snap && !e.altKey;
 	const t = useSnap ? snapTargets(drag.id) : { xs: [], ys: [] };
-	const [mw, mh] = PANELS[drag.id].min;
+	const [mw, mh] = minOf(drag.id);
 	const lines = { xs: [], ys: [] };
 
 	if (!drag.edge) {
@@ -308,6 +371,7 @@ document.addEventListener("pointermove", (e) => {
 			c.h = clamp(bottom - c.y, mh, innerHeight - c.y);
 		}
 	}
+	setRect(drag.id, c);
 	drawGuides(lines);
 	applyPanel(drag.id);
 	positionPopover();
@@ -325,13 +389,14 @@ document.addEventListener("keydown", (e) => {
 	if (e.key === "Escape") return api.setEdit(false);
 	if (!S.selected || e.target.matches("input[type=text], input[type=search]")) return;
 	const step = e.shiftKey ? 10 : 1;
-	const c = S.layout.panels[S.selected];
+	const c = rectOf(S.selected);
 	const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
 	const m = moves[e.key];
 	if (!m) return;
 	e.preventDefault();
 	c.x = clamp(c.x + m[0], 0, innerWidth - c.w);
 	c.y = clamp(c.y + m[1], 0, innerHeight - c.h);
+	setRect(S.selected, c);
 	applyPanel(S.selected);
 	positionPopover();
 	saveLayout();
@@ -355,6 +420,8 @@ function showPopover() {
 	$("#pop-scale").value = Math.round((c.scale ?? 1) * 100);
 	$("#pop-autohide-row").hidden = id !== "results";
 	$("#pop-autohide").checked = !!c.autoHide;
+	$("#pop-compact-row").hidden = id !== "nowplaying";
+	$("#pop-compact").checked = !!c.compact;
 	updatePopOutputs();
 	pop.hidden = false;
 	positionPopover();
@@ -368,7 +435,7 @@ function updatePopOutputs() {
 
 function positionPopover() {
 	if (pop.hidden || !S.selected) return;
-	const c = S.layout.panels[S.selected];
+	const c = rectOf(S.selected);
 	const pw = pop.offsetWidth;
 	const ph = pop.offsetHeight;
 	let x = c.x + c.w + 12;
@@ -392,6 +459,7 @@ function bindPopover() {
 	$("#pop-hidden").addEventListener("input", upd((c) => (c.hiddenAlpha = $("#pop-hidden").value / 100)));
 	$("#pop-scale").addEventListener("input", upd((c) => (c.scale = $("#pop-scale").value / 100)));
 	$("#pop-autohide").addEventListener("change", upd((c) => (c.autoHide = $("#pop-autohide").checked)));
+	$("#pop-compact").addEventListener("change", () => setCompact($("#pop-compact").checked));
 	$("#pop-reset").addEventListener("click", () => {
 		if (!S.selected) return;
 		S.layout.panels[S.selected] = defaultPanel(S.selected);
@@ -474,6 +542,21 @@ function buildNowPlaying() {
 					</div>
 				</div>
 			</div>
+		</div>
+		<button class="icon-btn np-collapse" data-act="collapse" title="Compact view">${ICON.collapse}</button>
+		<div class="npc">
+			<img class="npc-art" src="" alt="" />
+			<div class="npc-text">
+				<div class="npc-title">Waiting for Spotify…</div>
+				<div class="npc-artist"></div>
+			</div>
+			<div class="npc-controls">
+				<button class="icon-btn" data-act="prev" title="Previous">${ICON.prev}</button>
+				<button class="icon-btn big" data-act="togglePlay" title="Play / pause">${ICON.play}</button>
+				<button class="icon-btn" data-act="next" title="Next">${ICON.next}</button>
+				<button class="icon-btn npc-expand" data-act="expand" title="Full view">${ICON.expand}</button>
+			</div>
+			<div class="npc-progress"><div class="npc-fill"></div></div>
 		</div>`;
 	Object.assign(np, {
 		art: $(".np-art", body),
@@ -489,12 +572,18 @@ function buildNowPlaying() {
 		like: $('[data-act="toggleLike"]', body),
 		mute: $('[data-act="mute"]', body),
 		vol: $(".vol input", body),
+		plays: body.querySelectorAll('[data-act="togglePlay"]'),
+		cArt: $(".npc-art", body),
+		cTitle: $(".npc-title", body),
+		cArtist: $(".npc-artist", body),
+		cFill: $(".npc-fill", body),
 	});
 
 	body.addEventListener("click", (e) => {
 		const b = e.target.closest("[data-act]");
 		if (!b || S.edit) return;
 		const act = b.dataset.act;
+		if (act === "collapse" || act === "expand") return setCompact(act === "collapse");
 		if (act === "mute") {
 			const v = S.player?.volume ?? 1;
 			if (v > 0) np.lastVol = v;
@@ -539,29 +628,36 @@ function currentPosition() {
 	return p.isPlaying ? Math.min(p.duration || Infinity, base + (Date.now() - (p.at || Date.now()))) : base;
 }
 
+// Title, artist and art go to both the full and the compact view.
+function setTrackInfo(title, artist, image) {
+	np.title.textContent = np.cTitle.textContent = title;
+	np.title.title = np.cTitle.title = title;
+	np.artist.textContent = np.cArtist.textContent = artist;
+	for (const img of [np.art, np.cArt]) {
+		if (img.dataset.src === image) continue;
+		img.dataset.src = image;
+		img.src = image;
+	}
+}
+
+function setPlayIcons(playing) {
+	np.plays.forEach((b) => (b.innerHTML = playing ? ICON.pause : ICON.play));
+}
+
 function renderPlayer() {
 	const p = S.player;
 	if (!S.connected) {
-		np.title.textContent = "Waiting for Spotify…";
-		np.artist.textContent = "Open Spotify with the Overlay Bridge extension";
-		np.art.src = "";
-		np.play.innerHTML = ICON.play;
+		setTrackInfo("Waiting for Spotify…", "Open Spotify with the Mercify extension", "");
+		setPlayIcons(false);
 		return;
 	}
 	if (!p || p.empty) {
-		np.title.textContent = "Nothing playing";
-		np.artist.textContent = "Pick something from a playlist or search";
-		np.art.src = "";
+		setTrackInfo("Nothing playing", "Pick something from a playlist or search", "");
+		setPlayIcons(false);
 		return;
 	}
-	np.title.textContent = p.name;
-	np.title.title = p.name;
-	np.artist.textContent = (p.artists || []).join(", ");
-	if (np.art.dataset.src !== (p.image || "")) {
-		np.art.dataset.src = p.image || "";
-		np.art.src = p.image || "";
-	}
-	np.play.innerHTML = p.isPlaying ? ICON.pause : ICON.play;
+	setTrackInfo(p.name, (p.artists || []).join(", "), p.image || "");
+	setPlayIcons(p.isPlaying);
 	np.shuffle.classList.toggle("on", !!p.shuffle);
 	np.repeat.classList.toggle("on", p.repeat > 0);
 	np.repeat.innerHTML = p.repeat === 2 ? ICON.repeatOne : ICON.repeat;
@@ -577,7 +673,9 @@ function tick() {
 	if (S.player && !S.player.empty && S.connected) {
 		const pos = currentPosition();
 		np.cur.textContent = fmt(pos);
-		np.fill.style.width = (S.player.duration ? (pos / S.player.duration) * 100 : 0) + "%";
+		const pct = (S.player.duration ? (pos / S.player.duration) * 100 : 0) + "%";
+		np.fill.style.width = pct;
+		np.cFill.style.width = pct;
 	}
 	requestAnimationFrame(tick);
 }
@@ -605,6 +703,7 @@ function trackRow(t, { index = null, contextUri = null, showIndex = false } = {}
 			return;
 		}
 		fire("playTrack", { uri: t.uri, contextUri, uid: t.uid ?? null, index });
+		if (document.activeElement?.matches?.('input[type="text"]')) api.releaseFocus();
 	});
 	if (S.player?.uri === t.uri) r.classList.add("playing");
 	return r;
@@ -806,11 +905,11 @@ function buildPlaylist() {
 		if (S.edit) return;
 		openPicker();
 	});
-	$(".picker .icon-btn", body).addEventListener("click", () => (pl.picker.hidden = true));
+	$(".picker .icon-btn", body).addEventListener("click", () => closePicker());
 	pl.filter.addEventListener("input", renderPicker);
 	pl.filter.addEventListener("keydown", (e) => {
 		if (e.key === "Escape") {
-			pl.picker.hidden = true;
+			closePicker();
 			e.stopPropagation();
 		} else if (e.key === "Enter") {
 			pl.pickList.querySelector(".row")?.click();
@@ -818,11 +917,16 @@ function buildPlaylist() {
 	});
 }
 
+function closePicker() {
+	pl.picker.hidden = true;
+	if (document.activeElement === pl.filter) api.releaseFocus();
+}
+
 async function openPicker() {
 	pl.picker.hidden = false;
 	pl.filter.value = "";
 	renderPicker();
-	pl.filter.focus();
+	focusInput(pl.filter);
 	if (S.connected) {
 		try {
 			S.playlists = await cmd("playlists");
@@ -849,7 +953,7 @@ function renderPicker() {
 		const row = el("div", "row", `${art}<div class="row-text"><div class="row-title">${esc(p.name)}</div>${p.owner ? `<div class="row-sub">${esc(p.owner)}</div>` : ""}</div>`);
 		if (S.playlist?.uri === p.uri) row.classList.add("playing");
 		row.addEventListener("click", () => {
-			pl.picker.hidden = true;
+			closePicker();
 			openPlaylist(p.uri, p);
 		});
 		pl.pickList.append(row);
@@ -967,7 +1071,7 @@ api.onToast(({ text, kind }) => toast(esc(text), kind || "", 5000));
 
 window.addEventListener("resize", () => {
 	if (!S.layout) return;
-	for (const [id, c] of Object.entries(S.layout.panels)) clampPanel(c, id);
+	for (const id of Object.keys(S.layout.panels)) clampPanel(id);
 	applyAll();
 });
 
@@ -978,7 +1082,7 @@ window.addEventListener("resize", () => {
 	const base = defaultLayout();
 	S.layout = saved && saved.version === 1 ? { ...base, ...saved, panels: { ...base.panels } } : base;
 	if (saved?.panels) for (const id of Object.keys(PANELS)) if (saved.panels[id]) S.layout.panels[id] = { ...base.panels[id], ...saved.panels[id] };
-	for (const [id, c] of Object.entries(S.layout.panels)) clampPanel(c, id);
+	for (const id of Object.keys(S.layout.panels)) clampPanel(id);
 	$("#snap-toggle").checked = !!S.layout.snap;
 
 	buildNowPlaying();

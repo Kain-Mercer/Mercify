@@ -3,3 +3,4 @@ overlay/dist/
 *.log
 .DS_Store
 Thumbs.db
+dev-app-update.yml

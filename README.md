@@ -10,7 +10,7 @@
 
 Mercify puts small, see-through Spotify panels on top of your game, a bit like the Discord overlay:
 
-- **Now Playing:** album art, the song, a seek bar, and play/pause, skip, shuffle, repeat, like and volume buttons.
+- **Now Playing:** album art, the song, a seek bar, and play/pause, skip, shuffle, repeat, like and volume buttons. Shrink it to a small **compact** bar that you can still click while the rest of the overlay is hidden.
 - **Search:** type a song, artist or playlist and click a result to play it.
 - **Playlist:** browse any of your playlists or Liked Songs and click a song to play it.
 
@@ -39,7 +39,7 @@ You'll need:
    Some steps open a separate window that asks you questions. Answer them, and when that window closes the checklist updates. When Spotify, Spicetify and the Mercify extension all show a green dot, you're done. (The SpotX dot always stays grey, because Mercify can't tell whether SpotX is installed.)
 4. Start your game. Your Spotify panels appear on top of it.
 
-Prefer not to install anything? Download **`Mercify-portable`** instead. It runs straight from the file, but starts a little slower.
+Prefer not to install anything? Download **`Mercify-portable`** instead. It runs straight from the file, but starts a little slower and can't update itself (see [Updates](#updates)).
 
 ## Using Mercify
 
@@ -67,6 +67,14 @@ Press `Ctrl` + `Shift` + `` ` `` to enter Edit Mode. It works much like World of
 
 Press `Esc` or **Done** when you're finished. Your layout saves automatically.
 
+### Compact Now Playing
+
+Hover over the Now Playing panel and click the small arrows in its top-right corner to shrink it into a compact bar showing the song and the previous, play/pause and next buttons. Click the arrows on the compact bar to make it full size again. It shrinks and grows in place, towards the nearest corner of your screen. You can also switch it with **Compact view** in Edit Mode, and move and resize the compact bar there like any other panel.
+
+When you hide the overlay with `Ctrl` + `` ` ``, the compact bar stays on screen at its "hidden" see-through level and **still works**: you can pause or skip without bringing everything back. It brightens while your mouse is over it. (To hide it completely too, set its *Opacity when hidden* to 0% in Edit Mode.)
+
+Clicking Mercify's buttons doesn't take your keyboard away from the game, so you can keep moving right after you skip a song. Only typing in a search box does, and pressing `Enter` or `Esc`, or picking a song, gives the keyboard straight back.
+
 ### Using it with other games
 
 Mercify shows up over World of Warcraft out of the box. To use it with another game:
@@ -84,6 +92,15 @@ Open **Settings** from the tray icon to:
 - Start Mercify automatically when Windows starts
 - Open Spotify automatically when Mercify starts
 - Re-run any setup step if something stops working
+
+## Updates
+
+Mercify keeps itself up to date. A few times a day it checks for a new version, downloads it quietly in the background, and installs it the next time Mercify closes. You'll get a Windows notification when an update is ready. If you don't want to wait, open **Settings** and click **Restart and update**, or choose **Restart to update** from the tray icon.
+
+The **Updates** section in Settings shows which version you have and lets you check for a new one.
+
+- **Upgrading from version 1.2.0 or earlier?** Those versions can't update themselves, so download and run the newest `Mercify-Setup` from the [Releases page](https://github.com/Kain-Mercer/Mercify/releases) one last time. Your layout and settings are kept. From then on, updates are automatic.
+- **Using the portable version?** It can't replace itself while it's running. Instead, Settings tells you when a new version is out and gives you a **Download** button. Replace your old file with the new one.
 
 ## Troubleshooting
 

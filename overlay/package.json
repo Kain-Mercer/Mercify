@@ -1,7 +1,7 @@
 {
   "name": "mercify",
   "productName": "Mercify",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Mercify: a Discord-style in-game overlay for the Spotify desktop client (SpotX + Spicetify).",
   "main": "main.js",
   "private": true,
@@ -11,6 +11,7 @@
     "dist": "electron-builder --win nsis portable --x64 --publish never"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "ws": "^8.22.0"
   },
   "devDependencies": {
@@ -29,6 +30,7 @@
       "preload-settings.js",
       "foreground.js",
       "setup.js",
+      "updater.js",
       "renderer/**",
       "settings/**",
       "assets/**",
@@ -65,7 +67,12 @@
     "portable": {
       "artifactName": "Mercify-${version}-portable.${ext}"
     },
-    "publish": null
+    "publish": {
+      "provider": "github",
+      "owner": "Kain-Mercer",
+      "repo": "Mercify",
+      "releaseType": "release"
+    }
   },
   "author": "Kain-Mercer",
   "repository": {

@@ -23,8 +23,67 @@ function setRow(step, state, sub, button) {
 	}
 }
 
+function renderUpdate(u) {
+	if (!u) return;
+	$("#update-version").textContent = `Version ${u.version}`;
+	const dot = $("#update-dot");
+	const btn = $("#update-check");
+	const text = $("#update-status");
+	const banner = $("#update-banner");
+	banner.hidden = true;
+	btn.hidden = false;
+	btn.disabled = false;
+	btn.textContent = "Check now";
+	switch (u.status) {
+		case "off":
+			dot.className = "dot neutral";
+			text.textContent = "Updates are off when running from source.";
+			btn.hidden = true;
+			break;
+		case "idle":
+		case "checking":
+			dot.className = "dot neutral";
+			text.textContent = "Checking for updates…";
+			btn.disabled = true;
+			break;
+		case "latest":
+			dot.className = "dot ok";
+			text.textContent = "You're on the latest version.";
+			break;
+		case "downloading":
+			dot.className = "dot warn";
+			text.textContent = `Downloading version ${u.newVersion}… ${u.percent || 0}%`;
+			btn.disabled = true;
+			break;
+		case "ready":
+			dot.className = "dot ok";
+			text.textContent = `Version ${u.newVersion} is ready. It installs the next time Mercify closes.`;
+			btn.textContent = "Restart and update";
+			btn.dataset.install = "1";
+			$("#update-banner-text").textContent = `Mercify ${u.newVersion} is ready to install`;
+			$("#update-banner-btn").textContent = "Restart and update";
+			banner.hidden = false;
+			break;
+		case "available":
+			dot.className = "dot warn";
+			text.textContent = `Version ${u.newVersion} is available. This portable copy can't update itself, so download the new one and replace this file.`;
+			btn.textContent = "Download";
+			btn.dataset.install = "1";
+			$("#update-banner-text").textContent = `Mercify ${u.newVersion} is available`;
+			$("#update-banner-btn").textContent = "Download";
+			banner.hidden = false;
+			break;
+		case "error":
+			dot.className = "dot";
+			text.textContent = `Couldn't check for updates: ${u.error}`;
+			break;
+	}
+	if (u.status !== "ready" && u.status !== "available") delete btn.dataset.install;
+}
+
 function render(d) {
 	current = d;
+	renderUpdate(d.update);
 	const s = d.setup;
 
 	$("#conn").textContent = d.connected ? "Connected to Spotify" : "Waiting for Spotify";
@@ -130,6 +189,12 @@ $("#app-pick").addEventListener("click", async () => {
 	if (res.message) log(res.message);
 	render(res.state);
 });
+
+$("#update-check").addEventListener("click", async (e) => {
+	const install = !!e.currentTarget.dataset.install;
+	render(await S.action(install ? "installUpdate" : "checkUpdate"));
+});
+$("#update-banner-btn").addEventListener("click", async () => render(await S.action("installUpdate")));
 
 S.onLog(log);
 S.onChanged(render);

@@ -197,6 +197,14 @@ body.edit #edit-bar {
 body.hidden .panel {
 	pointer-events: none;
 }
+/* The compact Now Playing widget stays usable while the overlay is hidden,
+   and comes up to full opacity while the mouse is over it. */
+body.hidden .panel.live-hidden {
+	pointer-events: auto;
+}
+body.hidden .panel.live-hidden:hover {
+	opacity: var(--shown-alpha) !important;
+}
 body.edit .panel.off {
 	display: block;
 }
@@ -806,4 +814,139 @@ body.edit .rh {
 	opacity: 0.8;
 	user-select: text;
 	word-break: break-word;
+}
+
+/* ---------------------------------------------------------------- now playing: collapse + compact view */
+
+.np-collapse {
+	position: absolute;
+	top: 5px;
+	right: 5px;
+	width: 24px;
+	height: 24px;
+	opacity: 0;
+	transition: opacity 0.12s;
+	z-index: 2;
+}
+.np-collapse svg {
+	width: 12px;
+	height: 12px;
+}
+.panel:hover .np-collapse {
+	opacity: 1;
+}
+
+.npc {
+	display: none;
+	position: relative;
+	align-items: center;
+	gap: 9px;
+	height: 100%;
+	padding: 6px 6px 6px 6px;
+	min-width: 0;
+}
+.panel.compact {
+	border-radius: 10px;
+}
+.panel.compact .np,
+.panel.compact .np-collapse {
+	display: none;
+}
+.panel.compact .npc {
+	display: flex;
+}
+.npc-art {
+	height: 100%;
+	max-height: 46px;
+	aspect-ratio: 1;
+	border-radius: 6px;
+	object-fit: cover;
+	background: rgba(255, 255, 255, 0.06);
+	flex: none;
+}
+.npc-art[src=""] {
+	visibility: hidden;
+}
+.npc-text {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+.npc-title {
+	font-weight: 650;
+	font-size: 12.5px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.npc-artist {
+	font-size: 11px;
+	color: var(--text-dim);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.npc-controls {
+	display: flex;
+	align-items: center;
+	flex: none;
+}
+.npc .icon-btn {
+	width: 26px;
+	height: 26px;
+}
+.npc .icon-btn svg {
+	width: 13px;
+	height: 13px;
+}
+.npc .icon-btn.big {
+	width: 28px;
+	height: 28px;
+	margin: 0 2px;
+}
+.npc-expand {
+	opacity: 0;
+	transition: opacity 0.12s;
+}
+.panel:hover .npc-expand {
+	opacity: 1;
+}
+.npc-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 2px;
+	background: rgba(255, 255, 255, 0.08);
+}
+.npc-fill {
+	height: 100%;
+	width: 0;
+	background: var(--accent);
+}
+@container (max-width: 220px) {
+	.npc-text {
+		display: none;
+	}
+	.npc {
+		justify-content: center;
+	}
+}
+@container (max-height: 36px) {
+	.npc-art {
+		display: none;
+	}
+}
+
+#settings-pop .muted {
+	color: var(--text-faint);
+	font-size: 11px;
+}
+#pop-compact-row {
+	align-items: flex-start;
+}
+#pop-compact-row input {
+	margin-top: 2px;
 }
