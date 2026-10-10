@@ -2,15 +2,20 @@
 // overlay just stays visible.)
 //
 // Runs the small native helper bin/fgwatch.exe (source in native/fgwatch.c), which prints a
-// JSON line whenever the foreground window changes: {"pid":1234,"exe":"Wow.exe","title":"..."}
+// JSON line whenever the foreground window changes (and every 2 s):
+//   {"pid":1234,"hwnd":5678,"mon":<monitor handle>,"exe":"Wow.exe","title":"...",
+//    "anchor":{"hwnd":..,"alive":1,"iconic":0,"visible":1,"mon":..}}
+// "anchor" describes a window we asked about by writing "anchor <hwnd>" to the helper's stdin
+// (the game the overlay belongs to), so the overlay can stay up while you use another monitor.
 
 const { app } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
-let latest = null; // { pid, exe, title, at }
+let latest = null; // { pid, hwnd, mon, exe, title, anchor, at }
 let child = null;
+let anchorHwnd = 0;
 let started = false;
 let restarts = 0;
 
@@ -25,7 +30,9 @@ function start() {
 		setInterval(() => {
 			try {
 				const j = JSON.parse(fs.readFileSync(process.env.OVERLAY_DEBUG_FG_FILE, "utf8"));
-				latest = { pid: j.pid === "self" ? process.pid : j.pid, exe: j.exe || null, title: j.title || "", at: Date.now() };
+				// windows by handle, for the anchor: {"windows":{"111":{"alive":1,"iconic":0,"visible":1,"mon":2}}}
+				const w = anchorHwnd && j.windows ? j.windows[String(anchorHwnd)] : null;
+				latest = toInfo({ ...j, pid: j.pid === "self" ? process.pid : j.pid, anchor: anchorHwnd ? { hwnd: anchorHwnd, alive: 0, ...(w || {}) } : undefined });
 			} catch (_) {}
 		}, 100);
 		return;
@@ -38,7 +45,9 @@ function start() {
 	}
 	started = true;
 	// The helper exits by itself when this process ends (it watches our pid).
-	child = spawn(exe, [String(process.pid)], { windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
+	child = spawn(exe, [String(process.pid)], { windowsHide: true, stdio: ["pipe", "pipe", "ignore"] });
+	child.stdin.on("error", () => {}); // helper gone; the exit handler restarts it
+	if (anchorHwnd) sendAnchor();
 	let buf = "";
 	child.stdout.setEncoding("utf8");
 	child.stdout.on("data", (d) => {
@@ -66,7 +75,36 @@ function start() {
 	});
 }
 
-// { pid, exe, title } for the window in front, or null if unknown.
+function toInfo(j) {
+	const a = j.anchor && anchorHwnd && Number(j.anchor.hwnd) === anchorHwnd ? j.anchor : null;
+	return {
+		pid: j.pid,
+		hwnd: Number(j.hwnd) || 0,
+		mon: j.mon ?? null,
+		exe: j.exe || null,
+		title: j.title || "",
+		// the anchor is usable while it exists, is shown and isn't minimised
+		anchor: a ? { hwnd: anchorHwnd, mon: a.mon ?? null, up: !!a.alive && !!a.visible && !a.iconic } : null,
+		at: Date.now(),
+	};
+}
+
+function sendAnchor() {
+	try {
+		child?.stdin?.write(`anchor ${anchorHwnd}\n`);
+	} catch (_) {}
+}
+
+// Ask the helper to keep reporting on this window (0 to stop).
+function setAnchor(hwnd) {
+	hwnd = Number(hwnd) || 0;
+	if (hwnd === anchorHwnd) return;
+	anchorHwnd = hwnd;
+	if (latest) latest.anchor = null; // until the helper reports on the new one
+	sendAnchor();
+}
+
+// { pid, hwnd, mon, exe, title, anchor } for the window in front, or null if unknown.
 function getForeground() {
 	if (!latest || Date.now() - latest.at > 5000) return null; // helper stalled
 	return latest;
@@ -83,7 +121,7 @@ function stop() {
 	child = null;
 }
 
-module.exports = { start, stop, getForeground, supported };
+module.exports = { start, stop, getForeground, supported, setAnchor };
 
 // ------------------------------------------------------------------ hide / show another program's window
 // Used to send Spotify to the tray: the helper waits for the program's main window, hides it,

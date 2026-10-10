@@ -14,7 +14,8 @@ Technical notes for building and changing Mercify. Players don't need any of thi
 
 - The Spicetify extension runs inside Spotify and talks to the client's own player, library and search. It doesn't use the Spotify Web API, so there's no developer app, no Premium requirement and no 10-result search cap.
 - Mercify (Electron) runs the WebSocket server, draws the panels, and stays click-through everywhere except over a panel.
-- A tiny native helper, `fgwatch.exe`, reports which window is in front so Mercify can show only over chosen games. It exits by itself when Mercify quits. It also has two one-shot modes: `--hide <exe> <waitMs>` waits for that program's main window (visible, titled, unowned), hides it and prints `{"hidden":[hwnd,...]}`; `--show <hwnd>...` shows them again. Mercify uses these to send Spotify's window to the tray once the bridge first says hello (only within 2 minutes of Mercify starting, and only if `minimiseSpotify` is on), and for the tray's **Show Spotify window**.
+- A tiny native helper, `fgwatch.exe`, reports which window is in front so Mercify can show only over chosen games. It prints a JSON line on every change and every 2 s: `{"pid","hwnd","mon","exe","title"}`, where `mon` is the `MonitorFromWindow` handle. Writing `anchor <hwnd>` to its stdin adds `"anchor":{"hwnd","alive","iconic","visible","mon"}` for that window. It exits by itself when Mercify quits.
+- **Gate:** `tickGate()` in `main.js` (every 200 ms). A chosen app in front opens the gate and becomes the anchor (`foreground.setAnchor`). Another app in front closes it, unless `onlyShowOver.stayOnOtherMonitor` is on and the anchor is up (alive, visible, not minimised) on a different monitor from the window in front. Mercify's own windows and an unknown foreground leave the gate as it is. Gated hotkeys follow the game being in front (`gameInFront`), not the gate, so they're released while you use the other monitor. To test off Windows, `OVERLAY_DEBUG_FG_FILE` takes the same JSON plus `"windows":{"<hwnd>":{"alive","iconic","visible","mon"}}` for the anchor; `OVERLAY_DEBUG_STATE_FILE` reports `gateWhy` (`game`, `other-monitor`, `other-app`, ...). It also has two one-shot modes: `--hide <exe> <waitMs>` waits for that program's main window (visible, titled, unowned), hides it and prints `{"hidden":[hwnd,...]}`; `--show <hwnd>...` shows them again. Mercify uses these to send Spotify's window to the tray once the bridge first says hello (only within 2 minutes of Mercify starting, and only if `minimiseSpotify` is on), and for the tray's **Show Spotify window**.
 - **Launch behaviour:** opened by the user, Mercify shows Settings. Started at Windows login it's launched with `--autostart` (registered via `setLoginItemSettings`) and stays in the tray unless setup needs attention. Spotify is started with its own `--minimized` flag.
 
 ## Building
@@ -68,7 +69,7 @@ The helper is rebuilt with MinGW (`x86_64-w64-mingw32-gcc -O2 -municode -static 
 | Key | Meaning |
 |---|---|
 | `hotkeys` | `toggle`, `edit`, `search`, plus optional `playPause`, `next`, `prev`, in Electron accelerator syntax (`"Alt+F9"`, `"Control+Shift+P"`). Restart after editing. |
-| `onlyShowOver` | `enabled`, `apps` (program names, case-insensitive) and `titles` (exact window titles). |
+| `onlyShowOver` | `enabled`, `apps` (program names, case-insensitive), `titles` (exact window titles) and `stayOnOtherMonitor` (keep showing while you use a window on another monitor, default `true`). |
 | `hotkeysOnlyOverApps` | Release the gated hotkeys when no listed app is in front. The Edit Mode hotkey is always registered. |
 | `launchSpotify` | Start Spotify with Mercify. |
 | `minimiseSpotify` | Hide Spotify's window to the tray when Mercify opens. |

@@ -1,7 +1,9 @@
 // fgwatch: tiny helper that reports which window is in front.
 //
-// Prints one JSON line to stdout whenever the foreground window changes (and a
-// heartbeat every 2 s):  {"pid":1234,"exe":"Wow.exe","title":"World of Warcraft"}
+// Prints one JSON line to stdout whenever the foreground window changes (and a heartbeat
+// every 2 s): {"pid":1234,"hwnd":...,"mon":...,"exe":"Wow.exe","title":"World of Warcraft"}
+// plus, once told which window is the game ("anchor <hwnd>" on stdin), its state:
+// "anchor":{"hwnd":...,"alive":1,"iconic":0,"visible":1,"mon":...}
 // Exits on its own when the parent process (the overlay) goes away.
 //
 // Build (from Linux):  x86_64-w64-mingw32-gcc -O2 -municode -static -s -o fgwatch.exe fgwatch.c
@@ -126,13 +128,38 @@ int wmain(int argc, wchar_t **argv) {
 		if (ppid) parent = OpenProcess(SYNCHRONIZE, FALSE, ppid);
 	}
 
-	HWND last_hwnd = (HWND)-1;
-	DWORD last_pid = 0;
-	wchar_t last_title[512] = L"";
+	// The overlay can tell us which window is "the game" by writing "anchor <hwnd>\n" to our
+	// stdin. We then report whether it still exists, whether it's minimised, and which monitor
+	// it's on, so the overlay can stay up while you use another monitor.
+	HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+	char inbuf[256];
+	size_t inlen = 0;
+	HWND anchor = NULL;
+
+	char last_line[8192] = "";
 	DWORD last_emit = 0;
 
 	for (;;) {
 		if (parent && WaitForSingleObject(parent, 0) == WAIT_OBJECT_0) return 0;
+
+		// read any "anchor <hwnd>" lines without blocking
+		DWORD avail = 0;
+		if (in && in != INVALID_HANDLE_VALUE && PeekNamedPipe(in, NULL, 0, NULL, &avail, NULL) && avail > 0) {
+			DWORD got = 0;
+			if (ReadFile(in, inbuf + inlen, (DWORD)(sizeof(inbuf) - 1 - inlen), &got, NULL) && got > 0) {
+				inlen += got;
+				inbuf[inlen] = 0;
+				char *nl;
+				while ((nl = strchr(inbuf, '\n')) != NULL) {
+					*nl = 0;
+					if (strncmp(inbuf, "anchor ", 7) == 0) anchor = (HWND)(ULONG_PTR)_strtoui64(inbuf + 7, NULL, 10);
+					size_t rest = inlen - (size_t)(nl + 1 - inbuf);
+					memmove(inbuf, nl + 1, rest + 1);
+					inlen = rest;
+				}
+				if (inlen >= sizeof(inbuf) - 1) inlen = 0; // garbage: drop it
+			}
+		}
 
 		HWND hwnd = GetForegroundWindow();
 		DWORD pid = 0;
@@ -141,19 +168,27 @@ int wmain(int argc, wchar_t **argv) {
 			GetWindowThreadProcessId(hwnd, &pid);
 			GetWindowTextW(hwnd, title, 512);
 		}
+		unsigned long long mon = hwnd ? (unsigned long long)(ULONG_PTR)MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) : 0;
+
+		const wchar_t *exe = pid ? exe_for_pid(pid) : L"";
+		size_t o = (size_t)snprintf(out, sizeof(out), "{\"pid\":%lu,\"hwnd\":%llu,\"mon\":%llu,\"exe\":", (unsigned long)pid, (unsigned long long)(ULONG_PTR)hwnd, mon);
+		o += json_str(out + o, sizeof(out) - o - 200, exe);
+		o += (size_t)snprintf(out + o, sizeof(out) - o, ",\"title\":");
+		o += json_str(out + o, sizeof(out) - o - 200, title);
+		if (anchor) {
+			int alive = IsWindow(anchor) ? 1 : 0;
+			int iconic = alive && IsIconic(anchor) ? 1 : 0;
+			int visible = alive && IsWindowVisible(anchor) ? 1 : 0;
+			unsigned long long amon = alive ? (unsigned long long)(ULONG_PTR)MonitorFromWindow(anchor, MONITOR_DEFAULTTONEAREST) : 0;
+			o += (size_t)snprintf(out + o, sizeof(out) - o, ",\"anchor\":{\"hwnd\":%llu,\"alive\":%d,\"iconic\":%d,\"visible\":%d,\"mon\":%llu}",
+				(unsigned long long)(ULONG_PTR)anchor, alive, iconic, visible, amon);
+		}
+		o += (size_t)snprintf(out + o, sizeof(out) - o, "}\n");
 
 		DWORD now = GetTickCount();
-		if (hwnd != last_hwnd || pid != last_pid || wcscmp(title, last_title) != 0 || now - last_emit > 2000) {
-			const wchar_t *exe = pid ? exe_for_pid(pid) : L"";
-			size_t o = (size_t)snprintf(out, sizeof(out), "{\"pid\":%lu,\"exe\":", (unsigned long)pid);
-			o += json_str(out + o, sizeof(out) - o - 16, exe);
-			o += (size_t)snprintf(out + o, sizeof(out) - o, ",\"title\":");
-			o += json_str(out + o, sizeof(out) - o - 4, title);
-			o += (size_t)snprintf(out + o, sizeof(out) - o, "}\n");
+		if (strcmp(out, last_line) != 0 || now - last_emit > 2000) {
 			if (fwrite(out, 1, o, stdout) != o || fflush(stdout) != 0) return 0; // pipe closed: overlay is gone
-			last_hwnd = hwnd;
-			last_pid = pid;
-			wcscpy(last_title, title);
+			strncpy(last_line, out, sizeof(last_line) - 1);
 			last_emit = now;
 		}
 		Sleep(150);

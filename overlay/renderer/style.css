@@ -393,11 +393,34 @@ body.edit .rh {
 	margin-top: 2px;
 }
 .bar {
+	position: relative;
 	flex: 1;
-	height: 14px;
+	height: 16px; /* a bigger target than the 4px line you see */
 	display: flex;
 	align-items: center;
 	cursor: pointer;
+	touch-action: none;
+}
+.bar-thumb {
+	position: absolute;
+	top: 50%;
+	left: 0;
+	width: 12px;
+	height: 12px;
+	margin: -6px 0 0 -6px;
+	border-radius: 50%;
+	background: #fff;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+	opacity: 0;
+	transition: opacity 0.12s;
+	pointer-events: none;
+}
+.bar:hover .bar-thumb,
+.bar.dragging .bar-thumb {
+	opacity: 1;
+}
+.bar.dragging .bar-fill {
+	background: var(--accent);
 }
 .bar-track {
 	position: relative;
@@ -431,10 +454,12 @@ body.edit .rh {
 	gap: 2px;
 	width: 110px;
 }
-.vol input {
+.vol-bar {
+	flex: none;
 	width: 76px;
-	accent-color: var(--accent);
-	height: 4px;
+}
+.vol-bar .bar-fill {
+	background: var(--accent);
 }
 
 @container (max-width: 335px) {
@@ -1316,4 +1341,24 @@ body:not(.edit) .panel.passive {
 }
 body.edit .notice.sample {
 	display: block;
+}
+
+/* ---------------------------------------------------------------- scrolling titles */
+
+.mq-box {
+	text-overflow: clip !important;
+}
+.mq {
+	display: inline-block;
+	white-space: nowrap;
+	will-change: transform;
+}
+/* a long title fades out at the edge instead of "…", and fades at both edges while it scrolls */
+.mq-box.overflow {
+	-webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent);
+	mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent);
+}
+.mq-box.overflow.scrolling {
+	-webkit-mask-image: linear-gradient(90deg, transparent, #000 14px, #000 calc(100% - 14px), transparent);
+	mask-image: linear-gradient(90deg, transparent, #000 14px, #000 calc(100% - 14px), transparent);
 }

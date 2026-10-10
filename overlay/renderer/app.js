@@ -165,6 +165,7 @@ function setCompact(on) {
 	setRect("nowplaying", { x: right ? from.x + from.w - w : from.x, y: bottom ? from.y + from.h - h : from.y, w, h });
 	clampPanel("nowplaying");
 	applyPanel("nowplaying");
+	setTimeout(marqueeTitles, 300);
 	if (S.selected === "nowplaying") showPopover();
 	saveLayout();
 }
@@ -250,6 +251,7 @@ function setInteractive(on) {
 
 document.addEventListener("mousemove", (e) => {
 	if (S.edit) return;
+	if (S.dragging) return setInteractive(true);
 	const over = e.target.closest?.(".panel:not(.off)");
 	// While hidden, only the compact Now Playing widget takes clicks (others have pointer-events: none).
 	const usable = !!over && over.style.visibility !== "hidden" && (S.shown || over.classList.contains("live-hidden"));
@@ -278,7 +280,7 @@ document.addEventListener("click", (e) => {
 // Releasing the volume slider or a scrollbar counts too.
 document.addEventListener("pointerup", (e) => {
 	if (S.edit || !e.target.closest?.(".panel")) return;
-	if (e.target.matches?.('input[type="range"]') || e.target.closest?.(".scroll") === e.target) {
+	if (e.target.closest?.(".bar") || e.target.closest?.(".scroll") === e.target) {
 		clearTimeout(giveBackTimer);
 		giveBackTimer = setTimeout(() => {
 			if (!document.activeElement?.matches?.('input[type="text"]')) api.giveBackFocus();
@@ -612,11 +614,11 @@ function buildNowPlaying() {
 		<div class="np">
 			<img class="np-art" src="" alt="" />
 			<div class="np-main">
-				<div class="np-title">Waiting for Spotify…</div>
+				<div class="np-title mq-box"><span class="mq">Waiting for Spotify…</span></div>
 				<div class="np-artist">Open Spotify with the Overlay Bridge extension</div>
 				<div class="np-progress">
 					<span class="t-cur">0:00</span>
-					<div class="bar"><div class="bar-track"><div class="bar-fill"></div></div></div>
+					<div class="bar seek"><div class="bar-track"><div class="bar-fill"></div></div><div class="bar-thumb"></div></div>
 					<span class="t-dur">0:00</span>
 				</div>
 				<div class="np-controls">
@@ -629,7 +631,7 @@ function buildNowPlaying() {
 					<span class="spacer"></span>
 					<div class="vol">
 						<button class="icon-btn" data-act="mute" title="Mute">${ICON.volume}</button>
-						<input type="range" min="0" max="100" step="1" value="100" />
+						<div class="bar vol-bar" title="Volume (scroll to adjust)"><div class="bar-track"><div class="bar-fill"></div></div><div class="bar-thumb"></div></div>
 					</div>
 				</div>
 			</div>
@@ -639,7 +641,7 @@ function buildNowPlaying() {
 		<div class="npc">
 			<img class="npc-art" src="" alt="" />
 			<div class="npc-text">
-				<div class="npc-title">Waiting for Spotify…</div>
+				<div class="npc-title mq-box"><span class="mq">Waiting for Spotify…</span></div>
 				<div class="npc-artist"></div>
 			</div>
 			<div class="npc-controls">
@@ -652,25 +654,30 @@ function buildNowPlaying() {
 		</div>`;
 	Object.assign(np, {
 		art: $(".np-art", body),
-		title: $(".np-title", body),
+		title: $(".np-title .mq", body),
 		artist: $(".np-artist", body),
 		cur: $(".t-cur", body),
 		dur: $(".t-dur", body),
-		bar: $(".bar", body),
-		fill: $(".bar-fill", body),
+		bar: $(".bar.seek", body),
+		fill: $(".bar.seek .bar-fill", body),
+		seekThumb: $(".bar.seek .bar-thumb", body),
 		play: $('[data-act="togglePlay"]', body),
 		shuffle: $('[data-act="toggleShuffle"]', body),
 		repeat: $('[data-act="toggleRepeat"]', body),
 		like: $('[data-act="toggleLike"]', body),
 		mute: $('[data-act="mute"]', body),
-		vol: $(".vol input", body),
+		vol: $(".vol-bar", body),
+		volFill: $(".vol-bar .bar-fill", body),
+		volThumb: $(".vol-bar .bar-thumb", body),
 		plays: body.querySelectorAll('[data-act="togglePlay"]'),
 		cArt: $(".npc-art", body),
-		cTitle: $(".npc-title", body),
+		cTitle: $(".npc-title .mq", body),
 		cArtist: $(".npc-artist", body),
 		cFill: $(".npc-fill", body),
 		lobby: $(".np-lobby", body),
 	});
+	// hovering over the song info scrolls a long title again
+	for (const area of [$(".np-main", body), $(".npc-text", body)]) area.addEventListener("mouseenter", () => !S.edit && marquee(area.querySelector(".mq-box")));
 
 	body.addEventListener("click", (e) => {
 		const b = e.target.closest("[data-act]");
@@ -698,27 +705,109 @@ function buildNowPlaying() {
 		fire(act);
 	});
 
-	np.bar.addEventListener("click", (e) => {
-		if (S.edit || !S.player?.duration) return;
-		if (following()) return hostOnlyToast();
-		const r = np.bar.getBoundingClientRect();
-		const ms = ((e.clientX - r.left) / r.width) * S.player.duration;
-		S.player.position = ms;
-		S.player.at = Date.now();
-		fire("seek", { ms: Math.round(ms) });
+	// Song position: drag (or click) along the bar; it jumps when you let go.
+	makeSlider(np.bar, {
+		allowed: () => {
+			if (!S.player?.duration) return false;
+			if (following()) {
+				hostOnlyToast();
+				return false;
+			}
+			return true;
+		},
+		onMove: (f) => {
+			np.seekPreview = f * S.player.duration;
+			showSeek(np.seekPreview);
+		},
+		onDone: (f) => {
+			const ms = Math.round(f * S.player.duration);
+			np.seekPreview = null;
+			S.player.position = ms;
+			S.player.at = Date.now();
+			fire("seek", { ms });
+		},
+		onCancel: () => (np.seekPreview = null),
 	});
 
-	let volTimer = null;
-	np.vol.addEventListener("input", () => {
-		const level = np.vol.value / 100;
-		if (S.player) S.player.volume = level;
-		np.volDragging = true;
-		clearTimeout(volTimer);
-		volTimer = setTimeout(() => {
+	// Volume: changes live while you drag; Spotify's own updates can't snap it back mid-drag.
+	let lastSent = 0;
+	let sendTimer = null;
+	const sendVolume = (level, now) => {
+		clearTimeout(sendTimer);
+		const go = () => {
+			lastSent = Date.now();
 			fire("setVolume", { level });
-			np.volDragging = false;
-		}, 60);
+		};
+		if (now || Date.now() - lastSent > 90) go();
+		else sendTimer = setTimeout(go, 90);
+	};
+	const setVolumeUi = (level, now) => {
+		level = clamp(level, 0, 1);
+		if (S.player) S.player.volume = level;
+		np.volHoldUntil = Date.now() + 1500; // ignore Spotify's (older) volume for a moment
+		showVolume(level);
+		np.mute.innerHTML = level > 0 ? ICON.volume : ICON.mute;
+		sendVolume(level, now);
+	};
+	makeSlider(np.vol, {
+		onMove: (f) => setVolumeUi(f),
+		onDone: (f) => setVolumeUi(f, true),
 	});
+	// Mouse wheel over the volume control: 5% per notch.
+	$(".vol", body).addEventListener(
+		"wheel",
+		(e) => {
+			if (S.edit) return;
+			e.preventDefault();
+			const cur = S.player?.volume ?? 1;
+			setVolumeUi(cur + (e.deltaY < 0 ? 0.05 : -0.05));
+		},
+		{ passive: false }
+	);
+}
+
+// A draggable bar: press, drag (even outside the panel) and release.
+function makeSlider(el, { allowed = () => true, onMove, onDone, onCancel = () => {} }) {
+	let dragging = false;
+	const frac = (e) => {
+		const r = el.getBoundingClientRect();
+		return clamp((e.clientX - r.left) / r.width, 0, 1);
+	};
+	el.addEventListener("pointerdown", (e) => {
+		if (S.edit || e.button !== 0 || !allowed()) return;
+		dragging = true;
+		S.dragging = true;
+		try {
+			el.setPointerCapture(e.pointerId); // keep getting the drag even outside the bar
+		} catch (_) {}
+		el.classList.add("dragging");
+		onMove(frac(e));
+		e.preventDefault();
+	});
+	el.addEventListener("pointermove", (e) => dragging && onMove(frac(e)));
+	const end = (e, commit) => {
+		if (!dragging) return;
+		dragging = false;
+		S.dragging = false;
+		el.classList.remove("dragging");
+		if (commit) onDone(frac(e));
+		else onCancel();
+	};
+	el.addEventListener("pointerup", (e) => end(e, true));
+	el.addEventListener("pointercancel", (e) => end(e, false));
+}
+
+function showSeek(ms) {
+	const pct = (S.player?.duration ? clamp(ms / S.player.duration, 0, 1) * 100 : 0) + "%";
+	np.fill.style.width = pct;
+	np.seekThumb.style.left = pct;
+	np.cur.textContent = fmt(ms);
+}
+
+function showVolume(level) {
+	const pct = clamp(level, 0, 1) * 100 + "%";
+	np.volFill.style.width = pct;
+	np.volThumb.style.left = pct;
 }
 
 function currentPosition() {
@@ -728,10 +817,47 @@ function currentPosition() {
 	return p.isPlaying ? Math.min(p.duration || Infinity, base + (Date.now() - (p.at || Date.now()))) : base;
 }
 
+// ------------------------------------------------------------------ scrolling titles
+// A title too long for its space scrolls across once when the song starts, and again
+// whenever you hover over it.
+
+function marquee(box) {
+	const inner = box.firstElementChild;
+	if (!inner || box.clientWidth === 0) return; // not on screen (e.g. the other view)
+	const over = inner.scrollWidth - box.clientWidth;
+	box.classList.toggle("overflow", over > 2);
+	if (over <= 2 || box._anim?.playState === "running") return;
+	const travel = Math.max(800, (over / 55) * 1000); // about 55 px per second
+	const hold = 1000; // pause at the start and at the end
+	const back = 450; // quick slide back
+	const total = hold + travel + hold + back;
+	box.classList.add("scrolling");
+	box._anim = inner.animate(
+		[
+			{ transform: "translateX(0)", offset: 0 },
+			{ transform: "translateX(0)", offset: hold / total, easing: "ease-in-out" },
+			{ transform: `translateX(${-over}px)`, offset: (hold + travel) / total },
+			{ transform: `translateX(${-over}px)`, offset: (hold + travel + hold) / total, easing: "ease-in" },
+			{ transform: "translateX(0)", offset: 1 },
+		],
+		{ duration: total, easing: "linear" }
+	);
+	box._anim.onfinish = box._anim.oncancel = () => box.classList.remove("scrolling");
+}
+
+function marqueeTitles() {
+	document.querySelectorAll(".panel[data-id=nowplaying] .mq-box").forEach((b) => {
+		b._anim?.cancel();
+		marquee(b);
+	});
+}
+
 // Title, artist and art go to both the full and the compact view.
 function setTrackInfo(title, artist, image) {
+	const changed = np.title.textContent !== title;
 	np.title.textContent = np.cTitle.textContent = title;
-	np.title.title = np.cTitle.title = title;
+	np.title.parentElement.title = np.cTitle.parentElement.title = title;
+	if (changed) setTimeout(marqueeTitles, 700); // once per new song
 	np.artist.textContent = np.cArtist.textContent = artist;
 	for (const img of [np.art, np.cArt]) {
 		if (img.dataset.src === image) continue;
@@ -764,7 +890,7 @@ function renderPlayer() {
 	np.like.classList.toggle("on", !!p.liked);
 	np.like.innerHTML = p.liked ? ICON.heartFull : ICON.heart;
 	np.mute.innerHTML = p.volume > 0 ? ICON.volume : ICON.mute;
-	if (!np.volDragging) np.vol.value = Math.round((p.volume ?? 1) * 100);
+	if (!(np.volHoldUntil > Date.now())) showVolume(p.volume ?? 1);
 	np.dur.textContent = fmt(p.duration);
 	markPlayingRows();
 }
@@ -772,9 +898,12 @@ function renderPlayer() {
 function tick() {
 	if (S.player && !S.player.empty && S.connected) {
 		const pos = currentPosition();
-		np.cur.textContent = fmt(pos);
 		const pct = (S.player.duration ? (pos / S.player.duration) * 100 : 0) + "%";
-		np.fill.style.width = pct;
+		if (np.seekPreview == null) {
+			np.cur.textContent = fmt(pos);
+			np.fill.style.width = pct;
+			np.seekThumb.style.left = pct;
+		}
 		np.cFill.style.width = pct;
 	}
 	requestAnimationFrame(tick);

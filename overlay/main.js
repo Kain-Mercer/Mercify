@@ -32,6 +32,7 @@ const DEFAULT_CONFIG = {
 		enabled: true,
 		apps: ["Wow.exe", "WowClassic.exe", "Wow-64.exe", "WowB.exe", "WowT.exe", "Ascension.exe"],
 		titles: ["World of Warcraft"],
+		stayOnOtherMonitor: true, // keep showing while you use a window on another monitor
 	},
 	hotkeysOnlyOverApps: true, // toggle/search/media hotkeys are released when you're not in one of those apps
 	launchSpotify: true, // start Spotify when the overlay starts
@@ -264,20 +265,42 @@ function applyGate(open) {
 	}
 }
 
+let gameInFront = false; // a chosen app was the last window in front (ignoring our own windows)
+let gateWhy = "";
+
 function tickGate() {
 	if (!win || win.isDestroyed()) return;
 	const fg = foreground.supported() ? foreground.getForeground() : null;
 	const ours = fg && fg.pid === process.pid;
 
+	if (fg && !ours) {
+		gameInFront = matchesApp(fg);
+		// remember the game's window, so we can tell whether it's still up on its own monitor
+		if (gameInFront && fg.hwnd) foreground.setAnchor(fg.hwnd);
+	}
+
 	let open = true;
+	gateWhy = "off";
 	if (filterActive()) {
-		if (editMode || win.isFocused() || Date.now() < forceOpenUntil) open = true;
-		else if (settingsWin && !settingsWin.isDestroyed() && settingsWin.isFocused()) open = false;
-		else if (!fg || ours) open = gateOpen; // tray menu etc.: leave as is
-		else open = matchesApp(fg);
+		if (editMode || win.isFocused() || Date.now() < forceOpenUntil) [open, gateWhy] = [true, "overlay"];
+		else if (settingsWin && !settingsWin.isDestroyed() && settingsWin.isFocused()) [open, gateWhy] = [false, "settings"];
+		else if (!fg || ours) [open, gateWhy] = [gateOpen, "unchanged"]; // tray menu etc.: leave as is
+		else if (gameInFront) [open, gateWhy] = [true, "game"];
+		else if (onOtherMonitor(fg)) [open, gateWhy] = [true, "other-monitor"];
+		else [open, gateWhy] = [false, "other-app"];
 	}
 	applyGate(open);
-	setHotkeysActive(!filterActive() || !config.hotkeysOnlyOverApps || open);
+	// Hotkeys follow the game itself being in front, so they're yours again in other apps,
+	// even while the overlay stays up over the game on another monitor.
+	setHotkeysActive(!filterActive() || !config.hotkeysOnlyOverApps || gameInFront || editMode || win.isFocused());
+}
+
+// You alt-tabbed to a window on a different monitor while the game is still up (not
+// minimised or closed) on its own: keep showing over the game.
+function onOtherMonitor(fg) {
+	if (!config.onlyShowOver.stayOnOtherMonitor) return false;
+	const a = fg.anchor;
+	return !!(a && a.up && a.mon != null && fg.mon != null && a.mon !== fg.mon);
 }
 
 // ------------------------------------------------------------------ bridge (WebSocket server)
@@ -693,6 +716,7 @@ ipcMain.handle("settings:action", async (_e, name) => {
 
 ipcMain.handle("settings:set", async (_e, key, value) => {
 	if (key === "onlyShowOver.enabled") config.onlyShowOver.enabled = !!value;
+	else if (key === "onlyShowOver.stayOnOtherMonitor") config.onlyShowOver.stayOnOtherMonitor = !!value;
 	else if (key === "hotkeysOnlyOverApps") config.hotkeysOnlyOverApps = !!value;
 	else if (key === "launchSpotify") config.launchSpotify = !!value;
 	else if (key === "minimiseSpotify") config.minimiseSpotify = !!value;
@@ -855,7 +879,7 @@ app.whenReady().then(async () => {
 	setInterval(tickGate, 200);
 	if (process.env.OVERLAY_DEBUG_STATE_FILE) {
 		setInterval(() => {
-			const st = { gateOpen, visible: win.isVisible(), toggleHotkey: globalShortcut.isRegistered(config.hotkeys.toggle), editHotkey: globalShortcut.isRegistered(config.hotkeys.edit), edit: editMode, update: updater.state(), giveBacks };
+			const st = { gateOpen, visible: win.isVisible(), toggleHotkey: globalShortcut.isRegistered(config.hotkeys.toggle), editHotkey: globalShortcut.isRegistered(config.hotkeys.edit), edit: editMode, update: updater.state(), giveBacks, gateWhy, gameInFront };
 			fs.writeFileSync(process.env.OVERLAY_DEBUG_STATE_FILE, JSON.stringify(st));
 		}, 100);
 	}

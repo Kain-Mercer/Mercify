@@ -139,6 +139,8 @@ function render(d) {
 	only.titles.forEach((t) => add(t, "window title"));
 	if (!only.apps.length && !only.titles.length) chips.innerHTML = '<span class="muted">No apps yet: the overlay will stay hidden.</span>';
 
+	$("#other-monitor").checked = only.stayOnOtherMonitor !== false;
+	$("#other-monitor").disabled = !only.enabled;
 	$("#hotkeys-only").checked = d.hotkeysOnlyOverApps;
 	$("#start-windows").checked = d.startWithWindows;
 	$("#launch-spotify").checked = d.launchSpotify;
@@ -177,6 +179,7 @@ async function act(name, button) {
 document.querySelectorAll(".row button").forEach((b) => b.addEventListener("click", () => act(b.dataset.act, b)));
 
 $("#only-enabled").addEventListener("change", async (e) => render(await S.set("onlyShowOver.enabled", e.target.checked)));
+$("#other-monitor").addEventListener("change", async (e) => render(await S.set("onlyShowOver.stayOnOtherMonitor", e.target.checked)));
 $("#hotkeys-only").addEventListener("change", async (e) => render(await S.set("hotkeysOnlyOverApps", e.target.checked)));
 $("#start-windows").addEventListener("change", async (e) => render(await S.set("startWithWindows", e.target.checked)));
 $("#launch-spotify").addEventListener("change", async (e) => render(await S.set("launchSpotify", e.target.checked)));

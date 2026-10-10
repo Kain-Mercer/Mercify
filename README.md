@@ -10,12 +10,12 @@
 
 Mercify puts small, see-through Spotify panels on top of your game, a bit like the Discord overlay:
 
-- **Now Playing:** album art, the song, a seek bar, and play/pause, skip, shuffle, repeat, like and volume buttons. Shrink it to a small **compact** bar that you can still click while the rest of the overlay is hidden.
+- **Now Playing:** album art, the song, a seek bar, a volume slider, and play/pause, skip, shuffle, repeat and like buttons. Drag the seek bar or volume slider to where you want it, or scroll your mouse wheel over the volume. Song names too long to fit scroll by once when a new song starts, and again whenever you hover over them. Shrink it to a small **compact** bar that you can still click while the rest of the overlay is hidden.
 - **Search:** type a song, artist or playlist and click a result to play it.
 - **Playlist:** browse any of your playlists or Liked Songs and click a song to play it.
 - **Listening lobbies:** share a code with friends and listen to the same music at the same time, each through your own Spotify, with a shared session playlist everyone can add to.
 
-You choose where each panel goes and how see-through it is. Mercify only appears while you're in your game (World of Warcraft by default), and hides itself when you switch to anything else.
+You choose where each panel goes and how see-through it is. Mercify only appears while you're in your game (World of Warcraft by default), and hides itself when you switch to anything else on the same screen. If you have more than one monitor, it stays up over your game while you use something on another monitor.
 
 It works with a **free** Spotify account.
 
@@ -89,6 +89,8 @@ Mercify shows up over World of Warcraft out of the box. To use it with another g
 3. Within 5 seconds, click into your game. It's added to the list.
 
 If you'd rather Mercify always stayed visible, switch **Only show over these apps** off.
+
+**More than one monitor?** When you click over to something on another monitor (a browser, Discord), Mercify stays up over your game, as long as the game is still open on its own screen. It hides if you minimise or close the game, or put another window in front of it on the same screen. Your shortcuts go back to normal in the other program until you click back into the game. Untick **Stay up while I use another monitor** in Settings if you'd rather it hid.
 
 ### Other settings
 
