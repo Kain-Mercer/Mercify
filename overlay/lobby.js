@@ -19,14 +19,9 @@ const crypto = require("crypto");
 const { EventEmitter } = require("events");
 const mqtt = require("mqtt");
 
-// Free public MQTT relays. mqtt.eclipseprojects.io uses port 443, which gets through strict
-// school/work firewalls that block the others' ports.
-const DEFAULT_RELAYS = [
-	"wss://broker.emqx.io:8084/mqtt",
-	"wss://mqtt.eclipseprojects.io:443/mqtt",
-	"wss://test.mosquitto.org:8081/mqtt",
-	"wss://broker.hivemq.com:8884/mqtt",
-];
+// Free public MQTT relays, all checked by the "Check lobby relays" workflow.
+// (mqtt.eclipseprojects.io on port 443 was tried and never connected.)
+const DEFAULT_RELAYS = ["wss://broker.emqx.io:8084/mqtt", "wss://test.mosquitto.org:8081/mqtt", "wss://broker.hivemq.com:8884/mqtt"];
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I/L
 const MIN_CODE = 4;
