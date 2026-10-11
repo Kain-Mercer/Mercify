@@ -224,7 +224,21 @@ function releaseFocus() {
 	if (!win || win.isDestroyed()) return;
 	setInteractive(false);
 	sendToRenderer("interactive-reset");
-	if (win.isFocused()) win.blur();
+	giveFocusBack();
+}
+
+// Hand the keyboard back to the window that had it before the overlay (normally the game).
+// blur() alone activates whatever visible window is next below the overlay, which for an
+// always-on-top window is often another always-on-top one, like the taskbar: the overlay then
+// hid itself as if you'd switched apps (single-monitor reports in 1.7.0). So ask the helper to
+// activate the window we saw in front last, and only fall back to blur() if that didn't work.
+function giveFocusBack() {
+	if (!win || win.isDestroyed() || !win.isFocused()) return;
+	if (lastOtherHwnd && foreground.activate(lastOtherHwnd)) {
+		setTimeout(() => {
+			if (win && !win.isDestroyed() && win.isFocused()) win.blur();
+		}, 300);
+	} else win.blur();
 }
 
 // Let the overlay take keyboard input (typing in a search box, Edit Mode arrow keys).
@@ -266,14 +280,19 @@ function applyGate(open) {
 }
 
 let gameInFront = false; // a chosen app was the last window in front (ignoring our own windows)
+let lastOtherHwnd = 0; // the last window in front that wasn't ours: where the keyboard goes back to
+// The taskbar and Start menu can briefly take the foreground (and did, after a click on the
+// overlay): treat them like our own windows and leave the overlay as it is.
+const SHELL_CLASSES = new Set(["Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Windows.UI.Core.CoreWindow"]);
 let gateWhy = "";
 
 function tickGate() {
 	if (!win || win.isDestroyed()) return;
 	const fg = foreground.supported() ? foreground.getForeground() : null;
-	const ours = fg && fg.pid === process.pid;
+	const ours = fg && (fg.pid === process.pid || SHELL_CLASSES.has(fg.cls));
 
 	if (fg && !ours) {
+		if (fg.hwnd) lastOtherHwnd = fg.hwnd;
 		gameInFront = matchesApp(fg);
 		// remember the game's window, so we can tell whether it's still up on its own monitor
 		if (gameInFront && fg.hwnd) foreground.setAnchor(fg.hwnd);
@@ -550,7 +569,7 @@ let giveBacks = 0; // counted for the debug state file
 ipcMain.on("give-back-focus", () => {
 	giveBacks++;
 	if (!win || win.isDestroyed() || editMode) return;
-	if (win.isFocused()) win.blur();
+	giveFocusBack();
 });
 
 ipcMain.on("release-focus", () => {

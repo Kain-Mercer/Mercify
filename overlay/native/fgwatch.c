@@ -2,8 +2,9 @@
 //
 // Prints one JSON line to stdout whenever the foreground window changes (and a heartbeat
 // every 2 s): {"pid":1234,"hwnd":...,"mon":...,"exe":"Wow.exe","title":"World of Warcraft"}
-// plus, once told which window is the game ("anchor <hwnd>" on stdin), its state:
+// (plus "cls", the window class), and once told which window is the game ("anchor <hwnd>" on stdin), its state:
 // "anchor":{"hwnd":...,"alive":1,"iconic":0,"visible":1,"mon":...}
+// "activate <hwnd>" on stdin brings that window back to the front.
 // Exits on its own when the parent process (the overlay) goes away.
 //
 // Build (from Linux):  x86_64-w64-mingw32-gcc -O2 -municode -static -s -o fgwatch.exe fgwatch.c
@@ -118,6 +119,22 @@ static int show_windows(int argc, wchar_t **argv) {
 	return 0;
 }
 
+// Make `h` the foreground window again (handing the keyboard back to the game after a click on
+// the overlay). Allowed because Mercify, which started us, is the foreground process at that
+// moment; if Windows refuses anyway, attach to the foreground thread's input and retry.
+static void activate(HWND h) {
+	if (!h || !IsWindow(h) || IsIconic(h) || !IsWindowVisible(h)) return; // never restore a minimised game
+	HWND fg = GetForegroundWindow();
+	if (fg == h) return;
+	if (SetForegroundWindow(h) && GetForegroundWindow() == h) return;
+	DWORD fg_thread = fg ? GetWindowThreadProcessId(fg, NULL) : 0;
+	DWORD me = GetCurrentThreadId();
+	if (fg_thread && fg_thread != me && AttachThreadInput(me, fg_thread, TRUE)) {
+		SetForegroundWindow(h);
+		AttachThreadInput(me, fg_thread, FALSE);
+	}
+}
+
 int wmain(int argc, wchar_t **argv) {
 	if (argc >= 3 && wcscmp(argv[1], L"--hide") == 0) return hide_windows(argv[2], argc >= 4 ? (DWORD)_wtoi(argv[3]) : 0);
 	if (argc >= 2 && wcscmp(argv[1], L"--show") == 0) return show_windows(argc, argv);
@@ -153,6 +170,7 @@ int wmain(int argc, wchar_t **argv) {
 				while ((nl = strchr(inbuf, '\n')) != NULL) {
 					*nl = 0;
 					if (strncmp(inbuf, "anchor ", 7) == 0) anchor = (HWND)(ULONG_PTR)_strtoui64(inbuf + 7, NULL, 10);
+					else if (strncmp(inbuf, "activate ", 9) == 0) activate((HWND)(ULONG_PTR)_strtoui64(inbuf + 9, NULL, 10));
 					size_t rest = inlen - (size_t)(nl + 1 - inbuf);
 					memmove(inbuf, nl + 1, rest + 1);
 					inlen = rest;
@@ -164,9 +182,11 @@ int wmain(int argc, wchar_t **argv) {
 		HWND hwnd = GetForegroundWindow();
 		DWORD pid = 0;
 		wchar_t title[512] = L"";
+		wchar_t cls[128] = L"";
 		if (hwnd) {
 			GetWindowThreadProcessId(hwnd, &pid);
 			GetWindowTextW(hwnd, title, 512);
+			GetClassNameW(hwnd, cls, 128);
 		}
 		unsigned long long mon = hwnd ? (unsigned long long)(ULONG_PTR)MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) : 0;
 
@@ -175,6 +195,8 @@ int wmain(int argc, wchar_t **argv) {
 		o += json_str(out + o, sizeof(out) - o - 200, exe);
 		o += (size_t)snprintf(out + o, sizeof(out) - o, ",\"title\":");
 		o += json_str(out + o, sizeof(out) - o - 200, title);
+		o += (size_t)snprintf(out + o, sizeof(out) - o, ",\"cls\":");
+		o += json_str(out + o, sizeof(out) - o - 200, cls);
 		if (anchor) {
 			int alive = IsWindow(anchor) ? 1 : 0;
 			int iconic = alive && IsIconic(anchor) ? 1 : 0;

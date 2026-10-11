@@ -82,6 +82,7 @@ function toInfo(j) {
 		mon: j.mon ?? null,
 		exe: j.exe || null,
 		title: j.title || "",
+		cls: j.cls || "",
 		// the anchor is usable while it exists, is shown and isn't minimised
 		anchor: a ? { hwnd: anchorHwnd, mon: a.mon ?? null, up: !!a.alive && !!a.visible && !a.iconic } : null,
 		at: Date.now(),
@@ -92,6 +93,19 @@ function sendAnchor() {
 	try {
 		child?.stdin?.write(`anchor ${anchorHwnd}\n`);
 	} catch (_) {}
+}
+
+// Bring a window back to the front (hand the keyboard back to the game). False if the helper
+// isn't running, so the caller can fall back to something else.
+function activate(hwnd) {
+	hwnd = Number(hwnd) || 0;
+	if (!hwnd || !child?.stdin?.writable) return false;
+	try {
+		child.stdin.write(`activate ${hwnd}\n`);
+		return true;
+	} catch (_) {
+		return false;
+	}
 }
 
 // Ask the helper to keep reporting on this window (0 to stop).
@@ -120,7 +134,7 @@ function stop() {
 	child = null;
 }
 
-module.exports = { start, stop, getForeground, supported, setAnchor, _toInfo: toInfo };
+module.exports = { start, stop, getForeground, supported, setAnchor, activate, _toInfo: toInfo };
 
 // ------------------------------------------------------------------ hide / show another program's window
 // Used to send Spotify to the tray: the helper waits for the program's main window, hides it,

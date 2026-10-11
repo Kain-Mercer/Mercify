@@ -14,7 +14,9 @@ const fsx = require("fs"); const ex = fsx.existsSync; fsx.existsSync = (p) => (S
 const fg = require("../foreground");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const WOW = { pid: 222, hwnd: 900, exe: "Wow.exe", title: "World of Warcraft" }, CHROME = { pid: 111, hwnd: 500, exe: "chrome.exe", title: "Chrome" };
-const scene = (f, wow, chromeMon = 2) => fs.writeFileSync(SCENE, JSON.stringify({ fg: f, windows: { 900: { alive: 1, mon: 1, iconic: 0, visible: 1, ...wow }, 500: { alive: 1, mon: chromeMon, iconic: 0, visible: 1 } } }));
+const OVERLAY = { pid: process.pid, hwnd: 700, exe: "Mercify.exe", title: "Mercify" };
+const scene = (f, wow, chromeMon = 2) =>
+	fs.writeFileSync(SCENE, JSON.stringify({ fg: f, windows: { 900: { alive: 1, mon: 1, iconic: 0, visible: 1, ...wow }, 500: { alive: 1, mon: chromeMon, iconic: 0, visible: 1 }, 700: { alive: 1, mon: 1, iconic: 0, visible: 1 } }, windowsInfo: { 900: WOW, 500: CHROME, 700: OVERLAY } }));
 // main.js's rule
 let gameInFront = false;
 const gate = () => { const f = fg.getForeground(); if (!f) return "no report"; const isGame = f.exe === "Wow.exe"; gameInFront = isGame; if (isGame && f.hwnd) fg.setAnchor(f.hwnd); if (isGame) return "show (game)"; const a = f.anchor; return a && a.up && a.mon !== f.mon ? "show (other monitor)" : "hide"; };
@@ -29,5 +31,20 @@ const step = async (label, want, setup) => { setup(); await sleep(500); gate(); 
 	await step("game minimised", "hide", () => scene(CHROME, { iconic: 1 }));
 	await step("game restored", "show (other monitor)", () => scene(CHROME, {}));
 	await step("game closed", "hide", () => scene(CHROME, { alive: 0, visible: 0 }));
+	// handing the keyboard back after a click on the overlay goes to the window that had it, by handle
+	scene(WOW, {}); await sleep(600);
+	scene(OVERLAY, {}); await sleep(600);
+	const sent = fg.activate(900);
+	await sleep(600);
+	const back = fg.getForeground();
+	const okBack = sent && back?.hwnd === 900 && back?.exe === "Wow.exe";
+	console.log(`${okBack ? "PASS" : "FAIL"}  giving the keyboard back activates the game: sent ${sent}, now in front ${back?.exe} (${back?.hwnd})`);
+	if (!okBack) fails++;
+	// the window class comes through, so the taskbar can be told apart
+	fs.writeFileSync(SCENE, JSON.stringify({ fg: { pid: 50, hwnd: 600, exe: "explorer.exe", title: "", cls: "Shell_TrayWnd" }, windows: { 600: { alive: 1, mon: 1, visible: 1, iconic: 0 } } }));
+	await sleep(600);
+	const tb = fg.getForeground();
+	console.log(`${tb?.cls === "Shell_TrayWnd" ? "PASS" : "FAIL"}  window class is reported: ${tb?.cls}`);
+	if (tb?.cls !== "Shell_TrayWnd") fails++;
 	console.log(fails ? `${fails} FAILED` : "ALL PASSED"); fg.stop(); try { fs.unlinkSync(SCENE); } catch {} process.exit(fails ? 1 : 0);
 })();
