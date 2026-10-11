@@ -17,6 +17,30 @@ const SPOTIFY_PREFS = path.join(SPOTIFY_DIR, "prefs");
 const APPLIED_EXT = path.join(SPOTIFY_DIR, "Apps", "xpui", "extensions", "overlay-bridge.js");
 const STORE_SPOTIFY = path.join(LOCALAPPDATA, "Microsoft", "WindowsApps", "Spotify.exe");
 
+// Installed means it can run: Spotify.exe plus its app (Apps\xpui.spa, or the Apps\xpui folder
+// Spicetify unpacks it into). Uninstalling Spotify can leave Spotify.exe and SpotX's .bak copies
+// behind, and a lone Spotify.exe used to count as "installed" (with nothing in Apps & features).
+function spotifyInstalled() {
+	return fs.existsSync(SPOTIFY_EXE) && (fs.existsSync(path.join(SPOTIFY_DIR, "Apps", "xpui.spa")) || fs.existsSync(path.join(SPOTIFY_DIR, "Apps", "xpui")));
+}
+
+// Program files left behind by an uninstalled Spotify (never prefs or the Users folder, which
+// hold its settings and login). SpotX stops with "reinstall Spotify" when it finds these.
+const LEFTOVER_FILES = ["Spotify.exe", "Spotify.dll", "chrome_elf.dll", "Spotify.bak", "Spotify.dll.bak", "chrome_elf.dll.bak", path.join("Apps", "xpui.bak")];
+function spotifyLeftovers() {
+	return spotifyInstalled() ? [] : LEFTOVER_FILES.filter((f) => fs.existsSync(path.join(SPOTIFY_DIR, f)));
+}
+function removeLeftovers(log) {
+	for (const f of spotifyLeftovers()) {
+		try {
+			fs.rmSync(path.join(SPOTIFY_DIR, f), { force: true });
+			log(`Removed ${f}, left behind by an earlier Spotify`);
+		} catch (e) {
+			log(`Couldn't remove ${f}: ${e.message}`);
+		}
+	}
+}
+
 const SPOTX_URL = "https://raw.githubusercontent.com/SpotX-Official/SpotX/refs/heads/main/run.ps1";
 const SPICETIFY_URL = "https://raw.githubusercontent.com/spicetify/cli/main/install.ps1";
 
@@ -80,7 +104,7 @@ function isSpotifyRunning() {
 // Start Spotify if it isn't running. "minimized" uses Spotify's own --minimized flag
 // (the one its "open at login" option uses), so its window doesn't pop up over the game.
 async function startSpotify({ minimized = false } = {}) {
-	if (!IS_WIN || !fs.existsSync(SPOTIFY_EXE)) return false;
+	if (!IS_WIN || !spotifyInstalled()) return false;
 	if (await isSpotifyRunning()) return true;
 	spawn(SPOTIFY_EXE, minimized ? ["--minimized"] : [], { detached: true, stdio: "ignore" }).unref();
 	return true;
@@ -88,7 +112,7 @@ async function startSpotify({ minimized = false } = {}) {
 
 // Bring Spotify's window up (running Spotify.exe again focuses the existing one).
 function openSpotify() {
-	if (!IS_WIN || !fs.existsSync(SPOTIFY_EXE)) return false;
+	if (!IS_WIN || !spotifyInstalled()) return false;
 	spawn(SPOTIFY_EXE, [], { detached: true, stdio: "ignore" }).unref();
 	return true;
 }
@@ -107,7 +131,7 @@ function spotifyLoggedIn() {
 // Close Spotify completely and start it again (its window showing).
 async function restartSpotify() {
 	if (process.env.OVERLAY_DEBUG_FAKE_SPOTIFY_RUNNING) return console.log("[test] Spotify restarted"), true;
-	if (!IS_WIN || !fs.existsSync(SPOTIFY_EXE)) return false;
+	if (!IS_WIN || !spotifyInstalled()) return false;
 	await new Promise((r) => execFile("taskkill", ["/IM", "Spotify.exe", "/F"], { windowsHide: true }, () => r()));
 	for (let i = 0; i < 20 && (await isSpotifyRunning()); i++) await new Promise((r) => setTimeout(r, 250));
 	spawn(SPOTIFY_EXE, [], { detached: true, stdio: "ignore" }).unref();
@@ -145,7 +169,7 @@ async function removeAddons(log, { extensionOnly = false } = {}) {
 	}
 
 	// 1. Spicetify: put Spotify's own files back, then delete Spicetify
-	if (exe) {
+	if (exe && spotifyInstalled()) {
 		log("Undoing Spicetify's changes to Spotify…");
 		await spice(exe, ["restore"], log);
 	}
@@ -166,7 +190,14 @@ async function removeAddons(log, { extensionOnly = false } = {}) {
 		{ idleMs: 60000 }
 	);
 
-	// 2. SpotX: its backups of the original files (its Uninstall.bat does the same)
+	// 2. SpotX: its backups of the original files (its Uninstall.bat does the same). Only onto a
+	//    Spotify that's still installed: if Spotify itself was uninstalled, putting them back would
+	//    recreate a lone Spotify.exe that looks like an install. Then they're just deleted.
+	if (!spotifyInstalled()) {
+		removeLeftovers(log);
+		log("Spotify isn't installed, so there was nothing of SpotX to undo.");
+		return { ok: true };
+	}
 	const backups = [["chrome_elf.dll.bak", "chrome_elf.dll"], ["Spotify.dll.bak", "Spotify.dll"], ["Spotify.bak", "Spotify.exe"], [path.join("Apps", "xpui.bak"), path.join("Apps", "xpui.spa")]];
 	let restored = 0;
 	for (const [bak, orig] of backups) {
@@ -205,8 +236,9 @@ async function status() {
 	const spicetify = findSpicetify();
 	return {
 		supported: true,
-		spotify: fs.existsSync(SPOTIFY_EXE),
-		storeSpotify: !fs.existsSync(SPOTIFY_EXE) && fs.existsSync(STORE_SPOTIFY),
+		spotify: spotifyInstalled(),
+		spotifyLeftovers: spotifyLeftovers().length > 0,
+		storeSpotify: !spotifyInstalled() && fs.existsSync(STORE_SPOTIFY),
 		spotifyPrefs: fs.existsSync(SPOTIFY_PREFS),
 		spotifyRunning: await isSpotifyRunning(),
 		spicetify: !!spicetify,
@@ -346,7 +378,7 @@ async function runSpotX(log) {
 	try {
 		fs.unlinkSync(file);
 	} catch (_) {}
-	if (!fs.existsSync(SPOTIFY_EXE)) {
+	if (!spotifyInstalled()) {
 		const e = errorLine(r.tail);
 		return { ok: false, why: r.problem ? `SpotX: ${r.problem}` : e ? `SpotX couldn't install Spotify: ${e}` : "SpotX finished, but Spotify still isn't installed.", tail: r.tail };
 	}
@@ -412,9 +444,10 @@ async function setupAll({ log, progress, isConnected, force = {} }) {
 	}
 	try {
 		// 1. Spotify (installed by SpotX), plus SpotX itself
-		const needSpotX = force.spotx || !fs.existsSync(SPOTIFY_EXE) || !detectSpotX();
+		const needSpotX = force.spotx || !spotifyInstalled() || !detectSpotX();
 		if (needSpotX) {
-			progress("spotify", "running", fs.existsSync(SPOTIFY_EXE) ? "Adding SpotX to Spotify…" : "Installing Spotify (with SpotX)… a few minutes");
+			progress("spotify", "running", spotifyInstalled() ? "Adding SpotX to Spotify…" : "Installing Spotify (with SpotX)… a few minutes");
+			removeLeftovers(log);
 			const r = await runSpotX(log);
 			if (!r.ok) return fail("spotify", r.why, r.tail);
 		}
@@ -491,7 +524,7 @@ function spiceOutput(exe, args) {
 async function applyExtension(log) {
 	const exe = findSpicetify();
 	if (!exe) return log("Spicetify isn't installed yet."), false;
-	if (!fs.existsSync(SPOTIFY_EXE)) return log("Spotify isn't installed yet."), false;
+	if (!spotifyInstalled()) return log("Spotify isn't installed yet."), false;
 	if (!fs.existsSync(SPOTIFY_PREFS)) {
 		log("Spotify hasn't been run yet, so Spicetify can't find its settings.");
 		log("Starting Spotify now: log in, then press Redo again.");
@@ -523,4 +556,4 @@ async function applyExtension(log) {
 	return ok;
 }
 
-module.exports = { removeAddons, spotifyLoggedIn, restartSpotify, _runPowerShell: runPowerShell, status, needsAttention, setupAll, isSetupRunning: () => setupRunning, runSpotX, installSpicetify, applyExtension, startSpotify, openSpotify, isSpotifyRunning, IS_WIN, _detectSpotX: detectSpotX };
+module.exports = { spotifyInstalled, removeAddons, spotifyLoggedIn, restartSpotify, _runPowerShell: runPowerShell, status, needsAttention, setupAll, isSetupRunning: () => setupRunning, runSpotX, installSpicetify, applyExtension, startSpotify, openSpotify, isSpotifyRunning, IS_WIN, _detectSpotX: detectSpotX };

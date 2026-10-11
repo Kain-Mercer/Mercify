@@ -48,6 +48,7 @@ function renderSetup(s, run, connected) {
 		if (s.spotify && s.spotx) setRow("spotify", "ok", s.spotifyRunning ? "Installed and running" : "Installed");
 		else if (s.spotify) setRow("spotify", "warn", "Installed, but without SpotX (it stops Spotify updates from breaking Mercify)");
 		else if (s.storeSpotify) setRow("spotify", "warn", "You have the Microsoft Store version, which can't be used. Setup replaces it.");
+		else if (s.spotifyLeftovers) setRow("spotify", "neutral", "Not installed (an earlier Spotify left a few files behind; setup tidies them up)");
 		else setRow("spotify", "neutral", "Not installed yet");
 		// grey until it's tried: red only ever means "this failed"
 		setRow("spicetify", s.spicetify ? "ok" : "neutral", s.spicetify ? "Installed" : "Not installed yet");
