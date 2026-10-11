@@ -70,7 +70,7 @@ These only work while you're in your game, so they don't get in the way of other
 - **Search:** type a song, artist, playlist or album. Click a song to play it, or open a playlist or album to see its songs.
 - **Playlist:** browse any of your playlists, your Liked Songs, or an album from search, and click a song to play it.
 - **Lobby** and **Session Playlist:** for [listening lobbies](#listening-lobbies).
-- **Notifications:** messages like "<User> added a song" in a lobby.
+- **Notifications:** messages like "User added a song" in a lobby.
 
 </details>
 
