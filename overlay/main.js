@@ -1022,8 +1022,8 @@ ipcMain.handle("settings:action", async (_e, name) => {
 	else if (name === "openSpotify") await showSpotify();
 	else if (name === "removeAddons") {
 		setupLog.length = 0;
-		await setup.removeAddons(setupLogLine);
-		lastSetup = null;
+		const r = await setup.removeAddons(setupLogLine);
+		lastSetup = r.ok ? null : { ok: false, step: "spotify", why: r.why };
 	}
 	else if (name === "apply") await setup.applyExtension(settingsLog);
 	else if (name === "startSpotify") await setup.startSpotify();

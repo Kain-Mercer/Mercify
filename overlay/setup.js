@@ -3,7 +3,7 @@
 
 const { app, net } = require("electron");
 const os = require("os");
-const { spawn, execFile } = require("child_process");
+const { spawn, execFile, spawnSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
@@ -20,20 +20,38 @@ const STORE_SPOTIFY = path.join(LOCALAPPDATA, "Microsoft", "WindowsApps", "Spoti
 // Installed means it can run: Spotify.exe plus its app (Apps\xpui.spa, or the Apps\xpui folder
 // Spicetify unpacks it into). Uninstalling Spotify can leave Spotify.exe and SpotX's .bak copies
 // behind, and a lone Spotify.exe used to count as "installed" (with nothing in Apps & features).
+//
+// And it has to be in Windows' Apps & features (the official installer and SpotX both register
+// it there). Uninstalling Spotify from there removes that entry but can leave files behind (the
+// ones Spicetify unpacked, or ones in use), and Mercify then started those leftovers at login,
+// which put Spotify straight back as if it had never been uninstalled. Windows' list decides.
+const UNINSTALL_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Spotify";
+function spotifyRegistered() {
+	if (process.env.OVERLAY_DEBUG_FAKE_REGISTERED) return process.env.OVERLAY_DEBUG_FAKE_REGISTERED === "1";
+	if (!IS_WIN) return true;
+	try {
+		return spawnSync("reg", ["query", UNINSTALL_KEY], { windowsHide: true, timeout: 5000 }).status === 0;
+	} catch (_) {
+		return true; // can't tell: don't call a working Spotify uninstalled
+	}
+}
+
 function spotifyInstalled() {
-	return fs.existsSync(SPOTIFY_EXE) && (fs.existsSync(path.join(SPOTIFY_DIR, "Apps", "xpui.spa")) || fs.existsSync(path.join(SPOTIFY_DIR, "Apps", "xpui")));
+	const files = fs.existsSync(SPOTIFY_EXE) && (fs.existsSync(path.join(SPOTIFY_DIR, "Apps", "xpui.spa")) || fs.existsSync(path.join(SPOTIFY_DIR, "Apps", "xpui")));
+	return files && spotifyRegistered();
 }
 
 // Program files left behind by an uninstalled Spotify (never prefs or the Users folder, which
-// hold its settings and login). SpotX stops with "reinstall Spotify" when it finds these.
-const LEFTOVER_FILES = ["Spotify.exe", "Spotify.dll", "chrome_elf.dll", "Spotify.bak", "Spotify.dll.bak", "chrome_elf.dll.bak", path.join("Apps", "xpui.bak")];
+// hold its settings and login). SpotX stops with "reinstall Spotify" when it finds these, and
+// asks about Spicetify (stopping our setup) when it finds an unpacked Apps\xpui folder.
+const LEFTOVER_FILES = ["Spotify.exe", "Spotify.dll", "chrome_elf.dll", "Spotify.bak", "Spotify.dll.bak", "chrome_elf.dll.bak", "Apps"];
 function spotifyLeftovers() {
 	return spotifyInstalled() ? [] : LEFTOVER_FILES.filter((f) => fs.existsSync(path.join(SPOTIFY_DIR, f)));
 }
 function removeLeftovers(log) {
 	for (const f of spotifyLeftovers()) {
 		try {
-			fs.rmSync(path.join(SPOTIFY_DIR, f), { force: true });
+			fs.rmSync(path.join(SPOTIFY_DIR, f), { force: true, recursive: true, maxRetries: 5, retryDelay: 400 });
 			log(`Removed ${f}, left behind by an earlier Spotify`);
 		} catch (e) {
 			log(`Couldn't remove ${f}: ${e.message}`);
@@ -145,11 +163,51 @@ async function restartSpotify() {
 //               patch in those files). Spotify itself stays installed.
 //   extension only: take Mercify's extension out of Spicetify and leave the rest alone (for
 //               people who used Spicetify or SpotX before Mercify).
-async function removeAddons(log, { extensionOnly = false } = {}) {
-	if (!IS_WIN) return { ok: false, why: "Only on Windows." };
+// Close every Spotify process and wait until they've really gone (they hold its files open;
+// a fixed short wait wasn't always enough, so removal sometimes needed a second click).
+async function closeSpotify(log) {
 	log("Closing Spotify…");
-	await new Promise((r) => execFile("taskkill", ["/IM", "Spotify.exe", "/F"], { windowsHide: true }, () => r()));
-	await sleep(1500);
+	for (let i = 0; i < 3; i++) {
+		await new Promise((r) => execFile("taskkill", ["/IM", "Spotify.exe", "/F", "/T"], { windowsHide: true }, () => r()));
+		for (let j = 0; j < 20 && (await isSpotifyRunning()); j++) await sleep(250);
+		if (!(await isSpotifyRunning())) break;
+	}
+	await sleep(800); // file handles close a moment after the process
+}
+
+// Rename with a few retries: a file can stay locked briefly after Spotify exits.
+async function renameRetrying(from, to) {
+	for (let i = 0; ; i++) {
+		try {
+			fs.rmSync(to, { force: true });
+			fs.renameSync(from, to);
+			return;
+		} catch (e) {
+			if (i >= 6) throw e;
+			await sleep(500);
+		}
+	}
+}
+
+async function removeAddons(log, opts = {}) {
+	if (!IS_WIN && !process.env.OVERLAY_DEBUG_FAKE_REGISTERED) return { ok: false, why: "Only on Windows." };
+	const r = await removeAddonsOnce(log, opts);
+	if (opts.extensionOnly) return r;
+	// Anything still there (a file Windows wouldn't let go of)? One more pass, then say so.
+	if (findSpicetify() || detectSpotX()) {
+		log("Something was still in use; going over it once more…");
+		await removeAddonsOnce(log, opts);
+	}
+	const left = [findSpicetify() && "Spicetify", detectSpotX() && "SpotX"].filter(Boolean);
+	if (left.length) {
+		log(`Couldn't fully remove ${left.join(" and ")}. Restart your PC, then try again.`);
+		return { ok: false, why: `Couldn't fully remove ${left.join(" and ")}. Restart your PC, then try again.` };
+	}
+	return { ok: true };
+}
+
+async function removeAddonsOnce(log, { extensionOnly = false } = {}) {
+	await closeSpotify(log);
 	const exe = findSpicetify();
 
 	if (extensionOnly) {
@@ -176,7 +234,7 @@ async function removeAddons(log, { extensionOnly = false } = {}) {
 	for (const dir of [path.join(LOCALAPPDATA, "spicetify"), path.join(APPDATA, "spicetify"), path.join(os.homedir(), "spicetify-cli")]) {
 		try {
 			if (fs.existsSync(dir)) {
-				fs.rmSync(dir, { recursive: true, force: true });
+				fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 400 });
 				log(`Deleted ${dir}`);
 			}
 		} catch (e) {
@@ -204,8 +262,7 @@ async function removeAddons(log, { extensionOnly = false } = {}) {
 		const b = path.join(SPOTIFY_DIR, bak);
 		if (!fs.existsSync(b)) continue;
 		try {
-			fs.rmSync(path.join(SPOTIFY_DIR, orig), { force: true });
-			fs.renameSync(b, path.join(SPOTIFY_DIR, orig));
+			await renameRetrying(b, path.join(SPOTIFY_DIR, orig));
 			restored++;
 			log(`Put back the original ${orig}`);
 		} catch (e) {
@@ -215,7 +272,7 @@ async function removeAddons(log, { extensionOnly = false } = {}) {
 	// Spotify loads Apps\xpui.spa; an unpacked Apps\xpui folder left behind would shadow it
 	if (fs.existsSync(path.join(SPOTIFY_DIR, "Apps", "xpui.spa")) && fs.existsSync(path.join(SPOTIFY_DIR, "Apps", "xpui"))) {
 		try {
-			fs.rmSync(path.join(SPOTIFY_DIR, "Apps", "xpui"), { recursive: true, force: true });
+			fs.rmSync(path.join(SPOTIFY_DIR, "Apps", "xpui"), { recursive: true, force: true, maxRetries: 5, retryDelay: 400 });
 		} catch (_) {}
 	}
 	// older SpotX versions locked Spotify's update folder instead
@@ -242,7 +299,7 @@ async function status() {
 		spotifyPrefs: fs.existsSync(SPOTIFY_PREFS),
 		spotifyRunning: await isSpotifyRunning(),
 		spicetify: !!spicetify,
-		spotx: detectSpotX(),
+		spotx: spotifyInstalled() && detectSpotX(), // traces in an uninstalled Spotify's leftovers don't count
 		extension: applied ? (bundled && applied.equals(bundled) ? "current" : "outdated") : "missing",
 		appliedVersion: extVersion(applied),
 		bundledVersion: extVersion(bundled),
@@ -556,4 +613,4 @@ async function applyExtension(log) {
 	return ok;
 }
 
-module.exports = { spotifyInstalled, removeAddons, spotifyLoggedIn, restartSpotify, _runPowerShell: runPowerShell, status, needsAttention, setupAll, isSetupRunning: () => setupRunning, runSpotX, installSpicetify, applyExtension, startSpotify, openSpotify, isSpotifyRunning, IS_WIN, _detectSpotX: detectSpotX };
+module.exports = { spotifyRegistered, spotifyInstalled, removeAddons, spotifyLoggedIn, restartSpotify, _runPowerShell: runPowerShell, status, needsAttention, setupAll, isSetupRunning: () => setupRunning, runSpotX, installSpicetify, applyExtension, startSpotify, openSpotify, isSpotifyRunning, IS_WIN, _detectSpotX: detectSpotX };
