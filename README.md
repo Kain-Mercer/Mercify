@@ -14,8 +14,6 @@
 <a href="#disclaimer">⚖️ Disclaimer</a>
 </p>
 
-> **Early test version.** It works, but expect the odd bug. Tip: the ☰ button at the top right of this box lists every chapter.
-
 ## What you get
 
 - **Now Playing:** the song, album art, and play, skip, volume and like buttons, floating over your game.
