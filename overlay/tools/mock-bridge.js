@@ -119,6 +119,7 @@ const actions = {
 	playlists: () => PLAYLISTS,
 	playlistTracks: ({ uri }) => {
 		if (uri.startsWith("spotify:album:")) {
+			if (process.env.MOCK_OLD_EXTENSION) throw new Error("Cannot read properties of undefined (reading 'items')"); // what an old extension does
 			const a = ALBUMS.get(uri) || { name: "Some Album", artists: [pick(ARTISTS)], image: art(55, "AL") };
 			const tracks = ALL.slice(40, 52).map((t, index) => ({ ...t, artists: a.artists, album: a.name, image: a.image, index }));
 			return { uri, contextUri: uri, album: true, name: a.name, artists: a.artists, image: a.image, tracks };

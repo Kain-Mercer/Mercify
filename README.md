@@ -153,6 +153,8 @@ The **Updates** section in Settings shows which version you have and lets you ch
 
 **The overlay disappears after I click it, or my game stops taking keys.** Update Mercify first. If it still happens, right-click the Mercify tray icon straight afterwards, choose **Copy diagnostics**, and paste what it copies into a message to whoever gave you Mercify. It lists which windows Windows put in front and what Mercify did, without any of your other window titles.
 
+**Clicking an album does nothing, or says it couldn't open it.** Albums open in the **Playlist** panel, so make sure that panel is turned on in Edit Mode. Opening albums also needs the newer Mercify extension: open Settings and press **Update** next to *Mercify extension* if it's offered (Spotify restarts once).
+
 **The panels say "Waiting for Spotify".** Make sure Spotify is open. If it is, open Settings and press **Reinstall** next to *Mercify extension*. This is most often needed after Spotify updates itself.
 
 **I can't see the panels in my game.** Check that your game is set to *Windowed (Fullscreen)* or *Borderless*, not *Fullscreen*. Also check the game is listed under **Only show over these apps** in Settings.

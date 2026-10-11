@@ -1450,3 +1450,17 @@ body.edit .notice.sample {
 	width: 10px;
 	height: 10px;
 }
+
+/* the Playlist panel glows briefly when something from search opens in it */
+.panel.flash {
+	animation: panel-flash 1.2s ease-out;
+}
+@keyframes panel-flash {
+	0%,
+	30% {
+		box-shadow: 0 0 0 2px var(--accent), 0 0 24px rgba(30, 215, 96, 0.45);
+	}
+	100% {
+		box-shadow: 0 0 0 0 transparent;
+	}
+}

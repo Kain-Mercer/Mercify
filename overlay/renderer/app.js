@@ -1088,7 +1088,7 @@ function renderResults() {
 				`<img src="${esc(p.image || "")}" alt="" loading="lazy" /><div class="row-text"><div class="row-title">${esc(p.name)}</div><div class="row-sub">${esc(p.owner ? "Playlist · " + p.owner : "Playlist")}</div></div>`
 			);
 			row.title = "Open in the Playlist panel";
-			row.addEventListener("click", () => !S.edit && openPlaylist(p.uri, p));
+			row.addEventListener("click", () => !S.edit && openPlaylist(p.uri, p, { fromSearch: true }));
 			sr.list.append(row);
 		}
 	}
@@ -1110,7 +1110,7 @@ function renderResults() {
 					fire("playContext", { uri: a.uri });
 					return;
 				}
-				openPlaylist(a.uri, { ...a, album: true });
+				openPlaylist(a.uri, { ...a, album: true }, { fromSearch: true });
 				if (document.activeElement?.matches?.('input[type="text"]')) api.releaseFocus();
 			});
 			sr.list.append(row);
@@ -1215,7 +1215,30 @@ function renderPicker() {
 
 let plSeq = 0;
 let plStop = null;
-async function openPlaylist(uri, hint) {
+// Opened from search results: the Playlist panel is somewhere else on screen (or turned off),
+// so say what happened where you clicked instead of leaving it to look like nothing did.
+function playlistPanelShowing() {
+	const c = S.layout.panels.playlist;
+	if (!c?.enabled || (c.shownAlpha ?? 1) < 0.05) return false;
+	const r = rectOf("playlist");
+	return r.x < innerWidth - 40 && r.y < innerHeight - 40 && r.x + r.w > 40 && r.y + r.h > 40;
+}
+
+function flashPanel(id) {
+	const p = panelEls[id];
+	if (!p) return;
+	p.classList.remove("flash");
+	void p.offsetWidth; // restart the animation
+	p.classList.add("flash");
+	setTimeout(() => p.classList.remove("flash"), 1300);
+}
+
+async function openPlaylist(uri, hint, { fromSearch = false } = {}) {
+	const album = String(uri).startsWith("spotify:album:");
+	if (fromSearch) {
+		if (playlistPanelShowing()) flashPanel("playlist");
+		else toast(`The Playlist panel is turned off or off-screen, so you can't see the ${album ? "album" : "playlist"} it opened. Turn it on in Edit Mode.`, "error", 7000);
+	}
 	const seq = ++plSeq;
 	S.layout.lastPlaylist = uri;
 	saveLayout();
@@ -1242,9 +1265,9 @@ async function openPlaylist(uri, hint) {
 		if (seq !== plSeq) return;
 		S.playlist = null;
 		updateAddAll();
-		const album = String(uri).startsWith("spotify:album:");
 		// the Spotify extension before 1.2.0 can't read albums
 		pl.list.innerHTML = `<div class="empty-note">Couldn't load ${album ? "album" : "playlist"}: ${esc(e.message)}${album ? "<br>If this keeps happening, update the Mercify extension in Settings." : ""}</div>`;
+		if (fromSearch) toast(`Couldn't open <b>${esc(hint?.name || (album ? "that album" : "that playlist"))}</b>${album ? ". Open Mercify's Settings and press <b>Update</b> next to the Mercify extension (Spotify restarts once)." : `: ${esc(e.message)}`}`, "error", 8000);
 	}
 }
 
