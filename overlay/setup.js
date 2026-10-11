@@ -119,19 +119,33 @@ function isSpotifyRunning() {
 	});
 }
 
-// Start Spotify if it isn't running. "minimized" uses Spotify's own --minimized flag
-// (the one its "open at login" option uses), so its window doesn't pop up over the game.
+// Run Spotify.exe from its own folder, as its shortcut and SpotX do. "minimized" uses Spotify's
+// own --minimized flag (the one its "open at login" option uses): it starts in the tray.
+function launchSpotify(minimized) {
+	spawn(SPOTIFY_EXE, minimized ? ["--minimized"] : [], { detached: true, stdio: "ignore", cwd: SPOTIFY_DIR }).unref();
+}
+
+// Start Spotify if it isn't running, so its window doesn't pop up over the game when minimized.
 async function startSpotify({ minimized = false } = {}) {
 	if (!IS_WIN || !spotifyInstalled()) return false;
 	if (await isSpotifyRunning()) return true;
-	spawn(SPOTIFY_EXE, minimized ? ["--minimized"] : [], { detached: true, stdio: "ignore" }).unref();
+	launchSpotify(minimized);
 	return true;
 }
 
 // Bring Spotify's window up (running Spotify.exe again focuses the existing one).
 function openSpotify() {
 	if (!IS_WIN || !spotifyInstalled()) return false;
-	spawn(SPOTIFY_EXE, [], { detached: true, stdio: "ignore" }).unref();
+	launchSpotify(false);
+	return true;
+}
+
+// Start Spotify where nobody sees it: minimised, and its window hidden as soon as it appears
+// (setup needs it to have run once, but you shouldn't see it until it's time to log in).
+async function startSpotifyHidden() {
+	if (!IS_WIN || !spotifyInstalled()) return false;
+	launchSpotify(true);
+	require("./foreground").hideWindowsOf("Spotify.exe", 20000).catch(() => {});
 	return true;
 }
 
@@ -154,13 +168,13 @@ function spotifyLoggedIn() {
 	}
 }
 
-// Close Spotify completely and start it again (its window showing).
-async function restartSpotify() {
-	if (process.env.OVERLAY_DEBUG_FAKE_SPOTIFY_RUNNING) return console.log("[test] Spotify restarted"), true;
+// Close Spotify completely and start it again. minimized: in the tray (after a login, so it
+// doesn't jump back over Mercify).
+async function restartSpotify({ minimized = false } = {}) {
+	if (process.env.OVERLAY_DEBUG_FAKE_SPOTIFY_RUNNING) return console.log(`[test] Spotify restarted${minimized ? " (minimised)" : ""}`), true;
 	if (!IS_WIN || !spotifyInstalled()) return false;
-	await new Promise((r) => execFile("taskkill", ["/IM", "Spotify.exe", "/F"], { windowsHide: true }, () => r()));
-	for (let i = 0; i < 20 && (await isSpotifyRunning()); i++) await new Promise((r) => setTimeout(r, 250));
-	spawn(SPOTIFY_EXE, [], { detached: true, stdio: "ignore" }).unref();
+	await closeSpotify(() => {});
+	launchSpotify(minimized);
 	return true;
 }
 
@@ -530,11 +544,12 @@ async function setupAll({ log, progress, isConnected, force = {} }) {
 
 		// 2. Spotify has to have run once before Spicetify can find its settings
 		if (!fs.existsSync(SPOTIFY_PREFS)) {
-			progress("firstrun", "running", "Opening Spotify for the first time…");
-			await startSpotify();
+			progress("firstrun", "running", "Starting Spotify once, in the background…");
+			await startSpotifyHidden();
 			for (let i = 0; i < 120 && !fs.existsSync(SPOTIFY_PREFS); i++) await sleep(1000);
-			if (!fs.existsSync(SPOTIFY_PREFS)) return fail("firstrun", "Spotify didn't open. Try opening it from the Start menu, then press Try again.");
+			if (!fs.existsSync(SPOTIFY_PREFS)) return fail("firstrun", "Spotify didn't start. Try opening it from the Start menu, then press Try again.");
 			await sleep(3000); // let it finish writing its settings
+			await closeSpotify(log); // out of sight again until it's time to log in
 		}
 
 		// 3. Spicetify
@@ -548,7 +563,8 @@ async function setupAll({ log, progress, isConnected, force = {} }) {
 		// 4. The Mercify extension (Spotify restarts)
 		progress("extension", "running", "Adding Mercify to Spotify (Spotify restarts)…");
 		const extLines = [];
-		const applied = await applyExtension((l) => (extLines.push(l), log(l)));
+		await closeSpotify(log); // so nothing pops up while Spicetify works on it
+		const applied = await applyExtension((l) => (extLines.push(l), log(l)), { reopen: false });
 		if (!applied) {
 			const e = errorLine(extLines);
 			return fail("extension", `Spicetify couldn't add Mercify to Spotify${e ? ": " + e : "."} Close Spotify completely, then press Try again.`, extLines.slice(-20));
@@ -558,9 +574,16 @@ async function setupAll({ log, progress, isConnected, force = {} }) {
 		// 5. Spotify only loads the extension once you're logged in. Bring its window to the front
 		//    (even if it's already running minimised, where a login screen would stay hidden);
 		//    the "Connected to Spotify" row turns green by itself once it connects.
+		//    The first time you see Spotify in the whole setup is now, for the login. Already logged
+		//    in (setting up again)? Then it starts out of sight and just connects.
 		if (!isConnected()) {
-			openSpotify();
-			progress("connect", "waiting", "Spotify is opening. If it asks you to log in, log in; this turns green by itself.");
+			if (spotifyLoggedIn()) {
+				await startSpotifyHidden();
+				progress("connect", "waiting", "Starting Spotify in the background…");
+			} else {
+				openSpotify();
+				progress("connect", "waiting", "Log in to Spotify in the window that just opened. Mercify comes back by itself once you have.");
+			}
 		}
 		return { ok: true };
 	} finally {
@@ -595,8 +618,10 @@ function spiceOutput(exe, args) {
 	});
 }
 
-// Copy the bridge extension into Spicetify and apply it to Spotify (Spotify restarts).
-async function applyExtension(log) {
+// Copy the bridge extension into Spicetify and apply it to Spotify. Spicetify restarts Spotify
+// afterwards, unless reopen is false (setup: Spotify stays closed until it's time to log in).
+async function applyExtension(log, { reopen = true } = {}) {
+	const nr = reopen ? [] : ["--no-restart"];
 	const exe = findSpicetify();
 	if (!exe) return log("Spicetify isn't installed yet."), false;
 	if (!spotifyInstalled()) return log("Spotify isn't installed yet."), false;
@@ -617,17 +642,17 @@ async function applyExtension(log) {
 
 	await spice(exe, ["config", "extensions", "overlay-bridge.js"], log);
 
-	let code = await spice(exe, ["apply"], log);
+	let code = await spice(exe, [...nr, "apply"], log);
 	if (code !== 0) {
 		log("No usable backup yet: creating one and applying…");
-		code = await spice(exe, ["backup", "apply"], log);
+		code = await spice(exe, [...nr, "backup", "apply"], log);
 	}
 	if (code !== 0) {
 		log("Backup is out of date: restoring and applying again…");
-		code = await spice(exe, ["restore", "backup", "apply"], log);
+		code = await spice(exe, [...nr, "restore", "backup", "apply"], log);
 	}
 	const ok = code === 0 && (readOrNull(APPLIED_EXT)?.equals(readOrNull(bundledExtensionPath())) ?? false);
-	log(ok ? "Done. Spotify restarted with the overlay extension." : "Spicetify couldn't apply. If Spotify was just updated or reinstalled, try running SpotX again, then this.");
+	log(ok ? (reopen ? "Done. Spotify restarted with the overlay extension." : "Done. Mercify's extension is in Spotify.") : "Spicetify couldn't apply. If Spotify was just updated or reinstalled, try running SpotX again, then this.");
 	return ok;
 }
 

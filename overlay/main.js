@@ -592,12 +592,17 @@ async function showSpotify() {
 // says you're logged in, give it a moment to connect, and if it doesn't, restart it once.
 // Already logged in when Mercify started: give a slow PC 30 s to load Spotify. Logged in while
 // Mercify watched (setup's first login): the blank window is the expected outcome, so restart soon.
+// After a restart, Spotify gets a patient 45 s (1.11.0 judged it after 8 s, too soon for a fresh
+// PC, and said it "still hasn't connected" while it was still loading); then one more try.
 const LOGIN_GRACE_MS = Number(process.env.OVERLAY_DEBUG_LOGIN_GRACE_MS) || 30000;
 const FRESH_LOGIN_GRACE_MS = Number(process.env.OVERLAY_DEBUG_FRESH_LOGIN_GRACE_MS) || 8000;
+const AFTER_RESTART_GRACE_MS = Number(process.env.OVERLAY_DEBUG_RESTART_GRACE_MS) || 45000;
+const MAX_LOGIN_RESTARTS = 2;
 let loggedInSince = 0;
 let sawLoggedOut = false; // seen logged out during this run, so a login now is a fresh one
+let restartedAt = 0;
 let loginRestarts = 0;
-let connectNote = ""; // for Settings' "Connected to Spotify" row
+let connectNote = ""; // for Settings' "Connected to Spotify" row and the progress line
 
 function setConnectNote(text) {
 	if (text === connectNote) return;
@@ -605,10 +610,28 @@ function setConnectNote(text) {
 	pushSettings();
 }
 
+// Bring Settings in front of Spotify and the browser you just logged in with. Windows doesn't let
+// an app in the background simply take focus, so: on top for a moment, focus, and have the helper
+// activate the window too (it has ways around that rule).
+function focusSettings() {
+	if (!settingsWin || settingsWin.isDestroyed()) return openSettings();
+	if (settingsWin.isMinimized()) settingsWin.restore();
+	settingsWin.show();
+	settingsWin.setAlwaysOnTop(true, "floating");
+	settingsWin.moveTop();
+	settingsWin.focus();
+	try {
+		const h = settingsWin.getNativeWindowHandle();
+		foreground.activate(h.length >= 8 ? Number(h.readBigUInt64LE(0)) : h.readUInt32LE(0));
+	} catch (_) {}
+	setTimeout(() => settingsWin && !settingsWin.isDestroyed() && settingsWin.setAlwaysOnTop(false), 1500);
+}
+
 setInterval(async () => {
 	if (!setup.IS_WIN && !process.env.OVERLAY_DEBUG_FAKE_LOGGED_IN) return;
 	if (bridge) {
 		loggedInSince = 0;
+		restartedAt = 0;
 		if (connectNote) setConnectNote("");
 		return;
 	}
@@ -616,24 +639,31 @@ setInterval(async () => {
 	if (!setup.spotifyLoggedIn()) {
 		loggedInSince = 0;
 		sawLoggedOut = true;
-		if (setup.spotifyInstalled()) setConnectNote("Log in to Spotify in its window. Mercify finishes by itself once you have.");
+		if (setup.spotifyInstalled() && (await setup.isSpotifyRunning())) setConnectNote("Log in to Spotify in its window. Mercify comes back by itself once you have.");
 		return;
 	}
-	if (!(await setup.isSpotifyRunning())) return; // nothing to restart; "Open Spotify" handles that
+	if (!(await setup.isSpotifyRunning()) && !restartedAt) return; // nothing to restart; "Open Spotify" handles that
 	if (!loggedInSince) {
 		loggedInSince = Date.now();
-		if (sawLoggedOut) setConnectNote("You're logged in. Waiting for Spotify to load…");
+		if (sawLoggedOut) {
+			// you've just logged in: Mercify comes straight back to the front
+			diag("logged in to Spotify (fresh login): bringing Settings back");
+			setConnectNote("You're logged in! Finishing up…");
+			focusSettings();
+		}
 	}
-	if (Date.now() - loggedInSince < (sawLoggedOut ? FRESH_LOGIN_GRACE_MS : LOGIN_GRACE_MS)) return;
-	if (loginRestarts >= 1) {
-		setConnectNote("Spotify still hasn't connected after a restart. Press Redo next to Mercify extension.");
+	const waited = Date.now() - (restartedAt || loggedInSince);
+	const grace = restartedAt ? AFTER_RESTART_GRACE_MS : sawLoggedOut ? FRESH_LOGIN_GRACE_MS : LOGIN_GRACE_MS;
+	if (waited < grace) return;
+	if (loginRestarts >= MAX_LOGIN_RESTARTS) {
+		setConnectNote("Spotify still hasn't connected. Press Redo next to Mercify extension, or restart your PC.");
 		return;
 	}
 	loginRestarts++;
-	loggedInSince = 0;
-	diag("logged in to Spotify, but it hasn't connected: restarting it once");
-	setConnectNote("You're logged in. Restarting Spotify so Mercify can connect…");
-	await setup.restartSpotify();
+	restartedAt = Date.now();
+	diag(`logged in to Spotify, but it hasn't connected: restarting it (${loginRestarts} of ${MAX_LOGIN_RESTARTS})`);
+	setConnectNote(loginRestarts === 1 ? "You're logged in! Restarting Spotify so Mercify can connect…" : "Restarting Spotify once more…");
+	await setup.restartSpotify({ minimized: true }); // in the tray, so it doesn't jump back over Mercify
 }, 2000);
 
 // ------------------------------------------------------------------ keeping up with a throttled Spotify
