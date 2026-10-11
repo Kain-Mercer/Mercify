@@ -42,7 +42,8 @@ function renderSetup(s, run, connected) {
 		return;
 	}
 	// the bar after the steps: waiting for you to log in, then done once Spotify connects
-	const ranOk = run && !run.running && run.ok;
+	if (run?.running) progRun = true; // Settings opened while setup runs
+	const ranOk = progRun && run && !run.running && run.ok;
 	if (ranOk && connected && !$("#setup-progress").hidden && !$("#setup-progress").classList.contains("finished")) progFinish("All set! Mercify is connected to Spotify.");
 	else if (ranOk && !connected && setupDone(s)) {
 		progPhase("connect", "Spotify is opening. If it asks you to log in, log in; Mercify finishes by itself.");
@@ -103,13 +104,16 @@ function renderSetup(s, run, connected) {
 // backwards. Real numbers replace the guess where there are any (SpotX's download percentage,
 // Spicetify's "Patching files [n/286]").
 const PHASES = {
-	spotify: { from: 2, to: 55, tau: 80 },
+	spotify: { from: 2, to: 55, tau: 14 }, // after the download (which sets the pace itself): ~20 s of installing and patching
 	firstrun: { from: 55, to: 60, tau: 8 },
 	spicetify: { from: 60, to: 74, tau: 10 },
 	extension: { from: 74, to: 90, tau: 12 },
 	connect: { from: 90, to: 99, tau: 45 },
 };
 const prog = { phase: null, value: 0, base: 0, since: 0, desc: "", timer: null, finishing: null };
+// The bar belongs to an install run: from pressing the button (or opening Settings mid-run) until
+// "All set!" or a failure. Closing Spotify later mustn't bring it back (1.11.1 did).
+let progRun = false;
 
 function progShow(desc) {
 	const el = $("#setup-progress");
@@ -165,6 +169,7 @@ function progStop() {
 }
 
 function progFinish(desc) {
+	progRun = false;
 	progStop();
 	prog.phase = null;
 	prog.value = 100;
@@ -176,6 +181,7 @@ function progFinish(desc) {
 }
 
 function progFail(desc) {
+	progRun = false;
 	progStop();
 	prog.phase = null;
 	prog.desc = desc;
@@ -186,7 +192,10 @@ function progFail(desc) {
 
 S.onSetupDetail((d) => {
 	if (d.text) prog.desc = d.text;
-	if (prog.phase === "spotify" && d.pct != null) progAtLeast(4 + d.pct * 0.42); // the download is most of this step
+	// SpotX's download is quick next to installing and patching (about 20 s against 17 s in a real
+	// run), so it gets 4-30%; "Patching Spotify" lifts it to 45%, and the estimate creeps on to 55%
+	if (prog.phase === "spotify" && d.pct != null) progAtLeast(4 + d.pct * 0.26);
+	if (prog.phase === "spotify" && /Adding SpotX/.test(d.text || "")) progAtLeast(45);
 	if (prog.phase === "extension" && d.sub != null) progAtLeast(PHASES.extension.from + d.sub * 12);
 	progDraw();
 });
@@ -210,6 +219,7 @@ function onSetupProgress({ step, state, text }) {
 async function runSetupAction(name) {
 	if (setupRunning) return;
 	setupRunning = true;
+	progRun = true;
 	prog.value = 0;
 	prog.phase = null;
 	if (name === "removeAddons") progShow("Removing Spicetify and SpotX…");
