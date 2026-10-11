@@ -1464,3 +1464,9 @@ body.edit .notice.sample {
 		box-shadow: 0 0 0 0 transparent;
 	}
 }
+
+/* a listener's Next button while their vote to skip counts */
+.icon-btn[data-act="next"].voted {
+	color: #ff4d4f;
+	background: rgba(255, 77, 79, 0.16);
+}

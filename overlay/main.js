@@ -679,7 +679,13 @@ const hotkeyActions = {
 		sendToRenderer("focus-search");
 	},
 	playPause: () => bridgeCommand("togglePlay").catch(() => {}),
-	next: () => bridgeCommand("next").catch(() => {}),
+	// In a lobby: a listener's Next votes to skip; the host's plays the next session song.
+	next: () => {
+		const st = lobby.state();
+		if (st.status === "joined" && st.role === "listener") return lobby.voteSkip(!st.skip?.mine);
+		if (lobby.isHostWithQueue()) return lobby.playNext().catch(() => {});
+		bridgeCommand("next").catch(() => {});
+	},
 	prev: () => bridgeCommand("prev").catch(() => {}),
 };
 

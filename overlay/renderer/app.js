@@ -594,7 +594,31 @@ const HOST_ONLY = new Set(["togglePlay", "next", "prev", "toggleShuffle", "toggl
 const hostName = () => esc(S.lobby?.hostName || "The host");
 
 function hostOnlyToast() {
-	toast(`${hostName()} controls playback in this lobby. Click a song to add it to the session playlist.`);
+	toast(`${hostName()} controls playback in this lobby. Press Next to vote to skip, or click a song to add it to the session playlist.`);
+}
+
+// A listener's Next button is a vote to skip (pressing it again takes the vote back).
+function voteSkipFromNext() {
+	const st = S.lobby;
+	const sk = st?.skip;
+	const mine = !!sk?.mine;
+	const total = sk?.total || st?.members?.length || 1;
+	const need = sk?.need || Math.max(1, Math.ceil(total / 2));
+	const count = (sk?.count || 0) + (mine ? -1 : 1);
+	api.lobbyVoteSkip(!mine);
+	if (mine) toast("You took back your vote to skip");
+	else if (count >= need) toast(`You voted to skip. That's enough votes (${count} of ${total}), so it's skipping.`);
+	else toast(`You voted to skip (${count} of ${need} votes needed). Press Next again to take it back.`);
+}
+
+// Listeners see Next as "vote to skip", lit while their vote counts.
+function updateNextButtons() {
+	const vote = following();
+	const mine = vote && !!S.lobby?.skip?.mine;
+	document.querySelectorAll('.panel[data-id=nowplaying] [data-act="next"]').forEach((b) => {
+		b.title = !vote ? "Next" : mine ? "Take back your vote to skip" : "Vote to skip this song";
+		b.classList.toggle("voted", mine);
+	});
 }
 
 const inLobby = () => S.lobby?.status === "joined";
@@ -691,6 +715,7 @@ function buildNowPlaying() {
 			if (v > 0) np.lastVol = v;
 			return fire("setVolume", { level: v > 0 ? 0 : np.lastVol || 0.5 });
 		}
+		if (act === "next" && following()) return voteSkipFromNext();
 		if (following() && HOST_ONLY.has(act)) return hostOnlyToast();
 		// Host with songs in the session playlist: Next plays the next one from it.
 		if (act === "next" && inLobby()) {
@@ -1357,6 +1382,7 @@ function sessionRow(item, { index, host, mine, played }) {
 }
 
 function renderSession() {
+	updateNextButtons();
 	const st = S.lobby;
 	if (!sp.list || !st) return;
 	applyPanel("session");
