@@ -14,15 +14,6 @@
 <a href="#disclaimer">⚖️ Disclaimer</a>
 </p>
 
-## What you get
-
-- **Now Playing:** the song, album art, and play, skip, volume and like buttons, floating over your game.
-- **Search:** find any song, artist, album or playlist and play it.
-- **Your playlists:** browse them, or your Liked Songs, and pick a song.
-- **Listening lobbies:** listen to the same music at the same time as your friends.
-
-You choose where each panel goes and how see-through it is. It only shows up while your game is in front (World of Warcraft out of the box), and works with a **free** Spotify account.
-
 ## Get started
 
 1. [**Download `Mercify-Setup`**](https://github.com/Kain-Mercer/Mercify/releases/latest) and run it.
