@@ -299,9 +299,7 @@ async function setupAll({ log, progress, isConnected, force = {} }) {
 				if (process.env.OVERLAY_DEBUG_FAKE_SETUP_RUN === "fail" && st === "spicetify") return fail(st, "Couldn't install Spicetify (GitHub answered 403). Check your internet connection.");
 				progress(st, "done", "Installed");
 			}
-			progress("connect", "waiting", "Waiting for Spotify… if it asks you to log in, log in, and Mercify finishes by itself.");
-			await sleep(Number(process.env.OVERLAY_DEBUG_FAKE_STEP_MS || 1200));
-			progress("connect", "done", "Connected");
+			progress("connect", "waiting", "Spotify is opening. If it asks you to log in, log in; this turns green by itself.");
 			return { ok: true };
 		} finally {
 			setupRunning = false;
@@ -344,15 +342,13 @@ async function setupAll({ log, progress, isConnected, force = {} }) {
 		}
 		progress("extension", "done", "Installed");
 
-		// 5. Spotify connects to Mercify. It only loads once you're logged in, so wait for that.
-		if (!(await isSpotifyRunning())) await startSpotify();
-		progress("connect", "waiting", "Waiting for Spotify… if it asks you to log in, log in, and Mercify finishes by itself.");
-		for (let i = 0; !isConnected(); i++) {
-			if (i === 90) progress("connect", "waiting", "Still waiting. Log in to Spotify in its window (check the taskbar). Mercify finishes by itself once you have.");
-			if (i > 1800) return fail("connect", "Spotify never connected. Close Spotify completely, then press Try again.");
-			await sleep(1000);
+		// 5. Spotify only loads the extension once you're logged in. Bring its window to the front
+		//    (even if it's already running minimised, where a login screen would stay hidden);
+		//    the "Connected to Spotify" row turns green by itself once it connects.
+		if (!isConnected()) {
+			openSpotify();
+			progress("connect", "waiting", "Spotify is opening. If it asks you to log in, log in; this turns green by itself.");
 		}
-		progress("connect", "done", "Connected");
 		return { ok: true };
 	} finally {
 		setupRunning = false;

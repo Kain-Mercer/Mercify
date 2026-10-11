@@ -508,6 +508,7 @@ function startBridgeServer() {
 			} else if (msg.type === "hello") {
 				heardFromSpotify();
 				bridgeInfo = msg;
+				pushSettings(); // "Connected to Spotify" turns green
 				minimiseSpotifyOnce();
 				sendToRenderer("bridge-status", { connected: true, info: msg });
 				updateTrayMenu();
@@ -902,7 +903,8 @@ async function settingsState() {
 		onlyShowOver: config.onlyShowOver,
 		hotkeysOnlyOverApps: config.hotkeysOnlyOverApps,
 		gateText,
-		setupRun: setup.isSetupRunning() ? { running: true } : lastSetup,
+		setupRun: setup.isSetupRunning() ? { running: true, steps: setupSteps } : lastSetup,
+		setupLog: setupLog.slice(-200),
 		launchSpotify: config.launchSpotify,
 		minimiseSpotify: config.minimiseSpotify,
 		startWithWindows: getStartWithWindows(),
@@ -929,12 +931,15 @@ function setupLogLine(line) {
 	if (setupLog.length > 400) setupLog.shift();
 	settingsLog(line);
 }
+const setupSteps = {}; // step -> { state, text } of the current run, for a Settings window opened mid-run
 function setupProgress(step, state, text) {
+	setupSteps[step] = { state, text };
 	diag(`setup: ${step} ${state}${text ? ": " + text : ""}`);
 	if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send("settings:setup-progress", { step, state, text });
 }
 async function runSetup(force = {}) {
 	setupLog.length = 0;
+	for (const k of Object.keys(setupSteps)) delete setupSteps[k];
 	lastSetup = { running: true };
 	pushSettings();
 	const r = await setup.setupAll({ log: setupLogLine, progress: setupProgress, isConnected: () => !!bridge, force });
@@ -951,6 +956,7 @@ ipcMain.handle("settings:action", async (_e, name) => {
 	else if (name === "spotx") await runSetup({ spotx: true });
 	else if (name === "spicetify") await runSetup({ spicetify: true });
 	else if (name === "copySetupDetails") clipboard.writeText(setupDetails());
+	else if (name === "openSpotify") await showSpotify();
 	else if (name === "apply") await setup.applyExtension(settingsLog);
 	else if (name === "startSpotify") await setup.startSpotify();
 	else if (name === "checkUpdate") updater.check();
@@ -1134,6 +1140,14 @@ app.whenReady().then(async () => {
 		migrateLoginItem();
 		const s = await setup.status();
 		if (config.launchSpotify && s.spotify) setup.startSpotify({ minimized: config.minimiseSpotify });
+		// Set up, but Spotify hasn't connected: it's probably at its login screen, started minimised
+		// where nobody sees it. Bring it up once, so you can log in.
+		if (s.spotify && !setup.needsAttention(s))
+			setTimeout(async () => {
+				if (bridge || !(await setup.isSpotifyRunning())) return;
+				diag("Spotify is running but hasn't connected after 25 s (login screen?); showing its window");
+				showSpotify();
+			}, 25000);
 		// Opened by you: bring Mercify into view. Started with Windows: stay in the tray unless setup needs you.
 		if (!AUTOSTART || firstRun || setup.needsAttention(s)) openSettings();
 	}

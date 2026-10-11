@@ -32,7 +32,8 @@ You'll need:
 1. Go to the [**Releases page**](https://github.com/Kain-Mercer/Mercify/releases) and download **`Mercify-Setup`** (the newest version at the top).
 2. Run it. If Windows shows a blue "Windows protected your PC" box, click **More info**, then **Run anyway**. This appears because Mercify is new and not yet recognised by Windows.
 3. Mercify opens its **Settings** window. Press the big green **Set up everything** button. That's it: it installs Spotify if you don't have it, plus the two add-ons Mercify needs (SpotX and Spicetify), without asking you anything. It takes a few minutes; you can watch each step turn green, or carry on with something else.
-   - If Spotify asks you to log in, log in. Mercify finishes by itself once you have.
+   - At the end Spotify opens. If it asks you to log in, log in: the last row, **Connected to Spotify**, turns green by itself once you have. If Spotify isn't showing, press **Open Spotify** on that row.
+   - Mercify doesn't install Spicetify's Marketplace (it isn't needed), so you won't see a Marketplace button in Spotify.
    - If something goes wrong, Settings says what, in plain words, with a **Try again** button. **Copy details** copies everything that happened, to paste in a message to whoever gave you Mercify.
 4. Start your game. Your Spotify panels appear on top of it.
 

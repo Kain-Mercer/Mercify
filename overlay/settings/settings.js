@@ -29,18 +29,20 @@ function setRow(step, state, sub, button) {
 // and are locked while anything runs. Progress comes live from the main process.
 
 let setupRunning = false;
-const STEP_ROW = { spotify: "spotify", firstrun: "spotify", spicetify: "spicetify", extension: "extension" };
+const STEP_ROW = { spotify: "spotify", firstrun: "spotify", spicetify: "spicetify", extension: "extension", connect: "connect" };
 
 function setupDone(s) {
 	return s.spotify && s.spotx && s.spicetify && s.extension === "current";
 }
 
-function renderSetup(s, run) {
+function renderSetup(s, run, connected) {
 	if (!s.supported) {
 		$("#setup-section").hidden = true;
 		return;
 	}
 	setupRunning = !!run?.running;
+	// Settings opened (or re-rendered) mid-run: show each step as far as it got
+	if (setupRunning && run.steps) for (const [step, p] of Object.entries(run.steps)) onSetupProgress({ step, ...p });
 	if (!setupRunning) {
 		if (s.spotify && s.spotx) setRow("spotify", "ok", s.spotifyRunning ? "Installed and running" : "Installed");
 		else if (s.spotify) setRow("spotify", "warn", "Installed, but without SpotX (it stops Spotify updates from breaking Mercify)");
@@ -52,6 +54,18 @@ function renderSetup(s, run) {
 		else if (s.extension === "outdated") setRow("extension", "warn", `Needs an update (v${s.appliedVersion ?? "?"} → v${s.bundledVersion})`);
 		else setRow("extension", "neutral", "Not installed yet");
 		document.querySelectorAll("#setup-section .row").forEach((r) => r.classList.remove("active"));
+	}
+	// Spotify only loads the extension once you're logged in, so this is the last thing to turn green
+	const openBtn = row("connect").querySelector("button");
+	if (connected) {
+		setRow("connect", "ok", "Connected");
+		openBtn.hidden = true;
+	} else if (setupDone(s)) {
+		setRow("connect", "warn", "Not yet. Open Spotify and log in; this turns green by itself.");
+		openBtn.hidden = false;
+	} else if (!setupRunning || !run?.steps?.connect) {
+		setRow("connect", "neutral", "After the steps above");
+		openBtn.hidden = true;
 	}
 	const done = setupDone(s);
 	$("#setup-go").hidden = done && !setupRunning;
@@ -70,21 +84,16 @@ function renderSetup(s, run) {
 	row("spotify").querySelector("button").hidden = !s.spotify;
 	row("spicetify").querySelector("button").hidden = !s.spicetify;
 	row("extension").querySelector("button").hidden = s.extension === "missing";
-	document.querySelectorAll("#setup-section .row button").forEach((b) => (b.disabled = setupRunning || !s.spotify));
+	document.querySelectorAll("#setup-section .row button[data-act]").forEach((b) => (b.disabled = setupRunning || !s.spotify));
 }
 
 function onSetupProgress({ step, state, text }) {
 	setupRunning = true;
 	$("#setup-fail").hidden = true;
 	$("#setup-all").disabled = true;
-	document.querySelectorAll("#setup-section .row button").forEach((b) => (b.disabled = true));
-	if (step === "connect") {
-		$("#setup-go").hidden = false;
-		$("#setup-all").textContent = state === "done" ? "All set!" : "Almost done…";
-		$("#setup-go .hint").textContent = text || "";
-		return;
-	}
+	document.querySelectorAll("#setup-section .row button[data-act]").forEach((b) => (b.disabled = true));
 	const r = STEP_ROW[step];
+	if (step === "connect") row("connect").querySelector("button").hidden = false;
 	if (!r) return;
 	const dot = { running: "running", waiting: "running", done: "ok", failed: "" }[state] ?? "";
 	setRow(r, dot, text || "");
@@ -98,7 +107,7 @@ async function runSetupAction(name) {
 	$("#log-box").hidden = false;
 	$("#setup-fail").hidden = true;
 	$("#setup-all").disabled = true;
-	document.querySelectorAll("#setup-section .row button").forEach((b) => (b.disabled = true));
+	document.querySelectorAll("#setup-section .row button[data-act]").forEach((b) => (b.disabled = true));
 	try {
 		render(await S.action(name));
 	} finally {
@@ -187,7 +196,7 @@ function render(d) {
 	$("#conn").textContent = d.connected ? "Connected to Spotify" : "Waiting for Spotify";
 	$("#conn").classList.toggle("ok", d.connected);
 
-	renderSetup(s, d.setupRun);
+	renderSetup(s, d.setupRun, d.connected);
 
 	const only = d.onlyShowOver;
 	$("#only-enabled").checked = only.enabled;
@@ -229,8 +238,9 @@ function log(line) {
 	el.scrollTop = el.scrollHeight;
 }
 
-document.querySelectorAll("#setup-section .row button").forEach((b) => b.addEventListener("click", () => runSetupAction(b.dataset.act)));
+document.querySelectorAll("#setup-section .row button[data-act]").forEach((b) => b.addEventListener("click", () => runSetupAction(b.dataset.act)));
 $("#setup-all").addEventListener("click", () => runSetupAction("setupAll"));
+row("connect").querySelector("button").addEventListener("click", async () => render(await S.action("openSpotify")));
 $("#setup-retry").addEventListener("click", () => runSetupAction("setupAll"));
 $("#setup-copy").addEventListener("click", async () => {
 	await S.action("copySetupDetails");
