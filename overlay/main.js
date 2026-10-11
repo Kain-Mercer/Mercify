@@ -166,11 +166,13 @@ function createWindow() {
 
 	win.loadFile(path.join(__dirname, "renderer", "index.html"));
 	win.once("ready-to-show", () => {
-		if (gateOpen) win.showInactive(); // don't steal focus from the game on launch
+		if (gateOpen) showOverlay(); // inactive: don't steal focus from the game on launch
 		sendToRenderer("overlay", { shown: overlayShown, edit: editMode });
 		sendToRenderer("bridge-status", { connected: !!bridge });
 		if (process.env.OVERLAY_DEBUG_EDIT) setEdit(true);
 		if (process.env.OVERLAY_DEBUG_CAPTURE) debugCapture(process.env.OVERLAY_DEBUG_CAPTURE);
+		// tests: shrink the window to the work area minus a taskbar, the way Windows does
+		if (process.env.OVERLAY_DEBUG_SHRINK) setTimeout(() => { const b = pickDisplay().bounds; win.setBounds({ ...b, height: b.height - 40 }); }, Number(process.env.OVERLAY_DEBUG_SHRINK));
 	});
 
 	// Windows sometimes drops topmost when another topmost app activates; re-assert.
@@ -181,8 +183,43 @@ function createWindow() {
 
 	screen.on("display-metrics-changed", () => {
 		if (!win || win.isDestroyed()) return;
-		win.setBounds(pickDisplay().bounds);
+		fitToDisplay("display changed");
 	});
+	screen.on("display-added", () => fitToDisplay("display added"));
+	screen.on("display-removed", () => fitToDisplay("display removed"));
+}
+
+// Cover the whole display, taskbar area included. Windows pulls a window that's bigger than the
+// work area (the screen minus the taskbar) back inside it when it's shown, so the overlay and
+// Edit Mode's grid stopped at the top of the taskbar. Put the full size back after every show,
+// and once more a moment later in case Windows adjusts it afterwards.
+// The 200 ms check gives up after a few tries in a row (logged), so it can't fight Windows
+// forever; showing the overlay, Edit Mode or a display change start it again.
+let fitTries = 0;
+let fitLastTry = 0;
+function fitToDisplay(why = "") {
+	if (!win || win.isDestroyed()) return;
+	const b = pickDisplay().bounds;
+	const cur = win.getBounds();
+	if (cur.x === b.x && cur.y === b.y && cur.width === b.width && cur.height === b.height) {
+		fitTries = 0;
+		return;
+	}
+	if (why === "checked") {
+		if (Date.now() - fitLastTry < 600) return; // let the last resize land before checking again
+		if (fitTries >= 4) return;
+		if (++fitTries === 4) diag(`window stays ${cur.width}x${cur.height}; Windows won't let it cover the full display ${b.width}x${b.height}`);
+	} else fitTries = 0;
+	fitLastTry = Date.now();
+	diag(`window was ${cur.width}x${cur.height} at ${cur.x},${cur.y}; set to the full display ${b.width}x${b.height} at ${b.x},${b.y}${why ? " (" + why + ")" : ""}`);
+	win.setBounds(b);
+}
+
+function showOverlay() {
+	win.showInactive();
+	win.setAlwaysOnTop(true, "screen-saver");
+	fitToDisplay("shown");
+	setTimeout(() => fitToDisplay("after show"), 400);
 }
 
 // Click-through except where the renderer says the mouse is over a panel.
@@ -208,6 +245,7 @@ function setShown(on) {
 function setEdit(on) {
 	editMode = on;
 	if (on) {
+		fitToDisplay("edit mode");
 		overlayShown = true;
 		applyGate(true);
 		setInteractive(true);
@@ -285,6 +323,13 @@ function diagnosticsText() {
 		`Windows ${require("os").release()}, displays: ${screen.getAllDisplays().length}, overlay on display ${win ? screen.getDisplayMatching(win.getBounds()).id : "?"}`,
 		`Only show over apps: ${config.onlyShowOver.enabled} (${[...config.onlyShowOver.apps, ...config.onlyShowOver.titles].join(", ")}); other monitor: ${config.onlyShowOver.stayOnOtherMonitor}`,
 		`Helper: ${foreground.supported() ? "running" : "not running"}; gate ${gateOpen ? "open" : "closed"} (${gateWhy})`,
+		(() => {
+			if (!win || win.isDestroyed()) return "Window: none";
+			const d = pickDisplay();
+			const w = win.getBounds();
+			const r = (b) => `${b.width}x${b.height} at ${b.x},${b.y}`;
+			return `Window ${r(w)}; display ${r(d.bounds)}, work area ${r(d.workArea)}, scale ${d.scaleFactor}`;
+		})(),
 		"",
 		...diagLog,
 	].join("\n");
@@ -320,8 +365,7 @@ function applyGate(open) {
 	gateOpen = open;
 	diag(`overlay ${open ? "shown" : "hidden"} (${gateWhy})`);
 	if (open) {
-		win.showInactive();
-		win.setAlwaysOnTop(true, "screen-saver");
+		showOverlay();
 		sendToRenderer("interactive-reset");
 	} else {
 		setInteractive(false);
@@ -376,6 +420,7 @@ function tickGate() {
 		else [open, gateWhy] = [false, "other-app"];
 	}
 	applyGate(open);
+	if (gateOpen && win.isVisible()) fitToDisplay("checked");
 	reportGate(fg);
 	// Hotkeys follow the game itself being in front, so they're yours again in other apps,
 	// even while the overlay stays up over the game on another monitor.
@@ -1003,7 +1048,7 @@ app.whenReady().then(async () => {
 	setInterval(tickGate, 200);
 	if (process.env.OVERLAY_DEBUG_STATE_FILE) {
 		setInterval(() => {
-			const st = { gateOpen, visible: win.isVisible(), toggleHotkey: globalShortcut.isRegistered(config.hotkeys.toggle), editHotkey: globalShortcut.isRegistered(config.hotkeys.edit), edit: editMode, update: updater.state(), giveBacks, gateWhy, gameInFront, diagTail: diagLog.slice(-5), diagnostics: diagnosticsText() };
+			const st = { gateOpen, visible: win.isVisible(), toggleHotkey: globalShortcut.isRegistered(config.hotkeys.toggle), editHotkey: globalShortcut.isRegistered(config.hotkeys.edit), edit: editMode, update: updater.state(), giveBacks, gateWhy, gameInFront, diagTail: diagLog.slice(-5), diagnostics: diagnosticsText(), bounds: win.getBounds(), display: pickDisplay().bounds };
 			fs.writeFileSync(process.env.OVERLAY_DEBUG_STATE_FILE, JSON.stringify(st));
 		}, 100);
 	}
