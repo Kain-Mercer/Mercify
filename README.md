@@ -11,8 +11,8 @@
 Mercify puts small, see-through Spotify panels on top of your game, a bit like the Discord overlay:
 
 - **Now Playing:** album art, the song, a seek bar, a volume slider, and play/pause, skip, shuffle, repeat and like buttons. Drag the seek bar or volume slider to where you want it, or scroll your mouse wheel over the volume. Song names too long to fit scroll by once when a new song starts, and again whenever you hover over them. Shrink it to a small **compact** bar that you can still click while the rest of the overlay is hidden.
-- **Search:** type a song, artist or playlist and click a result to play it.
-- **Playlist:** browse any of your playlists or Liked Songs and click a song to play it.
+- **Search:** type a song, artist, playlist or album. Click a song to play it, or open a playlist or album to see its songs.
+- **Playlist:** browse any of your playlists, Liked Songs or an album from search, and click a song to play it.
 - **Listening lobbies:** share a code with friends and listen to the same music at the same time, each through your own Spotify, with a shared session playlist everyone can add to.
 
 You choose where each panel goes and how see-through it is. Mercify only appears while you're in your game (World of Warcraft by default), and hides itself when you switch to anything else on the same screen. If you have more than one monitor, it stays up over your game while you use something on another monitor.
@@ -125,6 +125,7 @@ Everyone who enters the same code ends up in the same lobby. If nobody's there y
 Every lobby has a shared playlist that everyone sees in the **Session Playlist** panel, which appears while you're in a lobby.
 
 - **Add a song** with the **+** next to any song in search results or a playlist. Listeners can also just click a song. Each song shows who added it.
+- **Add a whole album or playlist:** open it in the Playlist panel (click an album in search results to open it there) and press **Add all**. Its songs go in, in order. The session playlist holds up to 100 songs, so a very long playlist adds its first ones until it's full.
 - **Up next** lists what's coming, in order. When a song finishes, the next one from the list plays for everyone. If the list is empty, Spotify carries on as usual.
 - **The session playlist is in charge.** While it has songs, it decides what plays next, even if the host was playing one of their own playlists, or Spotify's crossfade or Automix tries to start the next song early. A song the host deliberately picks in Mercify still plays straight away, and the list carries on after it.
 - **Played** lists what's already played this session. Hover over a song and press **+** to add it again.

@@ -13,7 +13,7 @@
 (function OverlayBridge() {
 	"use strict";
 
-	const VERSION = "1.1.0";
+	const VERSION = "1.2.0";
 	const DEFAULT_PORT = 7317;
 	const LOG = (...a) => console.log("[overlay-bridge]", ...a);
 
@@ -135,7 +135,66 @@
 		return user ? `spotify:user:${user}:collection` : null;
 	}
 
+	// An album's songs. GraphQL query names differ between client versions, so try a few, then
+	// the Web API. Album tracks don't carry their own cover, so they get the album's.
+	const GRAPHQL_ALBUMS = ["getAlbum", "queryAlbumTracks"];
+
+	async function getAlbumTracks(uri) {
+		const tried = [];
+		for (const def of GRAPHQL_ALBUMS) {
+			const query = Spicetify.GraphQL?.Definitions?.[def];
+			if (!query) continue;
+			try {
+				const { data, errors } = await Spicetify.GraphQL.Request(query, { uri, locale: "", offset: 0, limit: 300 });
+				const album = data?.albumUnion;
+				if (!album) throw new Error(errors?.[0]?.message ?? "empty response");
+				const list = album.tracksV2 ?? album.tracks ?? album;
+				const { tracks } = harvest(list);
+				if (!tracks.length) throw new Error("no songs in response");
+				const image = pickImage(album.coverArt);
+				const artists = (album.artists?.items ?? []).map((a) => a.profile?.name).filter(Boolean);
+				return {
+					uri,
+					contextUri: uri,
+					album: true,
+					name: album.name ?? "",
+					artists,
+					image,
+					tracks: tracks.map((t, index) => ({ ...t, image: t.image || image, album: t.album || album.name || "", index })),
+				};
+			} catch (e) {
+				tried.push(`${def}: ${e?.message ?? e}`);
+			}
+		}
+		try {
+			const id = uri.split(":").pop();
+			const a = await Spicetify.CosmosAsync.get(`https://api.spotify.com/v1/albums/${id}`);
+			if (a?.error) throw new Error(a.error.message ?? "web api error");
+			const items = [...(a.tracks?.items ?? [])];
+			for (let next = a.tracks?.next; next && items.length < 500; ) {
+				const page = await Spicetify.CosmosAsync.get(next);
+				items.push(...(page?.items ?? []));
+				next = page?.next;
+			}
+			const image = pickImage(a.images);
+			return {
+				uri,
+				contextUri: uri,
+				album: true,
+				name: a.name ?? "",
+				artists: (a.artists ?? []).map((x) => x.name),
+				image,
+				tracks: items.map((t, index) => normTrack({ ...t, duration: t.duration_ms, album: { name: a.name, images: a.images } }, { index })),
+			};
+		} catch (e) {
+			tried.push(`webapi: ${e?.message ?? e}`);
+		}
+		LOG("album tracks failed", uri, tried);
+		throw new Error("Couldn't read this album (" + tried.join("; ").slice(0, 160) + ")");
+	}
+
 	async function getPlaylistTracks(uri) {
+		if (String(uri).startsWith("spotify:album:")) return getAlbumTracks(uri);
 		if (uri === "liked") {
 			const res = await Spicetify.Platform.LibraryAPI.getTracks({ limit: 9999999 });
 			return { uri: "liked", contextUri: likedContextUri(), name: "Liked Songs", tracks: (res.items || []).map((t, index) => normTrack(t, { index })) };

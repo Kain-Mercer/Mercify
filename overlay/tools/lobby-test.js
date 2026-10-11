@@ -201,6 +201,26 @@ async function inSync(label, host, listeners, { tolerance = 1500, uri } = {}) {
 	const d = await D.call("join", { code: CODE + "X", name: "Solo" });
 	check("different code: separate lobby", d.role === "host" && d.members.length === 1, `role ${d.role}, members ${d.members.length}`);
 
+	// 10b. adding a whole album: one message, songs stay in album order, list caps at 100
+	const E = member("Juno", +2000);
+	await E.ready;
+	await E.call("join", { code: CODE + "X", name: "Juno" });
+	await sleep(2500);
+	const album = Array.from({ length: 6 }, (_, i) => ({ uri: `spotify:track:alb${i}`, name: `Album Song ${i + 1}`, artists: ["Band"] }));
+	await E.call("addMany", { tracks: album, label: "Big Album" });
+	await sleep(2500);
+	const da = await report(D);
+	const ea = await report(E);
+	const wantAlbum = album.map((t) => `${t.name}/Juno`).join(", ");
+	check("a listener adds a whole album, in order", names(da) === wantAlbum && names(ea) === wantAlbum, `host: ${names(da)} | Juno: ${names(ea)}`);
+	check("the host is told once, not per song", da.lobby.activity.filter((x) => /Juno added/.test(x.text)).length === 1, da.lobby.activity.map((x) => x.text).join(" / "));
+	const many = Array.from({ length: 120 }, (_, i) => ({ uri: `spotify:track:big${i}`, name: `Big ${i}`, artists: ["X"] }));
+	await D.call("addMany", { tracks: many, label: "Liked Songs" });
+	await sleep(1500);
+	const full = await report(D);
+	check("the session playlist stops at 100 songs", full.lobby.queue.length === 100 && full.lobby.queue[6].name === "Big 0", `${full.lobby.queue.length} songs, 7th ${full.lobby.queue[6]?.name}`);
+	E.child.kill();
+
 	// 11. host vanishes without saying goodbye (crash / sleep): taken over after the timeout
 	if (!process.env.SKIP_CRASH) {
 		newHost.child.kill("SIGKILL");
@@ -210,7 +230,7 @@ async function inSync(label, host, listeners, { tolerance = 1500, uri } = {}) {
 	}
 
 	console.log(`\n${failures ? failures + " FAILED" : "ALL PASSED"}`);
-	for (const m of [A, B, C, D]) m.child.kill();
+	for (const m of [A, B, C, D, E]) m.child.kill();
 	spy.end(true);
 	process.exit(failures ? 1 : 0);
 })().catch((err) => {

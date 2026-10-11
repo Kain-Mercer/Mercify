@@ -96,6 +96,9 @@ function setTrack(i) {
 	player.isPlaying = true;
 }
 
+const ALBUMS = new Map(); // albums shown in search, so opening one shows the same name
+const remember = (a) => (ALBUMS.set(a.uri, a), a);
+
 const actions = {
 	state: () => state(),
 	togglePlay: () => {
@@ -115,6 +118,11 @@ const actions = {
 	toggleLike: () => (player.liked = !player.liked),
 	playlists: () => PLAYLISTS,
 	playlistTracks: ({ uri }) => {
+		if (uri.startsWith("spotify:album:")) {
+			const a = ALBUMS.get(uri) || { name: "Some Album", artists: [pick(ARTISTS)], image: art(55, "AL") };
+			const tracks = ALL.slice(40, 52).map((t, index) => ({ ...t, artists: a.artists, album: a.name, image: a.image, index }));
+			return { uri, contextUri: uri, album: true, name: a.name, artists: a.artists, image: a.image, tracks };
+		}
 		const p = PLAYLISTS.find((x) => x.uri === uri) || { name: "Search playlist", image: art(9, "SP") };
 		const tracks = (TRACKS[uri] || ALL.slice(10, 40)).map((t, index) => ({ ...t, index }));
 		return { uri, contextUri: uri === "liked" ? "spotify:user:eva:collection" : uri, name: p.name, image: p.image, tracks };
@@ -126,7 +134,7 @@ const actions = {
 		return {
 			tracks,
 			playlists: playlists.length ? playlists : [{ uri: "spotify:playlist:search1", name: `${query} Mix`, owner: "Spotify", image: art(77, "MX") }],
-			albums: [{ uri: "spotify:album:a1", name: `${pick(WORDS)} ${pick(NOUNS)}`, artists: [pick(ARTISTS)], image: art(55, "AL") }],
+			albums: [remember({ uri: "spotify:album:a1", name: `${pick(WORDS)} ${pick(NOUNS)}`, artists: [pick(ARTISTS)], image: art(55, "AL") })],
 			via: "mock",
 		};
 	},

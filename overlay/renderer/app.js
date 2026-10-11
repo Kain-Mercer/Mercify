@@ -1098,11 +1098,18 @@ function renderResults() {
 				"row",
 				`<img src="${esc(a.image || "")}" alt="" loading="lazy" /><div class="row-text"><div class="row-title">${esc(a.name)}</div><div class="row-sub">${esc(["Album", ...(a.artists || [])].join(" · "))}</div></div><span class="row-dur" title="Play album">${ICON.play.replace("<svg", '<svg style="width:12px;height:12px;fill:currentColor"')}</span>`
 			);
-			row.title = "Play album";
-			row.addEventListener("click", () => {
+			row.title = "Open in the Playlist panel";
+			const play = $(".row-dur", row);
+			play.classList.add("row-play");
+			row.addEventListener("click", (e) => {
 				if (S.edit) return;
-				if (following()) return hostOnlyToast();
-				fire("playContext", { uri: a.uri });
+				if (e.target.closest(".row-play")) {
+					if (following()) return hostOnlyToast();
+					fire("playContext", { uri: a.uri });
+					return;
+				}
+				openPlaylist(a.uri, { ...a, album: true });
+				if (document.activeElement?.matches?.('input[type="text"]')) api.releaseFocus();
 			});
 			sr.list.append(row);
 		}
@@ -1124,6 +1131,7 @@ function buildPlaylist() {
 				${ICON.chevron}
 			</button>
 			<span class="meta"></span>
+			<button class="pill-btn pl-addall" title="Add every song here to the session playlist" hidden>${ICON.plus}<span>Add all</span></button>
 		</div>
 		<div class="scroll"><div class="empty-note">Waiting for Spotify…</div></div>
 		<div class="picker" hidden>
@@ -1141,6 +1149,8 @@ function buildPlaylist() {
 	pl.picker = $(".picker", body);
 	pl.filter = $(".picker input", body);
 	pl.pickList = $(".picker .scroll", body);
+	pl.addAll = $(".pl-addall", body);
+	pl.addAll.addEventListener("click", addAllToSession);
 
 	pl.btn.addEventListener("click", () => {
 		if (S.edit) return;
@@ -1212,20 +1222,43 @@ async function openPlaylist(uri, hint) {
 	pl.meta.textContent = "";
 	plStop?.();
 	pl.list.innerHTML = '<div class="empty-note"><span class="spinner" style="display:inline-block"></span></div>';
+	S.playlist = null;
+	updateAddAll();
 	try {
 		const data = await cmd("playlistTracks", { uri });
 		if (seq !== plSeq) return;
 		S.playlist = data;
 		pl.btnTitle.textContent = data.name || hint?.name || "Playlist";
 		setPickerArt({ ...hint, image: data.image || hint?.image });
-		pl.meta.textContent = `${data.tracks.length} songs`;
+		pl.meta.textContent = `${data.album ? "Album · " : ""}${data.tracks.length} songs`;
+		updateAddAll();
 		pl.list.innerHTML = "";
 		pl.list.scrollTop = 0;
-		if (!data.tracks.length) pl.list.innerHTML = '<div class="empty-note">This playlist is empty</div>';
+		if (!data.tracks.length) pl.list.innerHTML = `<div class="empty-note">This ${data.album ? "album" : "playlist"} is empty</div>`;
 		else plStop = renderTracks(pl.list, data.tracks, { contextUri: data.contextUri, showIndex: true });
 	} catch (e) {
-		if (seq === plSeq) pl.list.innerHTML = `<div class="empty-note">Couldn't load playlist: ${esc(e.message)}</div>`;
+		if (seq !== plSeq) return;
+		S.playlist = null;
+		updateAddAll();
+		const album = String(uri).startsWith("spotify:album:");
+		// the Spotify extension before 1.2.0 can't read albums
+		pl.list.innerHTML = `<div class="empty-note">Couldn't load ${album ? "album" : "playlist"}: ${esc(e.message)}${album ? "<br>If this keeps happening, update the Mercify extension in Settings." : ""}</div>`;
 	}
+}
+
+// "Add all" puts the open album or playlist into the lobby's session playlist, in order.
+function updateAddAll() {
+	if (!pl.addAll) return;
+	pl.addAll.hidden = !(inLobby() && S.playlist?.tracks?.length);
+}
+
+async function addAllToSession() {
+	if (S.edit || !S.playlist) return;
+	const tracks = S.playlist.tracks.filter((t) => t.playable !== false);
+	const r = await api.lobbyQueueAddMany(tracks, S.playlist.name || "");
+	if (!r.ok) return toast(esc(r.error), "error");
+	const more = tracks.length > r.count ? ` (the first ${r.count}; the session playlist holds up to 100)` : "";
+	toast(`Added <b>${esc(S.playlist.name || "these songs")}</b> to the session playlist${more}`);
 }
 
 function setPickerArt(p) {
@@ -1440,6 +1473,7 @@ function buildLobby() {
 }
 
 function renderLobby() {
+	updateAddAll();
 	const st = S.lobby;
 	if (!st || !lb.out) return;
 	const joined = st.status === "joined";

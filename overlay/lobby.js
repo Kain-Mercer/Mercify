@@ -301,6 +301,13 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 				if (item) hostAdd(item);
 				break;
 			}
+			case "suggest-many": {
+				// a listener adding a whole album or playlist, in order, in one message
+				if (role !== "host" || !Array.isArray(msg.items)) return;
+				const items = msg.items.slice(0, QUEUE_MAX).map((t) => makeItem({ uri: t.uri, name: t.trackName, artists: t.artists, image: t.image, duration: t.duration }, msg.name, msg.id)).filter(Boolean);
+				if (items.length) hostAddMany(items, typeof msg.label === "string" ? msg.label.slice(0, 200) : "");
+				break;
+			}
 			case "queue-op": {
 				if (role !== "host") return;
 				const item = queue.find((q) => q.qid === msg.qid);
@@ -428,6 +435,18 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		queue.push(item);
 		const mine = item.byId === me.id;
 		note(mine ? `You added “${item.name}”` : `${item.by || "Someone"} added “${item.name}”`, !mine);
+		sendQueue();
+		scheduleAdvance();
+	}
+
+	function hostAddMany(items, label) {
+		const room = QUEUE_MAX - queue.length;
+		if (room <= 0) return note("The session playlist is full");
+		const added = items.slice(0, room);
+		queue.push(...added);
+		const what = `${label ? `“${label}”` : "songs"} (${added.length} song${added.length === 1 ? "" : "s"}${added.length < items.length ? `; the playlist is full, so ${items.length - added.length} didn't fit` : ""})`;
+		const mine = added[0].byId === me.id;
+		note(mine ? `You added ${what}` : `${added[0].by || "Someone"} added ${what}`, !mine);
 		sendQueue();
 		scheduleAdvance();
 	}
@@ -774,6 +793,26 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		return Promise.resolve();
 	}
 
+	// Add many songs at once (an album or playlist), in order. Returns how many were sent.
+	function queueAddMany(tracks, label = "") {
+		if (status !== "joined") return Promise.reject(new Error("Join a lobby first"));
+		const items = (Array.isArray(tracks) ? tracks : []).map((t) => makeItem(t, me.name, me.id)).filter(Boolean).slice(0, QUEUE_MAX);
+		if (!items.length) return Promise.reject(new Error("Nothing here can be added to the session playlist"));
+		label = String(label || "").slice(0, 200);
+		if (role === "host") {
+			hostAddMany(items, label);
+			return Promise.resolve(items.length);
+		}
+		if (!hostId) return Promise.reject(new Error("There's no host right now"));
+		send("suggest-many", {
+			to: hostId,
+			label,
+			items: items.map((i) => ({ uri: i.uri, trackName: i.name, artists: i.artists, image: i.image, duration: i.duration })),
+		});
+		note(`You added ${label ? `“${label}”` : "songs"} (${items.length} song${items.length === 1 ? "" : "s"})`);
+		return Promise.resolve(items.length);
+	}
+
 	function queueRemove(qid) {
 		if (role === "host") return hostRemove(qid);
 		const item = queue.find((q) => q.qid === qid);
@@ -815,6 +854,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		leaveNow,
 		setName,
 		queueAdd,
+		queueAddMany,
 		queueRemove,
 		queueMoveTop: (qid) => role === "host" && hostMoveTop(qid),
 		// The app calls this when the host picks a song themselves, so the session playlist doesn't override it.

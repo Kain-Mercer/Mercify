@@ -501,6 +501,13 @@ ipcMain.handle("lobby:queue-add", async (_e, track) => {
 		return { ok: false, error: err.message };
 	}
 });
+ipcMain.handle("lobby:queue-add-many", async (_e, tracks, label) => {
+	try {
+		return { ok: true, count: await lobby.queueAddMany(tracks, label) };
+	} catch (err) {
+		return { ok: false, error: err.message };
+	}
+});
 ipcMain.on("lobby:queue-remove", (_e, qid) => lobby.queueRemove(qid));
 ipcMain.on("lobby:queue-top", (_e, qid) => lobby.queueMoveTop(qid));
 ipcMain.on("lobby:queue-play", (_e, qid) => lobby.playNow(qid));
