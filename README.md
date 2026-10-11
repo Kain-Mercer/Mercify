@@ -1,192 +1,55 @@
-<p align="center"><img src="docs/logo.png" width="260" alt="Mercify" /></p>
+<p align="center"><img src="docs/logo.png" width="240" alt="Mercify" /></p>
 
-<p align="center"><b>Your Spotify, right inside your game.</b><br/>See what's playing, search for songs and pick from your playlists without ever alt-tabbing.</p>
+<p align="center"><b>Your Spotify, right inside your game.</b><br/>Skip songs, search and pick playlists without ever alt-tabbing.</p>
 
-> **⚠️ For evaluation only.** Mercify is an early test release, provided as-is with no warranty. Use it at your own risk. See the [disclaimer](#disclaimer) below.
+<p align="center"><a href="https://github.com/Kain-Mercer/Mercify/releases/latest"><b>⬇ Download Mercify</b></a> · <a href="docs/GUIDE.md">User guide</a> · <a href="docs/TROUBLESHOOTING.md">Help</a></p>
 
----
+> **Early test version.** It works, but expect the odd bug. See the [disclaimer](#disclaimer).
 
-## What it does
+## What you get
 
-Mercify puts small, see-through Spotify panels on top of your game, a bit like the Discord overlay:
+- 🎵 **Now Playing:** the song, album art, and play, skip, volume and like buttons, floating over your game.
+- 🔍 **Search:** find any song, artist, album or playlist and play it.
+- 📂 **Your playlists:** browse them and pick a song.
+- 👥 **Listening lobbies:** listen to the same music at the same time as your friends.
 
-- **Now Playing:** album art, the song, a seek bar, a volume slider, and play/pause, skip, shuffle, repeat and like buttons. Drag the seek bar or volume slider to where you want it, or scroll your mouse wheel over the volume. Song names too long to fit scroll by once when a new song starts, and again whenever you hover over them. Shrink it to a small **compact** bar that you can still click while the rest of the overlay is hidden.
-- **Search:** type a song, artist, playlist or album. Click a song to play it, or open a playlist or album to see its songs.
-- **Playlist:** browse any of your playlists, Liked Songs or an album from search, and click a song to play it.
-- **Listening lobbies:** share a code with friends and listen to the same music at the same time, each through your own Spotify, with a shared session playlist everyone can add to.
+It only shows up while your game is in front (World of Warcraft out of the box), and works with a **free** Spotify account.
 
-You choose where each panel goes and how see-through it is. Mercify only appears while you're in your game (World of Warcraft by default), and hides itself when you switch to anything else on the same screen. If you have more than one monitor, it stays up over your game while you use something on another monitor.
+## Get started
 
-It works with a **free** Spotify account.
+1. [**Download `Mercify-Setup`**](https://github.com/Kain-Mercer/Mercify/releases/latest) and run it.
+   *If Windows says "Windows protected your PC", click **More info**, then **Run anyway**. It says that because Mercify is new.*
+2. Press the big green **Set up everything** button and wait a few minutes. It sets up Spotify for you.
+3. Log in to Spotify when it opens.
+4. Start your game, set to **Windowed (Fullscreen)** or **Borderless**. Your music panels appear on top.
 
-## Before you start
+That's it. Mercify keeps itself up to date.
 
-You'll need:
-
-- **Windows 10 or 11**
-- **The Spotify desktop app.** If you don't have it, Mercify installs it for you. The version from the Microsoft Store won't work.
-- **Your game set to "Windowed (Fullscreen)" or "Borderless"** in its graphics settings. Mercify can't appear over games running in true fullscreen.
-
-## Install
-
-1. Go to the [**Releases page**](https://github.com/Kain-Mercer/Mercify/releases) and download **`Mercify-Setup`** (the newest version at the top).
-2. Run it. If Windows shows a blue "Windows protected your PC" box, click **More info**, then **Run anyway**. This appears because Mercify is new and not yet recognised by Windows.
-3. Mercify opens its **Settings** window. Press the big green **Set up everything** button. That's it: it installs Spotify if you don't have it, plus the two add-ons Mercify needs (SpotX and Spicetify), without asking you anything. It takes a few minutes: a progress bar at the top shows how far along it is and what it's doing, and you can carry on with something else meanwhile.
-   - At the end Spotify opens. If it asks you to log in, log in: the last row, **Connected to Spotify**, turns green by itself once you have. If Spotify isn't showing, press **Open Spotify** on that row. If Spotify's window stays blank after you log in (it can, the first time), Mercify notices and restarts Spotify for you a few seconds later.
-   - Mercify doesn't install Spicetify's Marketplace (it isn't needed), so you won't see a Marketplace button in Spotify.
-   - If something goes wrong, Settings says what, in plain words, with a **Try again** button. **Copy details** copies everything that happened, to paste in a message to whoever gave you Mercify.
-4. Start your game. Your Spotify panels appear on top of it.
-
-Whenever you open Mercify, it opens Spotify for you (if it isn't running yet) and tucks Spotify's own window away into the tray, since Mercify's panels do its job. To bring Spotify's window back, right-click the Mercify tray icon and choose **Show Spotify window**.
-
-Prefer not to install anything? Download **`Mercify-portable`** instead. It runs straight from the file, but starts a little slower and can't update itself (see [Updates](#updates)).
-
-## Using Mercify
-
-### Keyboard shortcuts
+## The three shortcuts
 
 | Press | To |
 |---|---|
-| `Ctrl` + `` ` `` | Show or hide the panels (the `` ` `` key is under `Esc`) |
-| `Ctrl` + `Shift` + `` ` `` | Enter Edit Mode, to move and resize the panels |
-| `Ctrl` + `Shift` + `Space` | Jump to the search box. Type, then press `Enter` to play the top result, or `Esc` to go back to your game |
+| `Ctrl` + `` ` `` | Show or hide Mercify (`` ` `` is the key under `Esc`) |
+| `Ctrl` + `Shift` + `` ` `` | Move and resize the panels |
+| `Ctrl` + `Shift` + `Space` | Jump to search, type, press `Enter` to play |
 
-These shortcuts only work while you're in your game, so they won't get in the way of other programs. The Edit Mode shortcut works everywhere.
+## Listen with friends
 
-### Arranging your panels (Edit Mode)
+Open Mercify's window from the tray icon, enter your name and press **Start a lobby**. Mercify copies a code for you: send it to your friends, and they type it in and press **Join**. Everyone hears the same song at the same moment, and anyone can add songs to the shared playlist.
 
-Press `Ctrl` + `Shift` + `` ` `` to enter Edit Mode. It works much like World of Warcraft's own Edit Mode:
+## Need more?
 
-- **Drag** a panel to move it, or drag its edges or corner to resize it. Panels line up neatly with each other and the screen edges. Hold `Alt` while dragging if you'd rather place them freely.
-- Use the **arrow keys** to nudge the selected panel one step at a time.
-- **Click** a panel to change its settings:
-  - Turn it on or off
-  - Set how see-through it is normally
-  - Set how see-through it is when you hide the overlay. For example, keep Now Playing faintly visible while everything else disappears.
-  - Make it bigger or smaller
-
-Press `Esc` or **Done** when you're finished. Your layout saves automatically.
-
-Notifications, such as "Kain added a song" in a lobby, appear in their own **Notifications** panel. Move it wherever suits you in Edit Mode. By default they still pop up while the overlay is hidden; set its *Opacity when hidden* to 0% if you'd rather they didn't, or untick *Show this panel* to turn them off.
-
-### Compact Now Playing
-
-Hover over the Now Playing panel and click the small arrows in its top-right corner to shrink it into a compact bar showing the song and the previous, play/pause and next buttons. Click the arrows on the compact bar to make it full size again. It shrinks and grows in place, towards the nearest corner of your screen. You can also switch it with **Compact view** in Edit Mode, and move and resize the compact bar there like any other panel.
-
-When you hide the overlay with `Ctrl` + `` ` ``, the compact bar stays on screen at its "hidden" see-through level and **still works**: you can pause or skip without bringing everything back. It brightens while your mouse is over it. (To hide it completely too, set its *Opacity when hidden* to 0% in Edit Mode.)
-
-Clicking Mercify's buttons doesn't take your keyboard away from the game, so you can keep moving right after you skip a song. Only typing in a search box does, and pressing `Enter` or `Esc`, or picking a song, gives the keyboard straight back.
-
-### Using it with other games
-
-Mercify shows up over World of Warcraft out of the box. To use it with another game:
-
-1. Click the Mercify icon in your system tray (bottom-right of the taskbar) to open **Settings**.
-2. Under **Only show over these apps**, press **Pick the app in front**.
-3. Within 5 seconds, click into your game. It's added to the list.
-
-If you'd rather Mercify always stayed visible, switch **Only show over these apps** off.
-
-**More than one monitor?** When you click over to something on another monitor (a browser, Discord), Mercify stays up over your game, as long as the game is still open on its own screen. It hides if you minimise or close the game, or put another window in front of it on the same screen. Your shortcuts go back to normal in the other program until you click back into the game. Untick **Stay up while I use another monitor** in Settings if you'd rather it hid. Settings also shows a line saying why Mercify is showing or hidden right now, which helps if it isn't doing what you expect.
-
-### Other settings
-
-Open **Settings** from the tray icon to:
-
-- Start Mercify automatically when Windows starts. It then waits quietly in the tray instead of opening its Settings window.
-- Open Spotify automatically when Mercify starts
-- Choose whether Spotify's window is minimised to the tray when Mercify opens
-- Re-run any setup step if something stops working
-
-## Listening lobbies
-
-Listen along with friends: everyone hears the same song at the same moment, each in their own Spotify. It works with free accounts, and everyone needs Mercify.
-
-**Start a lobby from Mercify's window**
-
-You don't need to be in your game to start one.
-
-1. Open Mercify's **Settings** (click the tray icon) and find **Listening lobby**.
-2. Enter **your name**. This is what others in the lobby see.
-3. Press **Start a lobby**. Mercify makes up a code, starts the lobby with you as the **host**, and copies the code so you can paste it to your friends.
-
-To join a friend's lobby instead, type their code in the box next to it and press **Join**. Once you've set your name, you can also start one straight from the tray icon: right-click it and choose **Start a listening lobby**. The code is copied for you there too.
-
-**Start or join a lobby from the overlay**
-
-1. Open the **Lobby** panel in the overlay. If you can't see it, turn it on in Edit Mode.
-2. Enter **your name**.
-3. Enter a **lobby code**: make one up, or press the dice button to generate a random one.
-4. Press **Join lobby**.
-
-Everyone who enters the same code ends up in the same lobby. If nobody's there yet, you've started it and you're the **host**. Share the code with your friends (the copy button next to it helps), and they join by entering it.
-
-**Who controls the music**
-
-- **The host** plays, pauses, skips and seeks as normal, and everyone in the lobby follows along within a second or two.
-- **Everyone else listens**, and adds songs to the session playlist (below). Play, pause and skip are greyed out for listeners, but you can still change your own volume.
-- If the host leaves, whoever has been in the lobby longest becomes the new host automatically, and the session playlist carries on.
-
-**The session playlist**
-
-Every lobby has a shared playlist that everyone sees in the **Session Playlist** panel, which appears while you're in a lobby.
-
-- **Add a song** with the **+** next to any song in search results or a playlist. Listeners can also just click a song. Each song shows who added it.
-- **Add a whole album or playlist:** open it in the Playlist panel (click an album in search results to open it there) and press **Add all**. Its songs go in, in order. The session playlist holds up to 100 songs, so a very long playlist adds its first ones until it's full.
-- **Up next** lists what's coming, in order. When a song finishes, the next one from the list plays for everyone. If the list is empty, Spotify carries on as usual.
-- **The session playlist is in charge.** While it has songs, it decides what plays next, even if the host was playing one of their own playlists, or Spotify's crossfade or Automix tries to start the next song early. A song the host deliberately picks in Mercify still plays straight away, and the list carries on after it.
-- **Played** lists what's already played this session. Hover over a song and press **+** to add it again.
-- **Vote to skip:** if you're listening, press **Next** on the Now Playing panel (or your Next hotkey), or hover over the **Now** row at the top of the session playlist and click the prohibition sign (a circle with a line through it). Press it again to take your vote back. Your Next button stays lit while your vote counts. The count shows how many votes there are and how many are needed. Once at least half the lobby has voted, the song is skipped for everyone: 1 of 2, 2 of 3 and 2 of 4 are all enough. It plays the next song from the session playlist, or Spotify's own next song if the list is empty.
-- **The host** can hover over a song to play it now, move it to the top, or remove it, and the host's **Next** button plays the next song from the list. **Listeners** can remove songs they added themselves.
-
-The Now Playing panel shows a small badge while you're in a lobby. You can leave the lobby from the Lobby panel, from Settings or from the tray icon.
-
-**Good to know**
-
-- Random codes are safest. Short, made-up codes like `RAID` are easy for strangers to guess, and anyone who knows a code can join.
-- Lobby messages travel through free public relay servers, the same kind many apps use for chat. They're **encrypted with your lobby code**, so the relay can't see your name or what you're playing, but they're run by third parties and can occasionally be slow or down. Mercify uses several at once in case one is having a bad day.
-- Songs that aren't available in a listener's country, and the host's own local files, can't be played along.
-
-## Updates
-
-Mercify keeps itself up to date.
-
-- **When you open it**, Mercify shows its logo for a moment while it checks for a new version. If there is one, it downloads and installs it right there, then opens the new version, a bit like Discord or Steam. If you're offline or GitHub is slow, Mercify just opens as usual. When Mercify starts with Windows, the logo only appears if there's an update to install.
-- **While it's running**, it checks a few times a day, downloads any new version quietly in the background, and installs it the next time Mercify closes. You'll get a Windows notification when an update is ready. If you don't want to wait, open **Settings** and click **Restart and update**, or choose **Restart to update** from the tray icon.
-
-The **Updates** section in Settings shows which version you have and lets you check for a new one.
-
-- **Upgrading from version 1.2.0 or earlier?** Those versions can't update themselves, so download and run the newest `Mercify-Setup` from the [Releases page](https://github.com/Kain-Mercer/Mercify/releases) one last time. Your layout and settings are kept. From then on, updates are automatic.
-- **Using the portable version?** It can't replace itself while it's running. Instead, Settings tells you when a new version is out and gives you a **Download** button. Replace your old file with the new one.
-
-## Uninstalling
-
-Uninstall Mercify from Windows' **Apps** settings like any other program. It asks whether to also remove the Spotify add-ons it set up (Spicetify and SpotX):
-
-- **Yes** puts Spotify back to normal. Spotify itself stays installed.
-- **No** removes only Mercify's own part, and leaves Spicetify and SpotX as they are. Choose this if you used them before Mercify.
-
-Using the portable version? Open Settings and click **Remove Spicetify and SpotX…** under Setup before deleting it.
-
-## Troubleshooting
-
-**The overlay disappears after I click it, or my game stops taking keys.** Update Mercify first. If it still happens, right-click the Mercify tray icon straight afterwards, choose **Copy diagnostics**, and paste what it copies into a message to whoever gave you Mercify. It lists which windows Windows put in front and what Mercify did, without any of your other window titles.
-
-**Clicking an album does nothing, or says it couldn't open it.** Albums open in the **Playlist** panel, so make sure that panel is turned on in Edit Mode. Opening albums also needs the newer Mercify extension: open Settings and press **Finish setup** if it's offered (Spotify restarts once).
-
-**The panels say "Waiting for Spotify".** Click that message to open Settings. If anything there isn't green, press the big button. If everything is green, make sure Spotify is open; if it is, press **Redo** next to *Mercify extension*. This is most often needed after Spotify updates itself.
-
-**I can't see the panels in my game.** Check that your game is set to *Windowed (Fullscreen)* or *Borderless*, not *Fullscreen*. Also check the game is listed under **Only show over these apps** in Settings.
-
-**The panels have a black box behind them.** Some graphics drivers cause this. Contact us via the Issues page and we'll help you switch on a fix.
-
-**Can't join a lobby ("Couldn't reach any lobby relay").** A firewall or school or work network may be blocking the relays. They use ports 8084, 8884 and 8081. Try another network, such as your phone's hotspot, to check.
-
-**A shortcut doesn't work.** Another program may already be using it. Mercify tells you when it starts if a shortcut couldn't be set up.
-
-**Something else is wrong?** Please [open an issue](https://github.com/Kain-Mercer/Mercify/issues) and describe what happened. A screenshot helps a lot.
+- 📖 [**User guide**](docs/GUIDE.md): moving panels, other games, lobbies in detail, settings, updates, uninstalling.
+- 🛠️ [**Help with problems**](docs/TROUBLESHOOTING.md): the usual fixes, in one page.
+- 🔒 [**Privacy and safety**](SECURITY.md): what Mercify changes and what it sends where.
+- 🐞 [**Report a problem**](https://github.com/Kain-Mercer/Mercify/issues): tell us what happened (a screenshot helps).
 
 ## Disclaimer
+
+Mercify is test software, provided "as is" with no warranty, and you use it at your own risk. It isn't made by or connected to Spotify, Blizzard, SpotX or Spicetify. It uses SpotX and Spicetify, which modify the Spotify app, and that may go against Spotify's Terms of Use, so please decide for yourself. Mercify never touches your games: it just draws a window on top of them.
+
+<details>
+<summary>Full disclaimer</summary>
 
 Mercify is provided **for evaluation purposes only**. It is test software, offered "as is", without warranty of any kind. It may contain bugs, may stop working at any time, and could affect how Spotify behaves on your computer. You use it entirely at your own risk, and the authors accept no responsibility for any loss, damage or account issues that may result.
 
@@ -196,6 +59,4 @@ Listening lobbies send messages, encrypted with your lobby code, through free pu
 
 Mercify relies on third-party tools (SpotX and Spicetify) that modify the Spotify desktop app. Modifying Spotify may go against Spotify's Terms of Use. Please review them and decide for yourself before installing. Mercify doesn't modify, read or inject anything into your games. It simply draws a window on top of them.
 
----
-
-<sub>Want to build Mercify yourself or help develop it? See the [developer guide](docs/DEVELOPING.md).</sub>
+</details>
