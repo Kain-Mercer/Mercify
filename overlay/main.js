@@ -13,6 +13,28 @@ const setup = require("./setup");
 const updater = require("./updater");
 const { createLobby, generateCode, formatCode, DEFAULT_RELAYS } = require("./lobby");
 
+// ------------------------------------------------------------------ uninstalling
+// The uninstaller asks whether to remove the Spotify add-ons too, then runs
+// "Mercify.exe --uninstall-cleanup" (everything) or "--uninstall-cleanup=extension" (only
+// Mercify's own extension). Do just that, log it to %TEMP%\mercify-uninstall.log, and exit:
+// no windows, no tray icon, no single-instance check (Mercify itself may still be closing).
+const cleanupArg = process.argv.find((a) => a.startsWith("--uninstall-cleanup"));
+if (cleanupArg) {
+	const lines = [`Mercify ${app.getVersion()} uninstall cleanup (${cleanupArg}), ${new Date().toISOString()}`];
+	app.whenReady().then(async () => {
+		try {
+			await setup.removeAddons((l) => lines.push(l), { extensionOnly: cleanupArg.endsWith("=extension") });
+		} catch (e) {
+			lines.push(`failed: ${e.stack || e}`);
+		}
+		try {
+			fs.writeFileSync(path.join(require("os").tmpdir(), "mercify-uninstall.log"), lines.join("\r\n"));
+		} catch (_) {}
+		app.exit(0);
+	});
+	return; // the rest of this file is the normal app
+}
+
 // ------------------------------------------------------------------ config
 
 const DEFAULT_CONFIG = {
@@ -998,6 +1020,11 @@ ipcMain.handle("settings:action", async (_e, name) => {
 	else if (name === "spicetify") await runSetup({ spicetify: true });
 	else if (name === "copySetupDetails") clipboard.writeText(setupDetails());
 	else if (name === "openSpotify") await showSpotify();
+	else if (name === "removeAddons") {
+		setupLog.length = 0;
+		await setup.removeAddons(setupLogLine);
+		lastSetup = null;
+	}
 	else if (name === "apply") await setup.applyExtension(settingsLog);
 	else if (name === "startSpotify") await setup.startSpotify();
 	else if (name === "checkUpdate") updater.check();

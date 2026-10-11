@@ -114,6 +114,89 @@ async function restartSpotify() {
 	return true;
 }
 
+// ---------------------------------------------------------------- removing the add-ons
+// Run by the uninstaller (Mercify.exe --uninstall-cleanup, after asking) and by Settings.
+//   everything: undo Spicetify (`spicetify restore`) and delete it, then put back the Spotify
+//               files SpotX backed up (what SpotX's own Uninstall.bat does; its update block is a
+//               patch in those files). Spotify itself stays installed.
+//   extension only: take Mercify's extension out of Spicetify and leave the rest alone (for
+//               people who used Spicetify or SpotX before Mercify).
+async function removeAddons(log, { extensionOnly = false } = {}) {
+	if (!IS_WIN) return { ok: false, why: "Only on Windows." };
+	log("Closing Spotify…");
+	await new Promise((r) => execFile("taskkill", ["/IM", "Spotify.exe", "/F"], { windowsHide: true }, () => r()));
+	await sleep(1500);
+	const exe = findSpicetify();
+
+	if (extensionOnly) {
+		if (exe) {
+			await spice(exe, ["config", "extensions", "overlay-bridge.js-"], log);
+			await spice(exe, ["apply"], log);
+			const lines = (await spiceOutput(exe, ["path", "userdata"])).split("\n").map((l) => l.trim()).filter(Boolean);
+			const ud = lines[lines.length - 1];
+			for (const dir of [ud, path.join(APPDATA, "spicetify")]) {
+				try {
+					if (dir) fs.unlinkSync(path.join(dir, "Extensions", "overlay-bridge.js"));
+				} catch (_) {}
+			}
+		}
+		log("Removed Mercify's extension from Spotify.");
+		return { ok: true };
+	}
+
+	// 1. Spicetify: put Spotify's own files back, then delete Spicetify
+	if (exe) {
+		log("Undoing Spicetify's changes to Spotify…");
+		await spice(exe, ["restore"], log);
+	}
+	for (const dir of [path.join(LOCALAPPDATA, "spicetify"), path.join(APPDATA, "spicetify"), path.join(os.homedir(), "spicetify-cli")]) {
+		try {
+			if (fs.existsSync(dir)) {
+				fs.rmSync(dir, { recursive: true, force: true });
+				log(`Deleted ${dir}`);
+			}
+		} catch (e) {
+			log(`Couldn't delete ${dir}: ${e.message}`);
+		}
+	}
+	// its official installer adds itself to the user PATH
+	await runPowerShell(
+		"$p = [Environment]::GetEnvironmentVariable('PATH','User'); if ($p) { $n = ($p -split ';' | Where-Object { $_ -and $_ -notmatch '\\\\spicetify' }) -join ';'; if ($n -ne $p) { [Environment]::SetEnvironmentVariable('PATH',$n,'User'); 'Removed Spicetify from PATH' } }",
+		log,
+		{ idleMs: 60000 }
+	);
+
+	// 2. SpotX: its backups of the original files (its Uninstall.bat does the same)
+	const backups = [["chrome_elf.dll.bak", "chrome_elf.dll"], ["Spotify.dll.bak", "Spotify.dll"], ["Spotify.bak", "Spotify.exe"], [path.join("Apps", "xpui.bak"), path.join("Apps", "xpui.spa")]];
+	let restored = 0;
+	for (const [bak, orig] of backups) {
+		const b = path.join(SPOTIFY_DIR, bak);
+		if (!fs.existsSync(b)) continue;
+		try {
+			fs.rmSync(path.join(SPOTIFY_DIR, orig), { force: true });
+			fs.renameSync(b, path.join(SPOTIFY_DIR, orig));
+			restored++;
+			log(`Put back the original ${orig}`);
+		} catch (e) {
+			log(`Couldn't put back ${orig}: ${e.message}`);
+		}
+	}
+	// Spotify loads Apps\xpui.spa; an unpacked Apps\xpui folder left behind would shadow it
+	if (fs.existsSync(path.join(SPOTIFY_DIR, "Apps", "xpui.spa")) && fs.existsSync(path.join(SPOTIFY_DIR, "Apps", "xpui"))) {
+		try {
+			fs.rmSync(path.join(SPOTIFY_DIR, "Apps", "xpui"), { recursive: true, force: true });
+		} catch (_) {}
+	}
+	// older SpotX versions locked Spotify's update folder instead
+	await runPowerShell(
+		"$d = Join-Path $env:LOCALAPPDATA 'Spotify\\Update'; if (Test-Path $d -PathType Container) { $a = Get-Acl $d; $deny = @($a.Access | Where-Object { $_.AccessControlType -eq 'Deny' }); if ($deny.Count) { $deny | ForEach-Object { [void]$a.RemoveAccessRule($_) }; Set-Acl $d $a; 'Unlocked Spotify updates' } }",
+		log,
+		{ idleMs: 60000 }
+	);
+	log(restored ? "SpotX removed: Spotify is back to normal." : "No SpotX backups found (SpotX wasn't installed, or Spotify was reinstalled since).");
+	return { ok: true };
+}
+
 async function status() {
 	if (process.env.OVERLAY_DEBUG_FAKE_SETUP) return JSON.parse(process.env.OVERLAY_DEBUG_FAKE_SETUP); // UI testing off Windows
 	if (!IS_WIN) return { supported: false };
@@ -440,4 +523,4 @@ async function applyExtension(log) {
 	return ok;
 }
 
-module.exports = { spotifyLoggedIn, restartSpotify, _runPowerShell: runPowerShell, status, needsAttention, setupAll, isSetupRunning: () => setupRunning, runSpotX, installSpicetify, applyExtension, startSpotify, openSpotify, isSpotifyRunning, IS_WIN, _detectSpotX: detectSpotX };
+module.exports = { removeAddons, spotifyLoggedIn, restartSpotify, _runPowerShell: runPowerShell, status, needsAttention, setupAll, isSetupRunning: () => setupRunning, runSpotX, installSpicetify, applyExtension, startSpotify, openSpotify, isSpotifyRunning, IS_WIN, _detectSpotX: detectSpotX };

@@ -492,3 +492,15 @@ kbd {
 #log-box[hidden] {
 	display: none;
 }
+.remove-addons {
+	display: block;
+	margin-top: 8px;
+	color: var(--dim);
+	font-size: 11.5px;
+}
+.remove-addons:hover {
+	color: var(--bad);
+}
+.remove-addons[hidden] {
+	display: none;
+}

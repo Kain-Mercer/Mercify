@@ -146,6 +146,15 @@ The **Updates** section in Settings shows which version you have and lets you ch
 - **Upgrading from version 1.2.0 or earlier?** Those versions can't update themselves, so download and run the newest `Mercify-Setup` from the [Releases page](https://github.com/Kain-Mercer/Mercify/releases) one last time. Your layout and settings are kept. From then on, updates are automatic.
 - **Using the portable version?** It can't replace itself while it's running. Instead, Settings tells you when a new version is out and gives you a **Download** button. Replace your old file with the new one.
 
+## Uninstalling
+
+Uninstall Mercify from Windows' **Apps** settings like any other program. It asks whether to also remove the Spotify add-ons it set up (Spicetify and SpotX):
+
+- **Yes** puts Spotify back to normal. Spotify itself stays installed.
+- **No** removes only Mercify's own part, and leaves Spicetify and SpotX as they are. Choose this if you used them before Mercify.
+
+Using the portable version? Open Settings and click **Remove Spicetify and SpotX…** under Setup before deleting it.
+
 ## Troubleshooting
 
 **The overlay disappears after I click it, or my game stops taking keys.** Update Mercify first. If it still happens, right-click the Mercify tray icon straight afterwards, choose **Copy diagnostics**, and paste what it copies into a message to whoever gave you Mercify. It lists which windows Windows put in front and what Mercify did, without any of your other window titles.

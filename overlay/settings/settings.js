@@ -69,6 +69,7 @@ function renderSetup(s, run, connected) {
 		openBtn.hidden = true;
 	}
 	const done = setupDone(s);
+	$("#remove-addons").hidden = setupRunning || !(s.spicetify || s.spotx);
 	$("#setup-go").hidden = done && !setupRunning;
 	$("#setup-hint").textContent = done && !setupRunning ? "All done. Green means done." : "Green means done.";
 	const big = $("#setup-all");
@@ -250,6 +251,11 @@ $("#setup-copy").addEventListener("click", async () => {
 	setTimeout(() => ($("#setup-copy").textContent = "Copy details"), 4000);
 });
 S.onSetupProgress(onSetupProgress);
+$("#remove-addons").addEventListener("click", async () => {
+	if (setupRunning) return;
+	const sure = confirm("Remove Spicetify and SpotX from Spotify?\n\nSpotify stays installed and goes back to normal. Mercify won't work with Spotify again until you run setup again.");
+	if (sure) await runSetupAction("removeAddons");
+});
 
 $("#only-enabled").addEventListener("change", async (e) => render(await S.set("onlyShowOver.enabled", e.target.checked)));
 $("#other-monitor").addEventListener("change", async (e) => render(await S.set("onlyShowOver.stayOnOtherMonitor", e.target.checked)));
