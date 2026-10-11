@@ -10,6 +10,10 @@
 		<header>
 			<img class="logo" src="../assets/logo.png" alt="Mercify" />
 			<h1 class="sr-only">Mercify</h1>
+			<div id="setup-progress" hidden>
+				<div class="prog-track"><div class="prog-fill"></div><span class="prog-pct"></span></div>
+				<div class="prog-desc"></div>
+			</div>
 			<div id="update-banner" hidden>
 				<span id="update-banner-text"></span>
 				<button class="btn" id="update-banner-btn"></button>
@@ -58,7 +62,6 @@
 						</div>
 					</div>
 					<button class="link remove-addons" id="remove-addons" hidden>Remove Spicetify and SpotX…</button>
-					<details id="log-box" hidden><summary>Show what it's doing</summary><pre id="log"></pre></details>
 				</section>
 
 				<section class="card">

@@ -135,10 +135,18 @@ function openSpotify() {
 	return true;
 }
 
-// Has someone logged in to Spotify on this PC? Spotify writes the account into its prefs file
-// (autologin.username / autologin.canonical_username) once you're logged in.
+// Has someone logged in to Spotify on this PC? Logging in creates the account's folder,
+// %APPDATA%\Spotify\Users\<name>-user, straight away. (The autologin lines in the prefs file
+// may only be written when Spotify closes, so they missed a login into a running Spotify:
+// 1.9.2's restart never fired.)
 function spotifyLoggedIn() {
-	if (process.env.OVERLAY_DEBUG_FAKE_LOGGED_IN) return process.env.OVERLAY_DEBUG_FAKE_LOGGED_IN === "1";
+	if (process.env.OVERLAY_DEBUG_FAKE_LOGGED_IN) {
+		const f = process.env.OVERLAY_DEBUG_FAKE_LOGGED_IN;
+		return f === "1" || (fs.existsSync(f) && fs.readFileSync(f, "utf8").trim() === "1"); // a file lets tests flip it
+	}
+	try {
+		if (fs.readdirSync(path.join(SPOTIFY_DIR, "Users")).some((d) => /-user$/i.test(d))) return true;
+	} catch (_) {}
 	try {
 		return /^autologin\.(canonical_)?username\s*=\s*"?[^"\s]/m.test(fs.readFileSync(SPOTIFY_PREFS, "utf8"));
 	} catch (_) {
@@ -366,6 +374,9 @@ function runPowerShell(script, log, { idleMs = 6 * 60000, totalMs = 25 * 60000 }
 			for (const raw of stripAnsi(d.toString()).split("\n")) {
 				const l = raw.trimEnd();
 				if (!l) continue;
+				// PowerShell serialises Write-Host output as XML ("#< CLIXML", <Objs>…) when it's
+				// redirected: the same text again, unreadable. Drop it.
+				if (/^#< CLIXML|<Objs |<Obj S=|<\/Objs>|^\s*#[#=O\- ]*$/.test(l)) continue;
 				log(l);
 				tail.push(l);
 				if (tail.length > 40) tail.shift();
@@ -489,6 +500,13 @@ async function setupAll({ log, progress, isConnected, force = {} }) {
 			for (const [st, text] of steps) {
 				progress(st, "running", text);
 				log(`(pretend) ${text}`);
+				if (st === "spotify") {
+					log("Downloading and installing Spotify");
+					for (const p of [12.5, 31.0, 58.4, 77.9]) {
+						await sleep(Number(process.env.OVERLAY_DEBUG_FAKE_STEP_MS || 1200) / 4);
+						log(`#####      ${p}%`);
+					}
+				}
 				await sleep(Number(process.env.OVERLAY_DEBUG_FAKE_STEP_MS || 1200));
 				if (process.env.OVERLAY_DEBUG_FAKE_SETUP_RUN === "fail" && st === "spicetify") return fail(st, "Couldn't install Spicetify (GitHub answered 403). Check your internet connection.");
 				progress(st, "done", "Installed");

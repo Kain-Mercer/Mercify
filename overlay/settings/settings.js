@@ -41,6 +41,13 @@ function renderSetup(s, run, connected) {
 		$("#setup-section").hidden = true;
 		return;
 	}
+	// the bar after the steps: waiting for you to log in, then done once Spotify connects
+	const ranOk = run && !run.running && run.ok;
+	if (ranOk && connected && !$("#setup-progress").hidden && !$("#setup-progress").classList.contains("finished")) progFinish("All set! Mercify is connected to Spotify.");
+	else if (ranOk && !connected && setupDone(s)) {
+		progPhase("connect", "Spotify is opening. If it asks you to log in, log in; Mercify finishes by itself.");
+		if (connectNote) (prog.desc = connectNote), progDraw(); // "You're logged in. Restarting Spotify…"
+	}
 	setupRunning = !!run?.running;
 	// Settings opened (or re-rendered) mid-run: show each step as far as it got
 	if (setupRunning && run.steps) for (const [step, p] of Object.entries(run.steps)) onSetupProgress({ step, ...p });
@@ -90,7 +97,104 @@ function renderSetup(s, run, connected) {
 	document.querySelectorAll("#setup-section .row button[data-act]").forEach((b) => (b.disabled = setupRunning || !s.spotify));
 }
 
+// ---------------------------------------------------------------- progress bar (header)
+// Setup can't know how long each step will take, so the bar is an estimate: each step owns a
+// slice (installing Spotify is by far the longest) and eases towards the end of it, never going
+// backwards. Real numbers replace the guess where there are any (SpotX's download percentage,
+// Spicetify's "Patching files [n/286]").
+const PHASES = {
+	spotify: { from: 2, to: 55, tau: 80 },
+	firstrun: { from: 55, to: 60, tau: 8 },
+	spicetify: { from: 60, to: 74, tau: 10 },
+	extension: { from: 74, to: 90, tau: 12 },
+	connect: { from: 90, to: 99, tau: 45 },
+};
+const prog = { phase: null, value: 0, base: 0, since: 0, desc: "", timer: null, finishing: null };
+
+function progShow(desc) {
+	const el = $("#setup-progress");
+	el.hidden = false;
+	el.classList.remove("finished", "failed");
+	clearTimeout(prog.finishing);
+	prog.finishing = null;
+	if (desc != null) prog.desc = desc;
+	if (!prog.timer) prog.timer = setInterval(progTick, 200);
+	progDraw();
+}
+
+function progPhase(step, desc) {
+	const ph = PHASES[step];
+	if (!ph) return;
+	if (prog.phase !== step) {
+		prog.phase = step;
+		prog.value = Math.max(prog.value, ph.from);
+		prog.base = prog.value;
+		prog.since = Date.now();
+		progShow(desc);
+	} else progShow(); // same step again (Settings re-rendering): keep the newer description
+}
+
+function progAtLeast(v) {
+	if (v > prog.value) {
+		prog.value = v;
+		prog.base = v; // the estimate carries on from the real number
+		prog.since = Date.now();
+	}
+	progDraw();
+}
+
+function progTick() {
+	const ph = PHASES[prog.phase];
+	if (ph) {
+		const t = (Date.now() - prog.since) / 1000;
+		const guess = prog.base + (ph.to - prog.base) * (1 - Math.exp(-t / ph.tau));
+		prog.value = Math.max(prog.value, Math.min(guess, ph.to - 0.5));
+	}
+	progDraw();
+}
+
+function progDraw() {
+	$("#setup-progress .prog-fill").style.width = prog.value.toFixed(1) + "%";
+	$("#setup-progress .prog-pct").textContent = Math.floor(prog.value) + "%";
+	$("#setup-progress .prog-desc").textContent = prog.desc;
+}
+
+function progStop() {
+	clearInterval(prog.timer);
+	prog.timer = null;
+}
+
+function progFinish(desc) {
+	progStop();
+	prog.phase = null;
+	prog.value = 100;
+	prog.desc = desc;
+	progDraw();
+	$("#setup-progress").classList.add("finished");
+	clearTimeout(prog.finishing);
+	prog.finishing = setTimeout(() => ($("#setup-progress").hidden = true), 6000);
+}
+
+function progFail(desc) {
+	progStop();
+	prog.phase = null;
+	prog.desc = desc;
+	progDraw();
+	$("#setup-progress").hidden = false;
+	$("#setup-progress").classList.add("failed");
+}
+
+S.onSetupDetail((d) => {
+	if (d.text) prog.desc = d.text;
+	if (prog.phase === "spotify" && d.pct != null) progAtLeast(4 + d.pct * 0.42); // the download is most of this step
+	if (prog.phase === "extension" && d.sub != null) progAtLeast(PHASES.extension.from + d.sub * 12);
+	progDraw();
+});
+
 function onSetupProgress({ step, state, text }) {
+	if (state === "failed") progFail(text || "Setup stopped.");
+	else if (state === "done" && PHASES[step]) progAtLeast(PHASES[step].to);
+	else if (state === "running" || state === "waiting") progPhase(step, text);
 	setupRunning = true;
 	$("#setup-fail").hidden = true;
 	$("#setup-all").disabled = true;
@@ -106,8 +210,10 @@ function onSetupProgress({ step, state, text }) {
 async function runSetupAction(name) {
 	if (setupRunning) return;
 	setupRunning = true;
-	$("#log").textContent = "";
-	$("#log-box").hidden = false;
+	prog.value = 0;
+	prog.phase = null;
+	if (name === "removeAddons") progShow("Removing Spicetify and SpotX…");
+	else progPhase(name === "spicetify" ? "spicetify" : name === "apply" ? "extension" : "spotify", "Starting…");
 	$("#setup-fail").hidden = true;
 	$("#setup-all").disabled = true;
 	document.querySelectorAll("#setup-section .row button[data-act]").forEach((b) => (b.disabled = true));
@@ -115,7 +221,14 @@ async function runSetupAction(name) {
 		render(await S.action(name));
 	} finally {
 		setupRunning = false;
-		render(await S.get());
+		const d = await S.get();
+		// every action ends the bar one way or another
+		if (d.setupRun && d.setupRun.ok === false) progFail(d.setupRun.why || "Setup stopped.");
+		else if (name === "removeAddons") progFinish("Removed. Spotify is back to normal.");
+		else if (d.connected) progFinish("All set! Mercify is connected to Spotify.");
+		else if (setupDone(d.setup)) progPhase("connect", d.connectNote || "Spotify is opening. If it asks you to log in, log in; Mercify finishes by itself.");
+		else progFinish("Done.");
+		render(d);
 	}
 }
 
@@ -235,12 +348,9 @@ function render(d) {
 		.join("");
 }
 
-function log(line) {
-	const el = $("#log");
-	$("#log-box").hidden = false;
-	el.textContent += line + "\n";
-	el.scrollTop = el.scrollHeight;
-}
+// the full log isn't shown any more (the progress bar says what's happening); "Copy details"
+// in a failure copies it from the main process
+function log() {}
 
 document.querySelectorAll("#setup-section .row button[data-act]").forEach((b) => b.addEventListener("click", () => runSetupAction(b.dataset.act)));
 $("#setup-all").addEventListener("click", () => runSetupAction("setupAll"));

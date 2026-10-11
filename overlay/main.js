@@ -590,8 +590,12 @@ async function showSpotify() {
 // The first time you log in (Spotify sends you to your browser and back), the Spotify window can
 // stay blank, and the Mercify extension never loads, until Spotify is restarted. So: once Spotify
 // says you're logged in, give it a moment to connect, and if it doesn't, restart it once.
-const LOGIN_GRACE_MS = Number(process.env.OVERLAY_DEBUG_LOGIN_GRACE_MS) || 30000; // slow PCs take a while to load Spotify
+// Already logged in when Mercify started: give a slow PC 30 s to load Spotify. Logged in while
+// Mercify watched (setup's first login): the blank window is the expected outcome, so restart soon.
+const LOGIN_GRACE_MS = Number(process.env.OVERLAY_DEBUG_LOGIN_GRACE_MS) || 30000;
+const FRESH_LOGIN_GRACE_MS = Number(process.env.OVERLAY_DEBUG_FRESH_LOGIN_GRACE_MS) || 8000;
 let loggedInSince = 0;
+let sawLoggedOut = false; // seen logged out during this run, so a login now is a fresh one
 let loginRestarts = 0;
 let connectNote = ""; // for Settings' "Connected to Spotify" row
 
@@ -608,13 +612,19 @@ setInterval(async () => {
 		if (connectNote) setConnectNote("");
 		return;
 	}
-	if (setup.isSetupRunning() || !setup.spotifyLoggedIn()) {
+	if (setup.isSetupRunning()) return;
+	if (!setup.spotifyLoggedIn()) {
 		loggedInSince = 0;
+		sawLoggedOut = true;
+		if (setup.spotifyInstalled()) setConnectNote("Log in to Spotify in its window. Mercify finishes by itself once you have.");
 		return;
 	}
 	if (!(await setup.isSpotifyRunning())) return; // nothing to restart; "Open Spotify" handles that
-	if (!loggedInSince) loggedInSince = Date.now();
-	if (Date.now() - loggedInSince < LOGIN_GRACE_MS) return;
+	if (!loggedInSince) {
+		loggedInSince = Date.now();
+		if (sawLoggedOut) setConnectNote("You're logged in. Waiting for Spotify to load…");
+	}
+	if (Date.now() - loggedInSince < (sawLoggedOut ? FRESH_LOGIN_GRACE_MS : LOGIN_GRACE_MS)) return;
 	if (loginRestarts >= 1) {
 		setConnectNote("Spotify still hasn't connected after a restart. Press Redo next to Mercify extension.");
 		return;
@@ -993,6 +1003,18 @@ function setupLogLine(line) {
 	setupLog.push(line);
 	if (setupLog.length > 400) setupLog.shift();
 	settingsLog(line);
+	// for the progress bar: SpotX's download percentage, and a friendlier line for some stages
+	const pct = /(\d{1,3}(?:\.\d)?)%\s*$/.exec(line);
+	const detail = pct
+		? { pct: Math.min(100, parseFloat(pct[1])) }
+		: /Downloading and installing Spotify/i.test(line)
+			? { text: "Downloading Spotify…" }
+			: /Patching Spotify/i.test(line)
+				? { text: "Adding SpotX to Spotify…" }
+				: /Patching files \[(\d+)\/(\d+)\]/.test(line)
+					? { text: "Adding Mercify to Spotify…", sub: Number(RegExp.$1) / Number(RegExp.$2) }
+					: null;
+	if (detail && settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send("settings:setup-detail", detail);
 }
 const setupSteps = {}; // step -> { state, text } of the current run, for a Settings window opened mid-run
 function setupProgress(step, state, text) {
