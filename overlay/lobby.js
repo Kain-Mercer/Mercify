@@ -160,6 +160,10 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 	let queue = []; // up next
 	let history = []; // played, newest first
 	let nowItem = null; // the queue item that's playing right now (to show who added it)
+	// Vote skip on the song playing now. The host counts: skipVotes is member id -> the song uri
+	// they voted against; at least half the lobby (ties skip) moves on to the next song.
+	const skipVotes = new Map();
+	let skip = null; // { uri, voters: [{ id, name }], need, total }, as the host last sent it
 	let advanceTimer = null;
 	let advancing = false; // we're starting the next queued song ourselves
 	let hostLast = null; // host: { uri, name, artists, image, duration, position } of the current song
@@ -193,6 +197,9 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 			queue,
 			history,
 			now: nowItem,
+			// what's playing for everyone (the host's song), and the vote to skip it
+			current: role === "host" ? (player && !player.empty ? { uri: player.uri, name: player.name, artists: player.artists } : null) : hostTrack ? { uri: hostTrack.uri, name: hostTrack.name, artists: hostTrack.artists } : null,
+			skip: skip && skip.uri === currentUri() ? { ...skip, count: skip.voters.length, mine: !!me && skip.voters.some((v) => v.id === me.id) } : null,
 		};
 	}
 
@@ -250,7 +257,8 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 				send("here", { role, to: msg.id });
 				if (role === "host") {
 					sendState();
-					sendQueue();
+					if (skipVotes.size) tallySkip(); // one more person: more votes needed (also sends the list)
+					else sendQueue();
 				}
 				if (status === "joined") note(`${m.name} joined`);
 				break;
@@ -268,6 +276,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 				members.delete(msg.id);
 				note(`${m.name} left`);
 				if (msg.id === hostId) electHost();
+				else tallySkip(); // fewer people: the votes so far may now be enough
 				break;
 			}
 			case "state": {
@@ -308,6 +317,16 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 				if (items.length) hostAddMany(items, typeof msg.label === "string" ? msg.label.slice(0, 200) : "");
 				break;
 			}
+			case "vote": {
+				if (role !== "host" || typeof msg.uri !== "string") return;
+				hostVote(msg.id, msg.uri, !!msg.on);
+				break;
+			}
+			case "skipped": {
+				if (msg.id !== hostId || role === "host") return;
+				note(String(msg.text || "Skipped by vote").slice(0, 300), true);
+				break;
+			}
 			case "queue-op": {
 				if (role !== "host") return;
 				const item = queue.find((q) => q.qid === msg.qid);
@@ -322,6 +341,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 				queue = (Array.isArray(msg.items) ? msg.items : []).slice(0, QUEUE_MAX).map((t) => makeItem(t)).filter(Boolean);
 				history = (Array.isArray(msg.history) ? msg.history : []).slice(0, HISTORY_MAX).map((t) => makeItem(t)).filter(Boolean);
 				nowItem = msg.now ? makeItem(msg.now) : null;
+				skip = cleanSkip(msg.skip);
 				changed();
 				break;
 			}
@@ -366,6 +386,8 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 
 	function becomeHost(why) {
 		role = "host";
+		skipVotes.clear();
+		skip = null;
 		setHost(me.id);
 		hostTrack = null;
 		// carry on with the session playlist as we last saw it
@@ -427,7 +449,67 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 
 	function sendQueue() {
 		if (role !== "host") return;
-		send("queue", { items: queue, history, now: nowItem });
+		send("queue", { items: queue, history, now: nowItem, skip });
+	}
+
+	// ---------------------------------------------------------------- vote skip
+
+	const currentUri = () => (role === "host" ? (player && !player.empty ? player.uri : null) : hostTrack?.uri || null);
+	const needFor = (total) => Math.max(1, Math.ceil(total / 2)); // half, rounded up: 2 of 4 skips
+
+	// Vote (or take back your vote) to skip the song playing now.
+	function voteSkip(on) {
+		if (status !== "joined") return;
+		const uri = currentUri();
+		if (!uri) return;
+		if (role === "host") return hostVote(me.id, uri, on);
+		if (!hostId) return;
+		send("vote", { to: hostId, uri, on: !!on });
+		// show it straight away; the host's count replaces this
+		const voters = (skip && skip.uri === uri ? skip.voters : []).filter((v) => v.id !== me.id);
+		if (on) voters.push({ id: me.id, name: me.name });
+		const total = members.size + 1;
+		skip = { uri, voters, need: needFor(total), total };
+		changed();
+	}
+
+	function hostVote(id, uri, on) {
+		if (role !== "host" || uri !== currentUri()) return; // a vote for a song that's already over
+		if (on) skipVotes.set(id, uri);
+		else skipVotes.delete(id);
+		tallySkip();
+	}
+
+	// Count the votes for the song playing now; skip it when at least half the lobby wants to.
+	function tallySkip() {
+		if (role !== "host") return;
+		const uri = currentUri();
+		const here = new Map([[me.id, me.name], ...[...members.values()].map((m) => [m.id, m.name])]);
+		for (const [id, u] of [...skipVotes]) if (u !== uri || !here.has(id)) skipVotes.delete(id);
+		const total = here.size;
+		const voters = [...skipVotes.keys()].map((id) => ({ id, name: here.get(id) }));
+		const need = needFor(total);
+		if (uri && voters.length && voters.length >= need) {
+			const songName = player?.name || nowItem?.name || "the song";
+			skipVotes.clear();
+			skip = null;
+			const text = `Skipped “${songName}” by vote (${voters.length} of ${total})`;
+			note(text, true);
+			send("skipped", { text });
+			sendQueue();
+			playNext();
+			return;
+		}
+		skip = uri && voters.length ? { uri, voters, need, total } : null;
+		sendQueue();
+		changed();
+	}
+
+	function cleanSkip(v) {
+		if (!v || typeof v.uri !== "string" || !URI_RE.test(v.uri)) return null;
+		const voters = (Array.isArray(v.voters) ? v.voters : []).slice(0, 50).filter((x) => x && typeof x.id === "string").map((x) => ({ id: x.id.slice(0, 32), name: cleanName(x.name) || "Someone" }));
+		const total = Math.max(1, Math.min(100, Number(v.total) || 1));
+		return { uri: v.uri, voters, need: needFor(total), total };
 	}
 
 	function hostAdd(item) {
@@ -517,6 +599,8 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 	// song early), play the next song from the session playlist instead. Songs the host picks
 	// themselves in Mercify (markManual) are left alone.
 	function hostSongChanged(prev) {
+		skipVotes.clear();
+		skip = null;
 		if (prev) {
 			const entry = makeItem({ ...prev, qid: undefined }, nowItem && nowItem.uri === prev.uri ? nowItem.by : null, nowItem && nowItem.uri === prev.uri ? nowItem.byId : null);
 			if (entry && (prev.position || 0) > 15000) {
@@ -643,6 +727,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 					}
 				}
 				if (hostGone) electHost();
+				else if (role === "host" && skipVotes.size) tallySkip();
 				changed(); // relay counts
 			}, 5000)
 		);
@@ -856,6 +941,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		queueAdd,
 		queueAddMany,
 		queueRemove,
+		voteSkip,
 		queueMoveTop: (qid) => role === "host" && hostMoveTop(qid),
 		// The app calls this when the host picks a song themselves, so the session playlist doesn't override it.
 		markManual: () => (manualUntil = Date.now() + 4000),

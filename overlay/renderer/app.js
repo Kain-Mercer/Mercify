@@ -22,6 +22,8 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 const I = (d, vb = "0 0 16 16") => `<svg viewBox="${vb}" aria-hidden="true"><path d="${d}"/></svg>`;
 const ICON = {
+	// ISO 7010 P001 "general prohibition": a ring with a bar from top left to bottom right
+	noEntry: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.1" style="fill:none;stroke:currentColor;stroke-width:1.9"/><path d="M3.7 3.7l8.6 8.6" style="fill:none;stroke:currentColor;stroke-width:1.9"/></svg>',
 	play: I("M4.5 2.6v10.8a.6.6 0 0 0 .9.5l8.6-5.4a.6.6 0 0 0 0-1L5.4 2.1a.6.6 0 0 0-.9.5z"),
 	pause: I("M4 2.5h2.6v11H4zM9.4 2.5H12v11H9.4z"),
 	next: I("M3 2.8v10.4a.5.5 0 0 0 .8.4l7-5.2a.5.5 0 0 0 0-.8l-7-5.2a.5.5 0 0 0-.8.4zM11.6 2.5h1.6v11h-1.6z"),
@@ -1339,9 +1341,18 @@ function renderSession() {
 	const queue = st.queue || [];
 	const history = st.history || [];
 	sp.count.textContent = queue.length ? `· ${queue.length}` : "";
-	if (st.now) {
+	// Now playing for everyone: from the session playlist (shows who added it) or the host's own song.
+	const cur = st.current || st.now;
+	if (cur) {
+		const now = st.now && st.now.uri === cur.uri ? st.now : null;
+		const sk = st.skip;
+		const votes = sk ? `<span class="sp-votes" title="Voted to skip: ${esc(sk.voters.map((v) => v.name).join(", "))}">${ICON.noEntry}${sk.count}/${sk.need}</span>` : "";
+		const need = sk ? sk.need : Math.max(1, Math.ceil((st.members?.length || 1) / 2));
+		const title = sk?.mine ? "Take back your vote to skip" : `Vote to skip this song (${need} of ${st.members?.length || 1} needed)`;
 		sp.now.hidden = false;
-		sp.now.innerHTML = `<span class="sp-now-label">Now</span><span class="sp-now-title">${esc(st.now.name)}</span>${st.now.by ? `<span class="sp-by">${esc(st.now.by)}</span>` : ""}`;
+		sp.now.classList.toggle("voted", !!sk?.mine);
+		sp.now.innerHTML = `<span class="sp-now-label">Now</span><span class="sp-now-title">${esc(cur.name || "")}</span>${votes}${now?.by ? `<span class="sp-by">${esc(now.by)}</span>` : ""}<button class="icon-btn sp-vote" title="${esc(title)}">${ICON.noEntry}</button>`;
+		$(".sp-vote", sp.now).addEventListener("click", () => !S.edit && api.lobbyVoteSkip(!sk?.mine));
 	} else sp.now.hidden = true;
 
 	if (sp.tab === "next") {

@@ -219,7 +219,43 @@ async function inSync(label, host, listeners, { tolerance = 1500, uri } = {}) {
 	await sleep(1500);
 	const full = await report(D);
 	check("the session playlist stops at 100 songs", full.lobby.queue.length === 100 && full.lobby.queue[6].name === "Big 0", `${full.lobby.queue.length} songs, 7th ${full.lobby.queue[6]?.name}`);
-	E.child.kill();
+	// 10c. vote skip, with four people: one vote isn't enough, a tie (2 of 4) skips, and someone
+	//      leaving can make the votes so far enough
+	const F = member("Ola", -1000);
+	const G = member("Tomek", +500);
+	await Promise.all([F.ready, G.ready]);
+	await F.call("join", { code: CODE + "X", name: "Ola" });
+	await G.call("join", { code: CODE + "X", name: "Tomek" });
+	await D.call("play", { uri: "spotify:track:votesong", at: 20000 });
+	await sleep(3500);
+	const skipOf = (r) => (r.lobby.skip ? `${r.lobby.skip.count}/${r.lobby.skip.need} of ${r.lobby.skip.total}` : "none");
+	await E.call("vote");
+	await sleep(1500);
+	let [vd, vf] = [await report(D), await report(F)];
+	check("one vote of four doesn't skip, and everyone sees the count", vd.player.uri === "spotify:track:votesong" && skipOf(vd) === "1/2 of 4" && skipOf(vf) === "1/2 of 4", `host plays ${vd.player.uri}, host sees ${skipOf(vd)}, Ola sees ${skipOf(vf)}`);
+	await E.call("vote", { on: false }); // changed their mind
+	await sleep(1200);
+	await G.call("vote");
+	await sleep(1500);
+	vd = await report(D);
+	check("a vote taken back doesn't count", vd.player.uri === "spotify:track:votesong" && skipOf(vd) === "1/2 of 4", `host plays ${vd.player.uri}, ${skipOf(vd)}`);
+	await F.call("vote");
+	await sleep(2500);
+	vd = await report(D);
+	vf = await report(F);
+	check("a tie (2 of 4) skips to the next song in the session playlist", vd.player.uri === "spotify:track:alb0" && vf.player.uri === "spotify:track:alb0", `host plays ${vd.player.uri}, Ola plays ${vf.player.uri}`);
+	check("everyone is told it was skipped, and the count starts again", vf.lobby.activity.some((x) => /Skipped “votesong” by vote \(2 of 4\)/.test(x.text)) && skipOf(vd) === "none", vf.lobby.activity.map((x) => x.text).slice(-3).join(" / ") + ` | count ${skipOf(vd)}`);
+	await E.call("vote");
+	await sleep(1500);
+	await G.call("leave"); // 1 of 3 isn't enough either...
+	await sleep(1500);
+	vd = await report(D);
+	const stillAlb0 = vd.player.uri === "spotify:track:alb0";
+	await F.call("leave"); // ...but 1 of 2 is half
+	await sleep(2000);
+	vd = await report(D);
+	check("when people leave, the votes so far can become enough", stillAlb0 && vd.player.uri === "spotify:track:alb1", `after one left: ${stillAlb0 ? "kept playing" : "skipped too early"}; after two left: ${vd.player.uri}`);
+	for (const m of [E, F, G]) m.child.kill();
 
 	// 11. host vanishes without saying goodbye (crash / sleep): taken over after the timeout
 	if (!process.env.SKIP_CRASH) {

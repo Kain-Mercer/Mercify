@@ -79,6 +79,7 @@ process.on("message", async (m) => {
 			lobby.onPlayerState(snap());
 		} else if (m.cmd === "add") await lobby.queueAdd(m.track);
 		else if (m.cmd === "addMany") reply = await lobby.queueAddMany(m.tracks, m.label);
+		else if (m.cmd === "vote") lobby.voteSkip(m.on !== false);
 		else if (m.cmd === "remove") lobby.queueRemove(m.qid);
 		else if (m.cmd === "next") await lobby.playNext();
 		else if (m.cmd === "spotifyMovesOn") {

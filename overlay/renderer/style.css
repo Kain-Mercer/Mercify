@@ -1405,3 +1405,48 @@ body.edit .notice.sample {
 	background: var(--accent);
 	color: #04130a;
 }
+
+/* vote skip on the Now row: the prohibition sign appears on hover, like the host's row buttons */
+.sp-now {
+	position: relative;
+}
+.sp-vote {
+	width: 24px;
+	height: 24px;
+	margin: -4px -4px -4px 0;
+	flex: none;
+	color: var(--text-dim);
+	display: none;
+}
+.sp-now:hover .sp-vote,
+.sp-now.voted .sp-vote {
+	display: inline-flex;
+}
+.sp-vote svg {
+	width: 14px;
+	height: 14px;
+}
+.sp-vote:hover,
+.sp-now.voted .sp-vote {
+	color: #ff4d4f;
+}
+.sp-now.voted .sp-vote {
+	background: rgba(255, 77, 79, 0.16);
+}
+.sp-votes {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	flex: none;
+	padding: 1px 7px 1px 5px;
+	border-radius: 999px;
+	background: rgba(255, 77, 79, 0.16);
+	color: #ff6b6d;
+	font-size: 10.5px;
+	font-weight: 650;
+	font-variant-numeric: tabular-nums;
+}
+.sp-votes svg {
+	width: 10px;
+	height: 10px;
+}

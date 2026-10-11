@@ -592,6 +592,7 @@ ipcMain.handle("lobby:queue-add-many", async (_e, tracks, label) => {
 		return { ok: false, error: err.message };
 	}
 });
+ipcMain.on("lobby:vote-skip", (_e, on) => lobby.voteSkip(!!on));
 ipcMain.on("lobby:queue-remove", (_e, qid) => lobby.queueRemove(qid));
 ipcMain.on("lobby:queue-top", (_e, qid) => lobby.queueMoveTop(qid));
 ipcMain.on("lobby:queue-play", (_e, qid) => lobby.playNow(qid));
