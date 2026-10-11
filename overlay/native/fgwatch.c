@@ -4,7 +4,7 @@
 // every 2 s): {"pid":1234,"hwnd":...,"mon":...,"exe":"Wow.exe","title":"World of Warcraft"}
 // (plus "cls", the window class), and once told which window is the game ("anchor <hwnd>" on stdin), its state:
 // "anchor":{"hwnd":...,"alive":1,"iconic":0,"visible":1,"mon":...}
-// "activate <hwnd>" on stdin brings that window back to the front.
+// "activate <hwnd>" on stdin brings that window back to the front and reports {"activate","ok","via"}.
 // Exits on its own when the parent process (the overlay) goes away.
 //
 // Build (from Linux):  x86_64-w64-mingw32-gcc -O2 -municode -static -s -o fgwatch.exe fgwatch.c
@@ -120,19 +120,56 @@ static int show_windows(int argc, wchar_t **argv) {
 }
 
 // Make `h` the foreground window again (handing the keyboard back to the game after a click on
-// the overlay). Allowed because Mercify, which started us, is the foreground process at that
-// moment; if Windows refuses anyway, attach to the foreground thread's input and retry.
+// the overlay) and print how it went: {"activate":<hwnd>,"ok":1,"via":"set"}.
+// Windows only lets certain processes change the foreground window, so try, in order:
+// plain SetForegroundWindow (allowed because Mercify, which started us, is in front), the same
+// while attached to the foreground thread's input, after a synthetic Alt tap (which lifts the
+// foreground lock), and SwitchToThisWindow.
+static int is_front(HWND h) {
+	return GetForegroundWindow() == h;
+}
+
 static void activate(HWND h) {
-	if (!h || !IsWindow(h) || IsIconic(h) || !IsWindowVisible(h)) return; // never restore a minimised game
-	HWND fg = GetForegroundWindow();
-	if (fg == h) return;
-	if (SetForegroundWindow(h) && GetForegroundWindow() == h) return;
-	DWORD fg_thread = fg ? GetWindowThreadProcessId(fg, NULL) : 0;
-	DWORD me = GetCurrentThreadId();
-	if (fg_thread && fg_thread != me && AttachThreadInput(me, fg_thread, TRUE)) {
-		SetForegroundWindow(h);
-		AttachThreadInput(me, fg_thread, FALSE);
+	const char *via = "none";
+	int ok = 0;
+	if (!h || !IsWindow(h)) via = "gone";
+	else if (IsIconic(h) || !IsWindowVisible(h)) via = "minimised"; // never restore a minimised game
+	else if (is_front(h)) ok = 1, via = "already";
+	else {
+		if (SetForegroundWindow(h) && (Sleep(30), is_front(h))) ok = 1, via = "set";
+		if (!ok) {
+			HWND fg = GetForegroundWindow();
+			DWORD fg_thread = fg ? GetWindowThreadProcessId(fg, NULL) : 0;
+			DWORD me = GetCurrentThreadId();
+			if (fg_thread && fg_thread != me && AttachThreadInput(me, fg_thread, TRUE)) {
+				SetForegroundWindow(h);
+				AttachThreadInput(me, fg_thread, FALSE);
+				Sleep(30);
+				if (is_front(h)) ok = 1, via = "attach";
+			}
+		}
+		if (!ok) {
+			INPUT in[2];
+			ZeroMemory(in, sizeof(in));
+			in[0].type = INPUT_KEYBOARD;
+			in[0].ki.wVk = VK_MENU;
+			in[1] = in[0];
+			in[1].ki.dwFlags = KEYEVENTF_KEYUP;
+			SendInput(2, in, sizeof(INPUT));
+			SetForegroundWindow(h);
+			Sleep(30);
+			if (is_front(h)) ok = 1, via = "alt";
+		}
+		if (!ok) {
+			SwitchToThisWindow(h, TRUE);
+			Sleep(50);
+			if (is_front(h)) ok = 1, via = "switch";
+		}
 	}
+	char line[160];
+	int n = snprintf(line, sizeof(line), "{\"activate\":%llu,\"ok\":%d,\"via\":\"%s\"}\n", (unsigned long long)(ULONG_PTR)h, ok, via);
+	fwrite(line, 1, (size_t)n, stdout);
+	fflush(stdout);
 }
 
 int wmain(int argc, wchar_t **argv) {

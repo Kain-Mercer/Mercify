@@ -34,11 +34,12 @@ const step = async (label, want, setup) => { setup(); await sleep(500); gate(); 
 	// handing the keyboard back after a click on the overlay goes to the window that had it, by handle
 	scene(WOW, {}); await sleep(600);
 	scene(OVERLAY, {}); await sleep(600);
-	const sent = fg.activate(900);
+	const answer = await fg.activate(900);
+	const sent = !!answer?.ok;
 	await sleep(600);
 	const back = fg.getForeground();
 	const okBack = sent && back?.hwnd === 900 && back?.exe === "Wow.exe";
-	console.log(`${okBack ? "PASS" : "FAIL"}  giving the keyboard back activates the game: sent ${sent}, now in front ${back?.exe} (${back?.hwnd})`);
+	console.log(`${okBack ? "PASS" : "FAIL"}  giving the keyboard back activates the game: helper answered ${JSON.stringify(answer)}, now in front ${back?.exe} (${back?.hwnd})`);
 	if (!okBack) fails++;
 	// the window class comes through, so the taskbar can be told apart
 	fs.writeFileSync(SCENE, JSON.stringify({ fg: { pid: 50, hwnd: 600, exe: "explorer.exe", title: "", cls: "Shell_TrayWnd" }, windows: { 600: { alive: 1, mon: 1, visible: 1, iconic: 0 } } }));

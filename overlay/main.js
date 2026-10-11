@@ -224,21 +224,70 @@ function releaseFocus() {
 	if (!win || win.isDestroyed()) return;
 	setInteractive(false);
 	sendToRenderer("interactive-reset");
-	giveFocusBack();
+	giveFocusBack("release");
 }
 
 // Hand the keyboard back to the window that had it before the overlay (normally the game).
-// blur() alone activates whatever visible window is next below the overlay, which for an
-// always-on-top window is often another always-on-top one, like the taskbar: the overlay then
-// hid itself as if you'd switched apps (single-monitor reports in 1.7.0). So ask the helper to
-// activate the window we saw in front last, and only fall back to blur() if that didn't work.
-function giveFocusBack() {
-	if (!win || win.isDestroyed() || !win.isFocused()) return;
-	if (lastOtherHwnd && foreground.activate(lastOtherHwnd)) {
-		setTimeout(() => {
-			if (win && !win.isDestroyed() && win.isFocused()) win.blur();
-		}, 300);
-	} else win.blur();
+// blur() activates whatever visible window is next below the overlay, which for an always-on-top
+// window is often another always-on-top or invisible one (the taskbar, an input-method window):
+// the overlay then hid as if you'd switched apps, and the game had no keyboard until you
+// alt-tabbed (1.7.0 and 1.7.1 on single-monitor PCs). So the helper activates the window we saw
+// in front last, by handle, and reports back. blur() is only used when there's no helper.
+let returningTo = 0; // while handing the keyboard back: the window we're waiting to see in front
+let returningUntil = 0;
+
+async function giveFocusBack(reason) {
+	if (!win || win.isDestroyed()) return;
+	const fg = foreground.supported() ? foreground.getForeground() : null;
+	const overlayInFront = win.isFocused() || (fg && fg.pid === process.pid);
+	if (!overlayInFront) return; // you've already clicked somewhere else: leave it
+	if (!foreground.canActivate() || !lastOtherHwnd) {
+		diag(`give back (${reason}): no helper, blur()`);
+		if (win.isFocused()) win.blur();
+		return;
+	}
+	const target = lastOtherHwnd;
+	returningTo = target;
+	returningUntil = Date.now() + 1500;
+	const r = await foreground.activate(target);
+	diag(`give back (${reason}) to ${describeHwnd(target)}: ${r ? (r.ok ? "ok via " + r.via : "refused (" + r.via + ")") : "no answer"}`);
+	if (r?.ok) return; // tickGate clears returningTo once the helper sees it in front
+	returningTo = 0;
+	if (r && !r.ok && r.via !== "minimised" && r.via !== "gone") {
+		// Windows wouldn't let us. Keep the overlay up rather than guessing a window with blur().
+		sendToRenderer("toast", { text: "Click your game to carry on playing (Windows didn't let Mercify hand the keyboard back)." });
+	}
+}
+
+// ------------------------------------------------------------------ diagnostics
+// A short log of what was in front and what Mercify did about it, for "Copy diagnostics" in the
+// tray menu. Window titles are only kept for your chosen apps (browser titles can be private).
+const diagLog = [];
+const knownWindows = new Map(); // hwnd -> short description
+function diag(text) {
+	const t = new Date();
+	const stamp = t.toTimeString().slice(0, 8) + "." + String(t.getMilliseconds()).padStart(3, "0");
+	diagLog.push(`${stamp} ${text}`);
+	if (diagLog.length > 200) diagLog.shift();
+}
+function describeFg(fg) {
+	if (!fg) return "unknown";
+	const own = fg.pid === process.pid;
+	const title = !own && matchesApp(fg) ? ` "${String(fg.title).slice(0, 60)}"` : "";
+	return `${own ? "Mercify" : fg.exe || "?"} [${fg.cls || "?"}]${title} hwnd ${fg.hwnd} mon ${fg.mon}`;
+}
+function describeHwnd(h) {
+	return knownWindows.get(h) || `hwnd ${h}`;
+}
+function diagnosticsText() {
+	return [
+		`Mercify ${app.getVersion()} diagnostics, ${new Date().toISOString()}`,
+		`Windows ${require("os").release()}, displays: ${screen.getAllDisplays().length}, overlay on display ${win ? screen.getDisplayMatching(win.getBounds()).id : "?"}`,
+		`Only show over apps: ${config.onlyShowOver.enabled} (${[...config.onlyShowOver.apps, ...config.onlyShowOver.titles].join(", ")}); other monitor: ${config.onlyShowOver.stayOnOtherMonitor}`,
+		`Helper: ${foreground.supported() ? "running" : "not running"}; gate ${gateOpen ? "open" : "closed"} (${gateWhy})`,
+		"",
+		...diagLog,
+	].join("\n");
 }
 
 // Let the overlay take keyboard input (typing in a search box, Edit Mode arrow keys).
@@ -269,6 +318,7 @@ function filterActive() {
 function applyGate(open) {
 	if (!win || win.isDestroyed() || open === gateOpen) return;
 	gateOpen = open;
+	diag(`overlay ${open ? "shown" : "hidden"} (${gateWhy})`);
 	if (open) {
 		win.showInactive();
 		win.setAlwaysOnTop(true, "screen-saver");
@@ -285,13 +335,28 @@ let lastOtherHwnd = 0; // the last window in front that wasn't ours: where the k
 // overlay): treat them like our own windows and leave the overlay as it is.
 const SHELL_CLASSES = new Set(["Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Windows.UI.Core.CoreWindow"]);
 let gateWhy = "";
+let lastSeenHwnd = -1;
 
 function tickGate() {
 	if (!win || win.isDestroyed()) return;
 	const fg = foreground.supported() ? foreground.getForeground() : null;
 	const ours = fg && (fg.pid === process.pid || SHELL_CLASSES.has(fg.cls));
+	if (fg && fg.hwnd !== lastSeenHwnd) {
+		lastSeenHwnd = fg.hwnd;
+		const d = describeFg(fg);
+		if (fg.hwnd && fg.pid !== process.pid) knownWindows.set(fg.hwnd, d.replace(/ hwnd \d+ mon .*/, ""));
+		if (knownWindows.size > 50) knownWindows.delete(knownWindows.keys().next().value);
+		diag(`in front: ${d}`);
+	}
+	// Handing the keyboard back: until the window we asked for shows up in front (or we give up),
+	// don't let whatever flickers past in between hide the overlay or become "the last window".
+	if (returningTo && (Date.now() > returningUntil || fg?.hwnd === returningTo)) {
+		if (fg?.hwnd !== returningTo) diag(`give back: ${describeHwnd(returningTo)} never showed up in front`);
+		returningTo = 0;
+	}
+	const passing = returningTo && fg && fg.hwnd !== returningTo;
 
-	if (fg && !ours) {
+	if (fg && !ours && !passing) {
 		if (fg.hwnd) lastOtherHwnd = fg.hwnd;
 		gameInFront = matchesApp(fg);
 		// remember the game's window, so we can tell whether it's still up on its own monitor
@@ -305,7 +370,7 @@ function tickGate() {
 		// Settings in front: hide so the overlay doesn't cover it, unless it's on another monitor
 		// from the game (it's one of our windows, but the helper still reports its monitor)
 		else if (settingsWin && !settingsWin.isDestroyed() && settingsWin.isFocused()) [open, gateWhy] = fg && onOtherMonitor(fg) ? [true, "other-monitor"] : [false, "settings"];
-		else if (!fg || ours) [open, gateWhy] = [gateOpen, "unchanged"]; // tray menu etc.: leave as is
+		else if (!fg || ours || passing) [open, gateWhy] = [gateOpen, "unchanged"]; // tray menu etc.: leave as is
 		else if (gameInFront) [open, gateWhy] = [true, "game"];
 		else if (onOtherMonitor(fg)) [open, gateWhy] = [true, "other-monitor"];
 		else [open, gateWhy] = [false, "other-app"];
@@ -569,7 +634,7 @@ let giveBacks = 0; // counted for the debug state file
 ipcMain.on("give-back-focus", () => {
 	giveBacks++;
 	if (!win || win.isDestroyed() || editMode) return;
-	giveFocusBack();
+	giveFocusBack("click");
 });
 
 ipcMain.on("release-focus", () => {
@@ -862,6 +927,7 @@ function updateTrayMenu() {
 			},
 			...lobbyTrayItems(),
 			{ label: "Reset layout", click: () => sendToRenderer("reset-layout") },
+			{ label: "Copy diagnostics", click: () => clipboard.writeText(diagnosticsText()) },
 			{ type: "separator" },
 			{ label: "Quit", click: () => app.quit() },
 		])
@@ -930,7 +996,7 @@ app.whenReady().then(async () => {
 	setInterval(tickGate, 200);
 	if (process.env.OVERLAY_DEBUG_STATE_FILE) {
 		setInterval(() => {
-			const st = { gateOpen, visible: win.isVisible(), toggleHotkey: globalShortcut.isRegistered(config.hotkeys.toggle), editHotkey: globalShortcut.isRegistered(config.hotkeys.edit), edit: editMode, update: updater.state(), giveBacks, gateWhy, gameInFront };
+			const st = { gateOpen, visible: win.isVisible(), toggleHotkey: globalShortcut.isRegistered(config.hotkeys.toggle), editHotkey: globalShortcut.isRegistered(config.hotkeys.edit), edit: editMode, update: updater.state(), giveBacks, gateWhy, gameInFront, diagTail: diagLog.slice(-5), diagnostics: diagnosticsText() };
 			fs.writeFileSync(process.env.OVERLAY_DEBUG_STATE_FILE, JSON.stringify(st));
 		}, 100);
 	}

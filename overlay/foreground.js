@@ -27,9 +27,14 @@ function start() {
 	// Testing off Windows: read the "window in front" from a JSON file instead of the helper.
 	if (process.env.OVERLAY_DEBUG_FG_FILE) {
 		started = true;
+		let lastRaw = "";
 		setInterval(() => {
 			try {
-				const j = JSON.parse(fs.readFileSync(process.env.OVERLAY_DEBUG_FG_FILE, "utf8"));
+				const raw = fs.readFileSync(process.env.OVERLAY_DEBUG_FG_FILE, "utf8");
+				if (raw !== lastRaw) (lastRaw = raw), (debugActivated = 0); // a new scene overrides an activate
+				const j = JSON.parse(raw);
+				// like the real helper: an activated window is in front until something else is
+				if (debugActivated && j.windows?.[debugActivated]) Object.assign(j, { pid: 1, hwnd: debugActivated, exe: "activated.exe", title: "", cls: "", ...(j.windows[debugActivated].fg || {}) });
 				// windows by handle, for the anchor: {"windows":{"111":{"alive":1,"iconic":0,"visible":1,"mon":2}}}
 				const w = anchorHwnd && j.windows ? j.windows[String(anchorHwnd)] : null;
 				latest = toInfo({ ...j, pid: j.pid === "self" ? process.pid : j.pid, anchor: anchorHwnd ? { hwnd: anchorHwnd, alive: 0, ...(w || {}) } : undefined });
@@ -58,7 +63,14 @@ function start() {
 			buf = buf.slice(i + 1);
 			if (!line) continue;
 			try {
-				latest = toInfo(JSON.parse(line));
+				const j = JSON.parse(line);
+				if (j.activate !== undefined) {
+					// the helper's answer to "activate <hwnd>"
+					const p = activations.shift();
+					if (p) p.resolve({ ok: !!j.ok, via: String(j.via || "") });
+					continue;
+				}
+				latest = toInfo(j);
 				restarts = 0;
 			} catch (_) {}
 		}
@@ -66,6 +78,7 @@ function start() {
 	const onGone = () => {
 		child = null;
 		latest = null;
+		for (const p of activations.splice(0)) p.resolve(null);
 		if (restarts++ < 5) setTimeout(start, 1000 * restarts); // back off; give up after a few tries
 	};
 	child.on("exit", onGone);
@@ -95,17 +108,41 @@ function sendAnchor() {
 	} catch (_) {}
 }
 
-// Bring a window back to the front (hand the keyboard back to the game). False if the helper
-// isn't running, so the caller can fall back to something else.
+// Bring a window back to the front (hand the keyboard back to the game). Resolves with the
+// helper's answer, { ok, via }, or null if the helper isn't running or didn't answer.
+const activations = []; // waiting for answers, in order
+let debugActivated = 0;
+
 function activate(hwnd) {
 	hwnd = Number(hwnd) || 0;
-	if (!hwnd || !child?.stdin?.writable) return false;
-	try {
-		child.stdin.write(`activate ${hwnd}\n`);
-		return true;
-	} catch (_) {
-		return false;
+	if (!hwnd) return Promise.resolve(null);
+	if (process.env.OVERLAY_DEBUG_FG_FILE) {
+		// tests: OVERLAY_DEBUG_ACTIVATE=fail makes Windows refuse
+		if (process.env.OVERLAY_DEBUG_ACTIVATE === "fail") return Promise.resolve({ ok: false, via: "none" });
+		if (process.env.OVERLAY_DEBUG_ACTIVATE === "slow") return new Promise((r) => setTimeout(() => r({ ok: true, via: "debug" }, (debugActivated = hwnd)), 700));
+		debugActivated = hwnd;
+		return Promise.resolve({ ok: true, via: "debug" });
 	}
+	if (!child?.stdin?.writable) return Promise.resolve(null);
+	return new Promise((resolve) => {
+		const entry = { resolve };
+		activations.push(entry);
+		setTimeout(() => {
+			const i = activations.indexOf(entry);
+			if (i >= 0) activations.splice(i, 1), resolve(null);
+		}, 1500);
+		try {
+			child.stdin.write(`activate ${hwnd}\n`);
+		} catch (_) {
+			activations.splice(activations.indexOf(entry), 1);
+			resolve(null);
+		}
+	});
+}
+
+// True when activate() can reach a helper (so blur() isn't needed as a fallback).
+function canActivate() {
+	return !!process.env.OVERLAY_DEBUG_FG_FILE || !!child?.stdin?.writable;
 }
 
 // Ask the helper to keep reporting on this window (0 to stop).
@@ -134,7 +171,7 @@ function stop() {
 	child = null;
 }
 
-module.exports = { start, stop, getForeground, supported, setAnchor, activate, _toInfo: toInfo };
+module.exports = { start, stop, getForeground, supported, setAnchor, activate, canActivate, _toInfo: toInfo };
 
 // ------------------------------------------------------------------ hide / show another program's window
 // Used to send Spotify to the tray: the helper waits for the program's main window, hides it,

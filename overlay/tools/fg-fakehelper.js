@@ -3,7 +3,7 @@
 const fs = require("fs");
 let anchor = 0, inbuf = "", activated = 0, lastScene = "";
 process.stdin.setEncoding("utf8");
-process.stdin.on("data", (d) => { inbuf += d; let i; while ((i = inbuf.indexOf("\n")) >= 0) { const l = inbuf.slice(0, i); inbuf = inbuf.slice(i + 1); if (l.startsWith("anchor ")) anchor = Number(l.slice(7)); else if (l.startsWith("activate ")) activated = Number(l.slice(9)); } });
+process.stdin.on("data", (d) => { inbuf += d; let i; while ((i = inbuf.indexOf("\n")) >= 0) { const l = inbuf.slice(0, i); inbuf = inbuf.slice(i + 1); if (l.startsWith("anchor ")) anchor = Number(l.slice(7)); else if (l.startsWith("activate ")) { activated = Number(l.slice(9)); process.stdout.write(`{"activate":${activated},"ok":1,"via":"fake"}\n`); } } });
 setInterval(() => {
 	let raw, sc; try { raw = fs.readFileSync(process.argv[2], "utf8"); sc = JSON.parse(raw); } catch { return; }
 	if (raw !== lastScene) { lastScene = raw; activated = 0; } // a new scene overrides an earlier activate
