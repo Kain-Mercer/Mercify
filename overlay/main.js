@@ -808,6 +808,37 @@ ipcMain.on("lobby:copy", () => {
 	if (st.displayCode) clipboard.writeText(st.displayCode);
 });
 
+// Starting a lobby from outside the overlay (Settings, tray): a fresh random code,
+// joined straight away. Nobody else has that code, so you're the host; the code is
+// put on the clipboard so it's ready to share.
+async function startLobby() {
+	await lobby.join(formatCode(generateCode()));
+	const st = lobby.state();
+	if (st.status !== "joined") return false; // left again while connecting
+	clipboard.writeText(st.displayCode);
+	return true;
+}
+ipcMain.handle("settings:lobby-start", async () => {
+	try {
+		const copied = await startLobby();
+		return { ok: true, copied, state: await settingsState() };
+	} catch (err) {
+		return { ok: false, error: err.message, state: await settingsState() };
+	}
+});
+ipcMain.handle("settings:lobby-join", async (_e, code) => {
+	try {
+		await lobby.join(code);
+		return { ok: true, state: await settingsState() };
+	} catch (err) {
+		return { ok: false, error: err.message, state: await settingsState() };
+	}
+});
+ipcMain.on("settings:lobby-copy", () => {
+	const st = lobby.state();
+	if (st.displayCode) clipboard.writeText(st.displayCode);
+});
+
 // ------------------------------------------------------------------ overlay IPC
 
 // Songs picked in the overlay are deliberate; the session playlist mustn't override them.
@@ -1191,7 +1222,17 @@ function updateTrayMenu() {
 
 function lobbyTrayItems() {
 	const st = lobby.state();
-	if (st.status !== "joined") return [];
+	if (st.status === "connecting") {
+		return [
+			{ type: "separator" },
+			{ label: `Joining lobby ${st.displayCode}…`, enabled: false },
+			{ label: "Cancel", click: () => lobby.leave() },
+			{ type: "separator" },
+		];
+	}
+	if (st.status !== "joined") {
+		return [{ type: "separator" }, { label: "Start a listening lobby", click: startLobbyFromTray }, { type: "separator" }];
+	}
 	const who = st.role === "host" ? "hosting" : `with ${st.hostName || "the host"}`;
 	return [
 		{ type: "separator" },
@@ -1200,6 +1241,22 @@ function lobbyTrayItems() {
 		{ label: "Leave lobby", click: () => lobby.leave() },
 		{ type: "separator" },
 	];
+}
+
+// Tray's "Start a listening lobby": needs a name, which lives in Settings.
+async function startLobbyFromTray() {
+	if (!String(config.lobbyName || "").trim()) {
+		openSettings();
+		notify("Set your lobby name first", "Enter the name friends will see under Listening lobby in Settings, then press Start a lobby.");
+		return;
+	}
+	try {
+		if (!(await startLobby())) return;
+	} catch (err) {
+		notify("Couldn't start a lobby", err.message);
+		return;
+	}
+	notify(`Lobby ${lobby.state().displayCode} started`, "The code is copied. Share it so friends can join.");
 }
 
 function createTray() {

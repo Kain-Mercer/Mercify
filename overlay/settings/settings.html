@@ -83,9 +83,19 @@
 					</div>
 					<div class="add-row">
 						<input type="text" id="lobby-name" maxlength="24" placeholder="Your name, as friends will see it" spellcheck="false" />
-						<button class="btn ghost" id="lobby-leave" hidden>Leave lobby</button>
 					</div>
-					<p class="hint">Start or join a lobby from the Lobby panel in the overlay.</p>
+					<div class="add-row" id="lobby-out">
+						<button class="btn" id="lobby-start">Start a lobby</button>
+						<input type="text" id="lobby-code" maxlength="19" placeholder="Or enter a friend's code" spellcheck="false" />
+						<button class="btn ghost" id="lobby-join">Join</button>
+					</div>
+					<div class="add-row lobby-in" id="lobby-in" hidden>
+						<span class="lobby-codeval" id="lobby-codeval"></span>
+						<button class="btn ghost" id="lobby-copy">Copy code</button>
+						<button class="btn ghost" id="lobby-leave">Leave lobby</button>
+					</div>
+					<p class="lobby-error" id="lobby-error" hidden></p>
+					<p class="hint" id="lobby-hint">Start a lobby here and share the code, or join a friend's. The Lobby panel in the overlay does the same.</p>
 				</section>
 			</div>
 

@@ -310,7 +310,28 @@ function renderLobby(l) {
 		status.textContent = `In ${l.displayCode}, ${who} · ${l.members.length} here`;
 	} else if (l.status === "connecting") status.textContent = `Joining ${l.displayCode}…`;
 	else status.textContent = "Not in a lobby";
-	$("#lobby-leave").hidden = l.status !== "joined" && l.status !== "connecting";
+
+	const joined = l.status === "joined";
+	const connecting = l.status === "connecting";
+	$("#lobby-out").hidden = joined || connecting;
+	$("#lobby-in").hidden = !joined && !connecting;
+	$("#lobby-codeval").textContent = joined || connecting ? l.displayCode || "" : "";
+	$("#lobby-copy").hidden = !joined;
+	$("#lobby-leave").textContent = connecting ? "Cancel" : "Leave lobby";
+	if (l.status === "error" && l.error) showLobbyError(l.error);
+	else if (joined || connecting) showLobbyError("");
+	if (!joined) lobbyCopied = false;
+	$("#lobby-hint").textContent = joined
+		? lobbyCopied
+			? "Code copied. Share it so friends can join."
+			: "Share the code so friends can join. Everyone with it listens together."
+		: "Start a lobby here and share the code, or join a friend's. The Lobby panel in the overlay does the same.";
+}
+
+let lobbyCopied = false; // the code was put on the clipboard for you (Start a lobby)
+function showLobbyError(msg) {
+	$("#lobby-error").textContent = msg || "";
+	$("#lobby-error").hidden = !msg;
 }
 
 function render(d) {
@@ -422,6 +443,48 @@ const saveLobbyName = async () => {
 $("#lobby-name").addEventListener("change", saveLobbyName);
 $("#lobby-name").addEventListener("keydown", (e) => e.key === "Enter" && e.target.blur());
 $("#lobby-leave").addEventListener("click", async () => render(await S.action("leaveLobby")));
+
+// Starting or joining needs a name first; saved before joining, like the overlay's panel.
+async function lobbyNameReady() {
+	const name = $("#lobby-name").value.trim();
+	if (!name) {
+		showLobbyError("Enter your name first.");
+		$("#lobby-name").focus();
+		return false;
+	}
+	if (name !== (current?.lobby?.name || "")) render(await S.set("lobbyName", name));
+	return true;
+}
+async function lobbyGo(run) {
+	showLobbyError("");
+	if (!(await lobbyNameReady())) return;
+	for (const id of ["#lobby-start", "#lobby-join"]) $(id).disabled = true;
+	try {
+		const r = await run();
+		if (r.copied) lobbyCopied = true;
+		render(r.state);
+		if (!r.ok) showLobbyError(r.error);
+	} finally {
+		for (const id of ["#lobby-start", "#lobby-join"]) $(id).disabled = false;
+	}
+}
+$("#lobby-start").addEventListener("click", () => lobbyGo(() => S.lobbyStart()));
+const joinTyped = () => {
+	const code = $("#lobby-code").value.trim();
+	if (code.replace(/[^a-z0-9]/gi, "").length < 4) {
+		showLobbyError("Lobby codes need at least 4 letters or numbers.");
+		$("#lobby-code").focus();
+		return;
+	}
+	lobbyGo(() => S.lobbyJoin(code));
+};
+$("#lobby-join").addEventListener("click", joinTyped);
+$("#lobby-code").addEventListener("keydown", (e) => e.key === "Enter" && joinTyped());
+$("#lobby-copy").addEventListener("click", () => {
+	S.lobbyCopy();
+	lobbyCopied = true;
+	renderLobby(current?.lobby);
+});
 
 S.onLog(log);
 S.onChanged(render);

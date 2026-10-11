@@ -102,10 +102,20 @@ Open **Settings** from the tray icon to:
 
 Listen along with friends: everyone hears the same song at the same moment, each in their own Spotify. It works with free accounts, and everyone needs Mercify.
 
-**Start or join a lobby**
+**Start a lobby from Mercify's window**
+
+You don't need to be in your game to start one.
+
+1. Open Mercify's **Settings** (click the tray icon) and find **Listening lobby**.
+2. Enter **your name**. This is what others in the lobby see.
+3. Press **Start a lobby**. Mercify makes up a code, starts the lobby with you as the **host**, and copies the code so you can paste it to your friends.
+
+To join a friend's lobby instead, type their code in the box next to it and press **Join**. Once you've set your name, you can also start one straight from the tray icon: right-click it and choose **Start a listening lobby**. The code is copied for you there too.
+
+**Start or join a lobby from the overlay**
 
 1. Open the **Lobby** panel in the overlay. If you can't see it, turn it on in Edit Mode.
-2. Enter **your name**. This is what others in the lobby see, and you can also set it in Settings.
+2. Enter **your name**.
 3. Enter a **lobby code**: make one up, or press the dice button to generate a random one.
 4. Press **Join lobby**.
 
