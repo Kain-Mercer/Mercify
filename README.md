@@ -22,8 +22,6 @@
 3. Log in to Spotify when it opens.
 4. Start your game, set to **Windowed (Fullscreen)** or **Borderless**. Your music panels appear on top.
 
-That's it. Mercify keeps itself up to date.
-
 <details>
 <summary><b>What you need</b></summary>
 
