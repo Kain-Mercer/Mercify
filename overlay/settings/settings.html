@@ -22,31 +22,37 @@
 				<section class="card" id="setup-section">
 					<div class="section-head">
 						<h2>Setup</h2>
-						<span class="hint">Top to bottom. Green means done.</span>
+						<span class="hint" id="setup-hint">Green means done.</span>
+					</div>
+					<div class="setup-go" id="setup-go">
+						<button class="btn big" id="setup-all">Set up everything</button>
+						<p class="hint">Installs Spotify if you don't have it, plus the two add-ons Mercify needs. One click, a few minutes, no questions.</p>
+					</div>
+					<div class="setup-fail" id="setup-fail" hidden>
+						<b id="setup-fail-text"></b>
+						<div class="setup-fail-btns">
+							<button class="btn" id="setup-retry">Try again</button>
+							<button class="btn ghost" id="setup-copy">Copy details</button>
+						</div>
 					</div>
 					<div class="rows">
 						<div class="row" data-step="spotify">
 							<span class="dot"></span>
-							<div class="text"><b>Spotify desktop app</b><span class="sub"></span></div>
-							<button class="btn" data-act="spotx">Install with SpotX</button>
-						</div>
-						<div class="row" data-step="spotx">
-							<span class="dot neutral"></span>
-							<div class="text"><b>SpotX</b><span class="sub">Ad-free patch that also blocks Spotify updates. Run before Spicetify; running it again reinstalls Spotify.</span></div>
-							<button class="btn ghost" data-act="spotx">Run SpotX</button>
+							<div class="text"><b>Spotify, with SpotX</b><span class="sub"></span></div>
+							<button class="btn ghost small" data-act="spotx" title="Run SpotX again (reinstalls Spotify if needed)">Redo</button>
 						</div>
 						<div class="row" data-step="spicetify">
 							<span class="dot"></span>
 							<div class="text"><b>Spicetify</b><span class="sub"></span></div>
-							<button class="btn" data-act="spicetify">Install Spicetify</button>
+							<button class="btn ghost small" data-act="spicetify" title="Download and install Spicetify again">Redo</button>
 						</div>
 						<div class="row" data-step="extension">
 							<span class="dot"></span>
 							<div class="text"><b>Mercify extension in Spotify</b><span class="sub"></span></div>
-							<button class="btn" data-act="apply">Install</button>
+							<button class="btn ghost small" data-act="apply">Redo</button>
 						</div>
 					</div>
-					<pre id="log" hidden></pre>
+					<details id="log-box" hidden><summary>Show what it's doing</summary><pre id="log"></pre></details>
 				</section>
 
 				<section class="card">
@@ -61,7 +67,7 @@
 					</div>
 				</section>
 
-				<section class="card">
+				<section class="card" id="lobby-card">
 					<div class="section-head">
 						<h2>Listening lobby</h2>
 						<span class="muted" id="lobby-status">Not in a lobby</span>

@@ -406,3 +406,89 @@ kbd {
 	margin: 10px 0 0;
 	color: var(--text, #ddd);
 }
+
+/* ---------------------------------------------------------------- one-click setup */
+
+.setup-go {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 10px;
+}
+.setup-go[hidden] {
+	display: none;
+}
+.btn.big {
+	width: 100%;
+	padding: 12px 16px;
+	font-size: 14px;
+	border-radius: 10px;
+	box-shadow: 0 0 0 0 rgba(30, 215, 96, 0.5);
+	animation: setup-pulse 2.4s ease-out infinite;
+}
+.btn.big:disabled {
+	animation: none;
+}
+@keyframes setup-pulse {
+	0% {
+		box-shadow: 0 0 0 0 rgba(30, 215, 96, 0.45);
+	}
+	70%,
+	100% {
+		box-shadow: 0 0 0 10px rgba(30, 215, 96, 0);
+	}
+}
+.setup-go .hint {
+	margin: 0;
+}
+.btn.small {
+	padding: 4px 9px;
+	font-size: 11px;
+}
+.setup-fail {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-bottom: 10px;
+	padding: 10px 12px;
+	border-radius: 9px;
+	background: rgba(255, 93, 93, 0.12);
+	border: 1px solid rgba(255, 93, 93, 0.35);
+	font-size: 12.5px;
+}
+.setup-fail[hidden] {
+	display: none;
+}
+.setup-fail-btns {
+	display: flex;
+	gap: 8px;
+}
+/* a step that's running: the dot spins */
+.dot.running {
+	background: none;
+	border: 2px solid rgba(255, 255, 255, 0.15);
+	border-top-color: var(--accent);
+	width: 12px;
+	height: 12px;
+	animation: dot-spin 0.8s linear infinite;
+}
+@keyframes dot-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+.row.active {
+	border-color: rgba(30, 215, 96, 0.45);
+}
+#log-box {
+	margin-top: 8px;
+	font-size: 11.5px;
+	color: var(--dim);
+}
+#log-box summary {
+	cursor: pointer;
+	margin-bottom: 6px;
+}
+#log-box[hidden] {
+	display: none;
+}

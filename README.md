@@ -24,20 +24,16 @@ It works with a **free** Spotify account.
 You'll need:
 
 - **Windows 10 or 11**
-- **The Spotify desktop app.** If you don't have it, Mercify can install it for you. The version from the Microsoft Store won't work.
+- **The Spotify desktop app.** If you don't have it, Mercify installs it for you. The version from the Microsoft Store won't work.
 - **Your game set to "Windowed (Fullscreen)" or "Borderless"** in its graphics settings. Mercify can't appear over games running in true fullscreen.
 
 ## Install
 
 1. Go to the [**Releases page**](https://github.com/Kain-Mercer/Mercify/releases) and download **`Mercify-Setup`** (the newest version at the top).
 2. Run it. If Windows shows a blue "Windows protected your PC" box, click **More info**, then **Run anyway**. This appears because Mercify is new and not yet recognised by Windows.
-3. Mercify opens a **Settings** window with a short checklist. Work through it from top to bottom, clicking each button that appears:
-   - **Spotify desktop app**: installs Spotify if you don't have it yet.
-   - **SpotX**: an add-on for Spotify that Mercify relies on. Install it before the next step. If Mercify just installed Spotify for you in the step above, SpotX is already included, so skip this one.
-   - **Spicetify**: another add-on that lets Mercify talk to Spotify. When it asks about "Marketplace", you can answer either way.
-   - **Mercify extension**: connects Spotify to Mercify. Spotify restarts once.
-
-   Some steps open a separate window that asks you questions. Answer them, and when that window closes the checklist updates. When Spotify, Spicetify and the Mercify extension all show a green dot, you're done. SpotX turns green too once Mercify finds it, including if you installed it before Mercify. If it stays grey even though you've installed SpotX, you can ignore it; Mercify works either way.
+3. Mercify opens its **Settings** window. Press the big green **Set up everything** button. That's it: it installs Spotify if you don't have it, plus the two add-ons Mercify needs (SpotX and Spicetify), without asking you anything. It takes a few minutes; you can watch each step turn green, or carry on with something else.
+   - If Spotify asks you to log in, log in. Mercify finishes by itself once you have.
+   - If something goes wrong, Settings says what, in plain words, with a **Try again** button. **Copy details** copies everything that happened, to paste in a message to whoever gave you Mercify.
 4. Start your game. Your Spotify panels appear on top of it.
 
 Whenever you open Mercify, it opens Spotify for you (if it isn't running yet) and tucks Spotify's own window away into the tray, since Mercify's panels do its job. To bring Spotify's window back, right-click the Mercify tray icon and choose **Show Spotify window**.
@@ -153,9 +149,9 @@ The **Updates** section in Settings shows which version you have and lets you ch
 
 **The overlay disappears after I click it, or my game stops taking keys.** Update Mercify first. If it still happens, right-click the Mercify tray icon straight afterwards, choose **Copy diagnostics**, and paste what it copies into a message to whoever gave you Mercify. It lists which windows Windows put in front and what Mercify did, without any of your other window titles.
 
-**Clicking an album does nothing, or says it couldn't open it.** Albums open in the **Playlist** panel, so make sure that panel is turned on in Edit Mode. Opening albums also needs the newer Mercify extension: open Settings and press **Update** next to *Mercify extension* if it's offered (Spotify restarts once).
+**Clicking an album does nothing, or says it couldn't open it.** Albums open in the **Playlist** panel, so make sure that panel is turned on in Edit Mode. Opening albums also needs the newer Mercify extension: open Settings and press **Finish setup** if it's offered (Spotify restarts once).
 
-**The panels say "Waiting for Spotify".** Make sure Spotify is open. If it is, open Settings and press **Reinstall** next to *Mercify extension*. This is most often needed after Spotify updates itself.
+**The panels say "Waiting for Spotify".** Click that message to open Settings. If anything there isn't green, press the big button. If everything is green, make sure Spotify is open; if it is, press **Redo** next to *Mercify extension*. This is most often needed after Spotify updates itself.
 
 **I can't see the panels in my game.** Check that your game is set to *Windowed (Fullscreen)* or *Borderless*, not *Fullscreen*. Also check the game is listed under **Only show over these apps** in Settings.
 

@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("overlay", {
 	cmd: (action, args) => ipcRenderer.invoke("cmd", { action, args }),
 	setInteractive: (on) => ipcRenderer.send("set-interactive", on),
 	releaseFocus: () => ipcRenderer.send("release-focus"),
+	openSettings: () => ipcRenderer.send("open-settings"),
 	wantFocus: () => ipcRenderer.send("want-focus"),
 	giveBackFocus: () => ipcRenderer.send("give-back-focus"),
 	setEdit: (on) => ipcRenderer.send("set-edit", on),

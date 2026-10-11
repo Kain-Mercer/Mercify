@@ -726,6 +726,7 @@ ipcMain.on("set-interactive", (_e, on) => {
 });
 
 ipcMain.on("want-focus", () => takeFocus());
+ipcMain.on("open-settings", () => openSettings());
 
 // After a click on a button or list row: keep taking clicks, but give the keyboard back.
 // On Windows, blur() activates the next window down, which is normally the game.
@@ -901,6 +902,7 @@ async function settingsState() {
 		onlyShowOver: config.onlyShowOver,
 		hotkeysOnlyOverApps: config.hotkeysOnlyOverApps,
 		gateText,
+		setupRun: setup.isSetupRunning() ? { running: true } : lastSetup,
 		launchSpotify: config.launchSpotify,
 		minimiseSpotify: config.minimiseSpotify,
 		startWithWindows: getStartWithWindows(),
@@ -919,14 +921,36 @@ function settingsLog(line) {
 
 ipcMain.handle("settings:get", () => settingsState());
 
+// The whole setup in one go (Settings' big button), or one step again (the small buttons).
+let lastSetup = null; // { ok, step, why } of the last run, for Settings and "Copy details"
+const setupLog = [];
+function setupLogLine(line) {
+	setupLog.push(line);
+	if (setupLog.length > 400) setupLog.shift();
+	settingsLog(line);
+}
+function setupProgress(step, state, text) {
+	diag(`setup: ${step} ${state}${text ? ": " + text : ""}`);
+	if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send("settings:setup-progress", { step, state, text });
+}
+async function runSetup(force = {}) {
+	setupLog.length = 0;
+	lastSetup = { running: true };
+	pushSettings();
+	const r = await setup.setupAll({ log: setupLogLine, progress: setupProgress, isConnected: () => !!bridge, force });
+	lastSetup = { ok: r.ok, step: r.step, why: r.why };
+	if (!r.ok && r.tail?.length) setupLogLine("(last lines above are what went wrong)");
+	return r;
+}
+function setupDetails() {
+	return [`Mercify ${app.getVersion()} setup details, ${new Date().toISOString()}`, `Result: ${lastSetup ? (lastSetup.ok ? "OK" : `failed at ${lastSetup.step}: ${lastSetup.why}`) : "not run"}`, "", ...setupLog, "", diagnosticsText()].join("\n");
+}
+
 ipcMain.handle("settings:action", async (_e, name) => {
-	const waitForInstaller = (run) =>
-		new Promise((resolve) => {
-			settingsLog("Installer window opened. Follow its prompts; this page updates when it closes.");
-			run(resolve);
-		});
-	if (name === "spotx") await waitForInstaller(setup.runSpotX);
-	else if (name === "spicetify") await waitForInstaller(setup.installSpicetify);
+	if (name === "setupAll") await runSetup();
+	else if (name === "spotx") await runSetup({ spotx: true });
+	else if (name === "spicetify") await runSetup({ spicetify: true });
+	else if (name === "copySetupDetails") clipboard.writeText(setupDetails());
 	else if (name === "apply") await setup.applyExtension(settingsLog);
 	else if (name === "startSpotify") await setup.startSpotify();
 	else if (name === "checkUpdate") updater.check();

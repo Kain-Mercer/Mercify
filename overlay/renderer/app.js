@@ -641,7 +641,7 @@ function buildNowPlaying() {
 			<img class="np-art" src="" alt="" />
 			<div class="np-main">
 				<div class="np-title mq-box"><span class="mq">Waiting for Spotify…</span></div>
-				<div class="np-artist">Open Spotify with the Overlay Bridge extension</div>
+				<div class="np-artist">Not set up yet? Click here to open Setup</div>
 				<div class="np-progress">
 					<span class="t-cur">0:00</span>
 					<div class="bar seek"><div class="bar-track"><div class="bar-fill"></div></div><div class="bar-thumb"></div></div>
@@ -897,10 +897,17 @@ function setPlayIcons(playing) {
 	np.plays.forEach((b) => (b.innerHTML = playing ? ICON.pause : ICON.play));
 }
 
+// "Not set up yet? Click here to open Setup": while Spotify isn't connected, the line under
+// the title opens Settings, where the one-click setup is.
+document.addEventListener("click", (e) => {
+	if (S.edit || S.connected) return;
+	if (e.target.closest?.(".np-artist")) api.openSettings();
+});
+
 function renderPlayer() {
 	const p = S.player;
 	if (!S.connected) {
-		setTrackInfo("Waiting for Spotify…", "Open Spotify with the Mercify extension", "");
+		setTrackInfo("Waiting for Spotify…", "Not set up yet? Click here to open Setup", "");
 		setPlayIcons(false);
 		return;
 	}
@@ -1292,7 +1299,7 @@ async function openPlaylist(uri, hint, { fromSearch = false } = {}) {
 		updateAddAll();
 		// the Spotify extension before 1.2.0 can't read albums
 		pl.list.innerHTML = `<div class="empty-note">Couldn't load ${album ? "album" : "playlist"}: ${esc(e.message)}${album ? "<br>If this keeps happening, update the Mercify extension in Settings." : ""}</div>`;
-		if (fromSearch) toast(`Couldn't open <b>${esc(hint?.name || (album ? "that album" : "that playlist"))}</b>${album ? ". Open Mercify's Settings and press <b>Update</b> next to the Mercify extension (Spotify restarts once)." : `: ${esc(e.message)}`}`, "error", 8000);
+		if (fromSearch) toast(`Couldn't open <b>${esc(hint?.name || (album ? "that album" : "that playlist"))}</b>${album ? ". Open Mercify's Settings and press <b>Finish setup</b> (Spotify restarts once)." : `: ${esc(e.message)}`}`, "error", 8000);
 	}
 }
 
@@ -1604,6 +1611,7 @@ async function onConnected() {
 api.onBridgeStatus(({ connected }) => {
 	const was = S.connected;
 	S.connected = connected;
+	panelEls.nowplaying?.classList.toggle("connected", !!connected);
 	if (connected && !was) onConnected();
 	if (!connected) {
 		renderPlayer();

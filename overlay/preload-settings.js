@@ -17,4 +17,5 @@ contextBridge.exposeInMainWorld("settings", {
 	onLog: on("settings:log"),
 	onChanged: on("settings:changed"),
 	onGate: on("settings:gate"),
+	onSetupProgress: on("settings:setup-progress"),
 });

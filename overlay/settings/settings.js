@@ -16,10 +16,94 @@ function setRow(step, state, sub, button) {
 	r.querySelector(".dot").className = "dot " + state;
 	if (sub != null) r.querySelector(".sub").textContent = sub;
 	const b = r.querySelector("button");
+	if (!b || button === undefined) return;
 	if (button === null) b.hidden = true;
 	else {
 		b.hidden = false;
 		if (button) b.textContent = button;
+	}
+}
+
+// ---------------------------------------------------------------- setup
+// Poka-yoke: one big button does everything in order; the small "Redo" buttons are for repairs
+// and are locked while anything runs. Progress comes live from the main process.
+
+let setupRunning = false;
+const STEP_ROW = { spotify: "spotify", firstrun: "spotify", spicetify: "spicetify", extension: "extension" };
+
+function setupDone(s) {
+	return s.spotify && s.spotx && s.spicetify && s.extension === "current";
+}
+
+function renderSetup(s, run) {
+	if (!s.supported) {
+		$("#setup-section").hidden = true;
+		return;
+	}
+	setupRunning = !!run?.running;
+	if (!setupRunning) {
+		if (s.spotify && s.spotx) setRow("spotify", "ok", s.spotifyRunning ? "Installed and running" : "Installed");
+		else if (s.spotify) setRow("spotify", "warn", "Installed, but without SpotX (it stops Spotify updates from breaking Mercify)");
+		else if (s.storeSpotify) setRow("spotify", "warn", "You have the Microsoft Store version, which can't be used. Setup replaces it.");
+		else setRow("spotify", "neutral", "Not installed yet");
+		// grey until it's tried: red only ever means "this failed"
+		setRow("spicetify", s.spicetify ? "ok" : "neutral", s.spicetify ? "Installed" : "Not installed yet");
+		if (s.extension === "current") setRow("extension", "ok", `Installed (v${s.appliedVersion ?? "?"})`);
+		else if (s.extension === "outdated") setRow("extension", "warn", `Needs an update (v${s.appliedVersion ?? "?"} → v${s.bundledVersion})`);
+		else setRow("extension", "neutral", "Not installed yet");
+		document.querySelectorAll("#setup-section .row").forEach((r) => r.classList.remove("active"));
+	}
+	const done = setupDone(s);
+	$("#setup-go").hidden = done && !setupRunning;
+	$("#setup-hint").textContent = done && !setupRunning ? "All done. Green means done." : "Green means done.";
+	const big = $("#setup-all");
+	big.disabled = setupRunning;
+	big.textContent = setupRunning ? "Setting up… you can leave this running" : s.spotify || s.spicetify ? "Finish setup" : "Set up everything";
+	const failed = run && !run.running && run.ok === false;
+	$("#setup-fail").hidden = !failed;
+	if (failed) $("#setup-go").hidden = true; // "Try again" is the one button now
+	if (failed && STEP_ROW[run.step]) setRow(STEP_ROW[run.step], "", run.why);
+	// nothing else matters until setup's done: the lobby needs Spotify working first
+	$("#lobby-card").hidden = !done;
+	if (failed) $("#setup-fail-text").textContent = run.why || "Something went wrong.";
+	// the Redo buttons: only once there's something to redo, never while running
+	row("spotify").querySelector("button").hidden = !s.spotify;
+	row("spicetify").querySelector("button").hidden = !s.spicetify;
+	row("extension").querySelector("button").hidden = s.extension === "missing";
+	document.querySelectorAll("#setup-section .row button").forEach((b) => (b.disabled = setupRunning || !s.spotify));
+}
+
+function onSetupProgress({ step, state, text }) {
+	setupRunning = true;
+	$("#setup-fail").hidden = true;
+	$("#setup-all").disabled = true;
+	document.querySelectorAll("#setup-section .row button").forEach((b) => (b.disabled = true));
+	if (step === "connect") {
+		$("#setup-go").hidden = false;
+		$("#setup-all").textContent = state === "done" ? "All set!" : "Almost done…";
+		$("#setup-go .hint").textContent = text || "";
+		return;
+	}
+	const r = STEP_ROW[step];
+	if (!r) return;
+	const dot = { running: "running", waiting: "running", done: "ok", failed: "" }[state] ?? "";
+	setRow(r, dot, text || "");
+	document.querySelectorAll("#setup-section .row").forEach((x) => x.classList.toggle("active", x.dataset.step === r && dot === "running"));
+}
+
+async function runSetupAction(name) {
+	if (setupRunning) return;
+	setupRunning = true;
+	$("#log").textContent = "";
+	$("#log-box").hidden = false;
+	$("#setup-fail").hidden = true;
+	$("#setup-all").disabled = true;
+	document.querySelectorAll("#setup-section .row button").forEach((b) => (b.disabled = true));
+	try {
+		render(await S.action(name));
+	} finally {
+		setupRunning = false;
+		render(await S.get());
 	}
 }
 
@@ -103,25 +187,7 @@ function render(d) {
 	$("#conn").textContent = d.connected ? "Connected to Spotify" : "Waiting for Spotify";
 	$("#conn").classList.toggle("ok", d.connected);
 
-	if (!s.supported) {
-		$("#setup-section").hidden = true;
-	} else {
-		if (s.spotify) setRow("spotify", "ok", s.spotifyRunning ? "Installed and running" : "Installed", null);
-		else if (s.storeSpotify) setRow("spotify", "warn", "The Microsoft Store version can't be modded. SpotX replaces it with the desktop version.", "Install with SpotX");
-		else setRow("spotify", "", "Not installed. SpotX installs it for you.", "Install with SpotX");
-		if (s.spotx) setRow("spotx", "ok", "Installed. Run it again after Spotify reinstalls or updates.", "Run again");
-		else setRow("spotx", "neutral", s.spotify ? "Not found on this PC. Ad-free patch that blocks Spotify updates; run it before Spicetify." : "Ad-free patch that also blocks Spotify updates. Run before Spicetify; running it again reinstalls Spotify.", "Run SpotX");
-
-		if (s.spicetify) setRow("spicetify", "ok", "Installed", null);
-		else setRow("spicetify", "", "Not installed. It will ask about Marketplace: either answer is fine.", "Install Spicetify");
-
-		const ext = row("extension").querySelector("button");
-		if (s.extension === "current") setRow("extension", "ok", `Installed (v${s.appliedVersion ?? "?"})`, "Reinstall");
-		else if (s.extension === "outdated") setRow("extension", "warn", `Update available: v${s.appliedVersion ?? "?"} → v${s.bundledVersion}`, "Update");
-		else setRow("extension", "", "Not installed. Installing restarts Spotify.", "Install");
-		ext.disabled = busy || !s.spicetify || !s.spotify;
-		ext.classList.toggle("ghost", s.extension === "current");
-	}
+	renderSetup(s, d.setupRun);
 
 	const only = d.onlyShowOver;
 	$("#only-enabled").checked = only.enabled;
@@ -158,28 +224,20 @@ function render(d) {
 
 function log(line) {
 	const el = $("#log");
-	el.hidden = false;
+	$("#log-box").hidden = false;
 	el.textContent += line + "\n";
 	el.scrollTop = el.scrollHeight;
 }
 
-async function act(name, button) {
-	if (busy) return;
-	busy = true;
-	document.querySelectorAll(".row button").forEach((b) => (b.disabled = true));
-	if (button) button.dataset.label = button.textContent;
-	if (button) button.textContent = "Working…";
-	try {
-		render(await S.action(name));
-	} finally {
-		busy = false;
-		document.querySelectorAll(".row button").forEach((b) => (b.disabled = false));
-		if (button) button.textContent = button.dataset.label;
-		render(await S.get());
-	}
-}
-
-document.querySelectorAll(".row button").forEach((b) => b.addEventListener("click", () => act(b.dataset.act, b)));
+document.querySelectorAll("#setup-section .row button").forEach((b) => b.addEventListener("click", () => runSetupAction(b.dataset.act)));
+$("#setup-all").addEventListener("click", () => runSetupAction("setupAll"));
+$("#setup-retry").addEventListener("click", () => runSetupAction("setupAll"));
+$("#setup-copy").addEventListener("click", async () => {
+	await S.action("copySetupDetails");
+	$("#setup-copy").textContent = "Copied. Paste it in a message";
+	setTimeout(() => ($("#setup-copy").textContent = "Copy details"), 4000);
+});
+S.onSetupProgress(onSetupProgress);
 
 $("#only-enabled").addEventListener("change", async (e) => render(await S.set("onlyShowOver.enabled", e.target.checked)));
 $("#other-monitor").addEventListener("change", async (e) => render(await S.set("onlyShowOver.stayOnOtherMonitor", e.target.checked)));
