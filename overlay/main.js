@@ -506,11 +506,14 @@ function startBridgeServer() {
 				clearTimeout(p.timer);
 				msg.ok ? p.resolve(msg.data) : p.reject(new Error(msg.error || "bridge error"));
 			} else if (msg.type === "hello") {
+				heardFromSpotify();
 				bridgeInfo = msg;
 				minimiseSpotifyOnce();
 				sendToRenderer("bridge-status", { connected: true, info: msg });
 				updateTrayMenu();
 			} else if (msg.type === "state" || msg.type === "progress") {
+				heardFromSpotify();
+				if (msg.type === "state") spotifyPlaying = !!msg.state?.isPlaying;
 				sendToRenderer("bridge", msg);
 				if (msg.type === "state") lobby.onPlayerState(msg.state);
 				else lobby.onPlayerProgress(msg.position, msg.at);
@@ -560,7 +563,57 @@ async function showSpotify() {
 	}
 }
 
+// ------------------------------------------------------------------ keeping up with a throttled Spotify
+// After Spotify's window has been hidden (Mercify tucks it into the tray, or it sits behind the
+// game) for about five minutes, Chromium runs the page's timers only about once a minute. The
+// extension's own reports (song, position, every second) then nearly stop, and listening lobbies
+// drifted apart until someone brought Spotify's window back. Commands still arrive straight away
+// (they're messages, not timers), so when the reports go quiet Mercify asks for the state itself,
+// and does so right after every playback command too.
+const QUIET_MS = 2500;
+let lastHeard = 0;
+let asking = false;
+let quiet = false;
+let quietAsks = 0; // for diagnostics
+let spotifyPlaying = false; // paused, the extension has nothing to report even when awake
+
+function heardFromSpotify() {
+	lastHeard = Date.now();
+}
+
+async function askSpotifyState(why) {
+	if (!bridge || asking) return;
+	asking = true;
+	try {
+		const st = await bridgeCommand("state", {}, 4000);
+		if (!st) return;
+		heardFromSpotify();
+		spotifyPlaying = !!st.isPlaying;
+		sendToRenderer("bridge", { type: "state", state: st });
+		lobby.onPlayerState(st);
+		if (st.isPlaying && Number.isFinite(st.position)) lobby.onPlayerProgress(st.position, st.at);
+		if (why === "quiet") quietAsks++;
+	} catch (_) {
+	} finally {
+		asking = false;
+	}
+}
+
+setInterval(() => {
+	if (!bridge) return;
+	const silent = Date.now() - lastHeard > QUIET_MS;
+	if (silent !== quiet && (spotifyPlaying || !silent)) {
+		quiet = silent;
+		diag(silent ? "Spotify's extension went quiet (its window hidden for a while?); Mercify is asking it directly" : `Spotify's extension is reporting by itself again (asked ${quietAsks} times meanwhile)`);
+	}
+	if (silent) askSpotifyState("quiet");
+}, 1000);
+
+const QUERY_ACTIONS = new Set(["state", "search", "playlists", "playlistTracks"]);
+
 function bridgeCommand(action, args, timeoutMs = 15000) {
+	// after anything that changes playback, look again shortly instead of waiting for a report
+	if (!QUERY_ACTIONS.has(action)) setTimeout(() => askSpotifyState("after " + action), 350);
 	return new Promise((resolve, reject) => {
 		if (!bridge || bridge.readyState !== 1) return reject(new Error("Spotify is not connected"));
 		const id = nextId++;

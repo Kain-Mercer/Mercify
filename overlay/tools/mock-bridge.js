@@ -32,7 +32,7 @@ function makeTrack(i) {
 		artists: [artist],
 		album: `${pick(WORDS)} ${pick(NOUNS)}`,
 		image: art(i, name.split(" ").map((w) => w[0]).join("")),
-		duration: 140000 + Math.floor(rnd() * 160000),
+		duration: Number(process.env.MOCK_DURATION) || 140000 + Math.floor(rnd() * 160000),
 		playable: true,
 	};
 }
@@ -55,7 +55,7 @@ const TRACKS = {
 	"spotify:playlist:p5": ALL.slice(370, 400),
 };
 
-const player = { trackIdx: 228, position: 63000, at: Date.now(), isPlaying: true, volume: 0.72, shuffle: true, repeat: 0, liked: true, context: "spotify:playlist:p1" };
+const player = { trackIdx: Number(process.env.MOCK_START ?? 228), position: process.env.MOCK_START ? 0 : 63000, at: Date.now(), isPlaying: true, volume: 0.72, shuffle: true, repeat: 0, liked: true, context: "spotify:playlist:p1" };
 
 function pos() {
 	return player.isPlaying ? player.position + (Date.now() - player.at) : player.position;
@@ -65,7 +65,9 @@ function state() {
 	const t = ALL[player.trackIdx];
 	let p = pos();
 	if (p >= t.duration) {
-		player.trackIdx = (player.trackIdx + 1) % ALL.length;
+		// MOCK_STEP: each person's Spotify autoplays its own pick after a song ends
+		player.trackIdx = (player.trackIdx + Number(process.env.MOCK_STEP || 1)) % ALL.length;
+		if (process.env.MOCK_LOG_CMDS) console.log(`[mock] ${Date.now()} now ${ALL[player.trackIdx].name} (moved on by itself)`);
 		player.position = 0;
 		player.at = Date.now();
 		p = 0;
@@ -89,8 +91,12 @@ function state() {
 	};
 }
 
+// Like real Spotify, move on at the end of a song on time, whether or not anyone is asking.
+setInterval(state, 250);
+
 function setTrack(i) {
 	player.trackIdx = i;
+	if (process.env.MOCK_LOG_CMDS) console.log(`[mock] ${Date.now()} now ${ALL[i].name}`);
 	player.position = 0;
 	player.at = Date.now();
 	player.isPlaying = true;
@@ -159,6 +165,9 @@ function connect() {
 		ws.send(JSON.stringify({ type: "hello", version: "mock", spotify: "mock" }));
 		ws.send(JSON.stringify({ type: "state", state: state() }));
 		let last = "";
+		// MOCK_THROTTLE: like Spotify's page after a few minutes hidden (Chromium runs its timers about
+		// once a minute): the extension's own reports nearly stop. Commands still get answered.
+		const every = process.env.MOCK_THROTTLE ? 60000 : 1000;
 		timer = setInterval(() => {
 			const s = state();
 			const sig = [s.uri, s.isPlaying, s.volume, s.shuffle, s.repeat, s.liked].join("|");
@@ -166,17 +175,18 @@ function connect() {
 				last = sig;
 				ws.send(JSON.stringify({ type: "state", state: s }));
 			} else if (s.isPlaying) ws.send(JSON.stringify({ type: "progress", position: s.position, at: Date.now() }));
-		}, 1000);
+		}, every);
 	});
 	ws.on("message", async (raw) => {
 		const msg = JSON.parse(raw);
 		if (msg.type !== "cmd") return;
 		const fn = actions[msg.action];
+		if (process.env.MOCK_LOG_CMDS && msg.action !== "state") console.log(`[mock] ${Date.now()} cmd ${msg.action} ${JSON.stringify(msg.args || {})}`);
 		await new Promise((r) => setTimeout(r, 40 + Math.random() * 120)); // feel like a real round trip
 		try {
 			const data = fn ? fn(msg.args || {}) : null;
 			ws.send(JSON.stringify({ type: "reply", id: msg.id, ok: !!fn, data: data ?? null, error: fn ? undefined : "unknown action" }));
-			if (!["search", "playlists", "playlistTracks", "state"].includes(msg.action)) ws.send(JSON.stringify({ type: "state", state: state() }));
+			if (!["search", "playlists", "playlistTracks", "state"].includes(msg.action) && !process.env.MOCK_THROTTLE) ws.send(JSON.stringify({ type: "state", state: state() }));
 		} catch (e) {
 			ws.send(JSON.stringify({ type: "reply", id: msg.id, ok: false, error: e.message }));
 		}
@@ -189,4 +199,5 @@ function connect() {
 }
 
 console.log("[mock] fake Spotify starting; waiting for the overlay on port", PORT);
+if (process.env.MOCK_LOG_CMDS) console.log(`[mock] ${Date.now()} now ${ALL[player.trackIdx].name}`);
 connect();
