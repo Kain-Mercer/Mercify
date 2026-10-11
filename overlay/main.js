@@ -564,6 +564,46 @@ async function showSpotify() {
 	}
 }
 
+// ------------------------------------------------------------------ after logging in to Spotify
+// The first time you log in (Spotify sends you to your browser and back), the Spotify window can
+// stay blank, and the Mercify extension never loads, until Spotify is restarted. So: once Spotify
+// says you're logged in, give it a moment to connect, and if it doesn't, restart it once.
+const LOGIN_GRACE_MS = Number(process.env.OVERLAY_DEBUG_LOGIN_GRACE_MS) || 30000; // slow PCs take a while to load Spotify
+let loggedInSince = 0;
+let loginRestarts = 0;
+let connectNote = ""; // for Settings' "Connected to Spotify" row
+
+function setConnectNote(text) {
+	if (text === connectNote) return;
+	connectNote = text;
+	pushSettings();
+}
+
+setInterval(async () => {
+	if (!setup.IS_WIN && !process.env.OVERLAY_DEBUG_FAKE_LOGGED_IN) return;
+	if (bridge) {
+		loggedInSince = 0;
+		if (connectNote) setConnectNote("");
+		return;
+	}
+	if (setup.isSetupRunning() || !setup.spotifyLoggedIn()) {
+		loggedInSince = 0;
+		return;
+	}
+	if (!(await setup.isSpotifyRunning())) return; // nothing to restart; "Open Spotify" handles that
+	if (!loggedInSince) loggedInSince = Date.now();
+	if (Date.now() - loggedInSince < LOGIN_GRACE_MS) return;
+	if (loginRestarts >= 1) {
+		setConnectNote("Spotify still hasn't connected after a restart. Press Redo next to Mercify extension.");
+		return;
+	}
+	loginRestarts++;
+	loggedInSince = 0;
+	diag("logged in to Spotify, but it hasn't connected: restarting it once");
+	setConnectNote("You're logged in. Restarting Spotify so Mercify can connect…");
+	await setup.restartSpotify();
+}, 2000);
+
 // ------------------------------------------------------------------ keeping up with a throttled Spotify
 // After Spotify's window has been hidden (Mercify tucks it into the tray, or it sits behind the
 // game) for about five minutes, Chromium runs the page's timers only about once a minute. The
@@ -905,6 +945,7 @@ async function settingsState() {
 		gateText,
 		setupRun: setup.isSetupRunning() ? { running: true, steps: setupSteps } : lastSetup,
 		setupLog: setupLog.slice(-200),
+		connectNote,
 		launchSpotify: config.launchSpotify,
 		minimiseSpotify: config.minimiseSpotify,
 		startWithWindows: getStartWithWindows(),

@@ -35,6 +35,7 @@ function setupDone(s) {
 	return s.spotify && s.spotx && s.spicetify && s.extension === "current";
 }
 
+let connectNote = "";
 function renderSetup(s, run, connected) {
 	if (!s.supported) {
 		$("#setup-section").hidden = true;
@@ -61,7 +62,7 @@ function renderSetup(s, run, connected) {
 		setRow("connect", "ok", "Connected");
 		openBtn.hidden = true;
 	} else if (setupDone(s)) {
-		setRow("connect", "warn", "Not yet. Open Spotify and log in; this turns green by itself.");
+		setRow("connect", "warn", connectNote || "Not yet. Open Spotify and log in; this turns green by itself.");
 		openBtn.hidden = false;
 	} else if (!setupRunning || !run?.steps?.connect) {
 		setRow("connect", "neutral", "After the steps above");
@@ -196,6 +197,7 @@ function render(d) {
 	$("#conn").textContent = d.connected ? "Connected to Spotify" : "Waiting for Spotify";
 	$("#conn").classList.toggle("ok", d.connected);
 
+	connectNote = d.connectNote || "";
 	renderSetup(s, d.setupRun, d.connected);
 
 	const only = d.onlyShowOver;

@@ -68,6 +68,7 @@ function detectSpotX() {
 }
 
 function isSpotifyRunning() {
+	if (process.env.OVERLAY_DEBUG_FAKE_SPOTIFY_RUNNING) return Promise.resolve(process.env.OVERLAY_DEBUG_FAKE_SPOTIFY_RUNNING === "1");
 	if (!IS_WIN) return Promise.resolve(false);
 	return new Promise((resolve) => {
 		execFile("tasklist", ["/FI", "IMAGENAME eq Spotify.exe", "/NH"], { windowsHide: true }, (err, out) => {
@@ -88,6 +89,27 @@ async function startSpotify({ minimized = false } = {}) {
 // Bring Spotify's window up (running Spotify.exe again focuses the existing one).
 function openSpotify() {
 	if (!IS_WIN || !fs.existsSync(SPOTIFY_EXE)) return false;
+	spawn(SPOTIFY_EXE, [], { detached: true, stdio: "ignore" }).unref();
+	return true;
+}
+
+// Has someone logged in to Spotify on this PC? Spotify writes the account into its prefs file
+// (autologin.username / autologin.canonical_username) once you're logged in.
+function spotifyLoggedIn() {
+	if (process.env.OVERLAY_DEBUG_FAKE_LOGGED_IN) return process.env.OVERLAY_DEBUG_FAKE_LOGGED_IN === "1";
+	try {
+		return /^autologin\.(canonical_)?username\s*=\s*"?[^"\s]/m.test(fs.readFileSync(SPOTIFY_PREFS, "utf8"));
+	} catch (_) {
+		return false;
+	}
+}
+
+// Close Spotify completely and start it again (its window showing).
+async function restartSpotify() {
+	if (process.env.OVERLAY_DEBUG_FAKE_SPOTIFY_RUNNING) return console.log("[test] Spotify restarted"), true;
+	if (!IS_WIN || !fs.existsSync(SPOTIFY_EXE)) return false;
+	await new Promise((r) => execFile("taskkill", ["/IM", "Spotify.exe", "/F"], { windowsHide: true }, () => r()));
+	for (let i = 0; i < 20 && (await isSpotifyRunning()); i++) await new Promise((r) => setTimeout(r, 250));
 	spawn(SPOTIFY_EXE, [], { detached: true, stdio: "ignore" }).unref();
 	return true;
 }
@@ -418,4 +440,4 @@ async function applyExtension(log) {
 	return ok;
 }
 
-module.exports = { _runPowerShell: runPowerShell, status, needsAttention, setupAll, isSetupRunning: () => setupRunning, runSpotX, installSpicetify, applyExtension, startSpotify, openSpotify, isSpotifyRunning, IS_WIN, _detectSpotX: detectSpotX };
+module.exports = { spotifyLoggedIn, restartSpotify, _runPowerShell: runPowerShell, status, needsAttention, setupAll, isSetupRunning: () => setupRunning, runSpotX, installSpicetify, applyExtension, startSpotify, openSpotify, isSpotifyRunning, IS_WIN, _detectSpotX: detectSpotX };
