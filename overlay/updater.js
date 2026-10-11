@@ -3,6 +3,8 @@
 // Installed copy: electron-updater checks the latest release, downloads the new installer in the
 //   background (only the changed blocks when it can) and installs it when Mercify next quits, or
 //   straight away with "Restart and update".
+//   At launch (checkAtLaunch / waitForDownload), main.js shows a splash and holds Mercify back
+//   while a new version downloads, then installs it and starts the new one, like Discord.
 // Portable copy: it can't replace itself, so it only checks the latest version and offers a link.
 // Running from source: updates are off.
 
@@ -44,6 +46,7 @@ function newer(a, b) {
 let autoUpdater = null;
 
 function setupInstaller() {
+	if (autoUpdater) return; // already set up (by the launch check)
 	const { NsisUpdater, autoUpdater: platformUpdater } = require("electron-updater");
 	if (process.env.OVERLAY_DEBUG_UPDATE_FEED) {
 		// Testing: a local "release" server instead of GitHub.
@@ -119,14 +122,80 @@ function start() {
 	setInterval(check, CHECK_EVERY_MS);
 }
 
+// ------------------------------------------------------------------ launch check (splash)
+
+const LAUNCH_CHECK_MS = 8000; // longer than this and Mercify just opens; the background check carries on
+const DOWNLOAD_STALL_MS = 60 * 1000; // no progress this long: give up and open Mercify
+
+// Is there a newer version? Resolves its version (the download has already started,
+// autoDownload) or null for none / offline / too slow. Installed copies only.
+function checkAtLaunch(timeoutMs = LAUNCH_CHECK_MS) {
+	if (mode !== "installer") return Promise.resolve(null);
+	setupInstaller();
+	return new Promise((resolve) => {
+		let done = false;
+		const finish = (v) => {
+			if (done) return;
+			done = true;
+			clearTimeout(timer);
+			autoUpdater.off("update-available", onAvailable);
+			autoUpdater.off("update-not-available", onNone);
+			autoUpdater.off("error", onNone);
+			resolve(v);
+		};
+		const onAvailable = (info) => finish(info.version);
+		const onNone = () => finish(null);
+		const timer = setTimeout(() => finish(null), timeoutMs);
+		autoUpdater.on("update-available", onAvailable);
+		autoUpdater.on("update-not-available", onNone);
+		autoUpdater.on("error", onNone);
+		autoUpdater.checkForUpdates().catch(() => finish(null));
+	});
+}
+
+// After checkAtLaunch found one: resolves true once it's downloaded and verified, false if
+// the download fails or stalls. onProgress(percent) while it downloads.
+function waitForDownload(onProgress = () => {}) {
+	if (state.status === "ready") return Promise.resolve(true);
+	return new Promise((resolve) => {
+		let stall;
+		const kick = () => {
+			clearTimeout(stall);
+			stall = setTimeout(() => finish(false), DOWNLOAD_STALL_MS);
+		};
+		const finish = (ok) => {
+			clearTimeout(stall);
+			autoUpdater.off("download-progress", onProg);
+			autoUpdater.off("update-downloaded", onDone);
+			autoUpdater.off("error", onErr);
+			resolve(ok);
+		};
+		const onProg = (p) => {
+			kick();
+			onProgress(Math.round(p.percent || 0));
+		};
+		const onDone = () => finish(true);
+		const onErr = () => finish(false);
+		autoUpdater.on("download-progress", onProg);
+		autoUpdater.on("update-downloaded", onDone);
+		autoUpdater.on("error", onErr);
+		kick();
+	});
+}
+
 // Close Mercify, install the downloaded update silently and start the new version.
 function installNow() {
 	if (mode === "installer" && state.status === "ready") {
 		events.emit("before-install");
+		// Testing off Windows: stop here instead of running the installer.
+		if (process.env.OVERLAY_DEBUG_UPDATE_NO_INSTALL) {
+			autoUpdater.autoInstallOnAppQuit = false;
+			return setImmediate(() => app.exit(0));
+		}
 		setImmediate(() => autoUpdater.quitAndInstall(true, true));
 	} else if (mode === "portable" && state.status === "available") {
 		shell.openExternal(state.url);
 	}
 }
 
-module.exports = { start, check, installNow, state: () => ({ ...state }), on: (ev, fn) => events.on(ev, fn), newer, RELEASES_URL };
+module.exports = { start, check, checkAtLaunch, waitForDownload, installNow, state: () => ({ ...state }), on: (ev, fn) => events.on(ev, fn), newer, RELEASES_URL };

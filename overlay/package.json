@@ -29,6 +29,7 @@
       "*.js",
       "renderer/**",
       "settings/**",
+      "splash/**",
       "assets/**",
       "package.json",
       "node_modules/**",

@@ -1280,6 +1280,126 @@ function debugCapture(file) {
 	}, Number(process.env.OVERLAY_DEBUG_DELAY || 2500));
 }
 
+// ------------------------------------------------------------------ launch splash / update gate
+//
+// Like Discord or Steam: an installed copy checks GitHub before anything else starts. If
+// there's a newer version, the splash (the GitHub logo, assets/splash.png) shows it
+// downloading, installs it and starts the new version, so Mercify never opens on the old
+// one. No update, offline, or GitHub too slow: the splash closes and Mercify starts as usual,
+// and the regular background check carries on. Opened by you, the splash shows while it
+// checks; started with Windows, it only appears when there's something to install.
+// Portable copies and running from source skip all of this.
+
+const SPLASH_MIN_MS = 900; // a quick "no update" doesn't just flash the splash
+let splashWin = null;
+let splashStatus = { text: "Starting…" };
+let launchGateActive = false;
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function showSplash() {
+	if (splashWin && !splashWin.isDestroyed()) return splashWin;
+	splashWin = new BrowserWindow({
+		width: 400,
+		height: 400,
+		useContentSize: true,
+		center: true,
+		frame: false,
+		resizable: false,
+		maximizable: false,
+		fullscreenable: false,
+		title: "Mercify",
+		backgroundColor: "#0a0b0a",
+		icon: path.join(__dirname, "assets", "icon.png"),
+		show: false,
+		webPreferences: {
+			preload: path.join(__dirname, "preload-splash.js"),
+			contextIsolation: true,
+			nodeIntegration: false,
+			sandbox: true,
+		},
+	});
+	splashWin.setMenu(null);
+	splashWin.loadFile(path.join(__dirname, "splash", "splash.html"));
+	// a status set before the page finished loading
+	splashWin.webContents.on("did-finish-load", () => splashWin?.webContents.send("splash:status", splashStatus));
+	splashWin.once("ready-to-show", () => splashWin?.show());
+	splashWin.on("closed", () => (splashWin = null));
+	return splashWin;
+}
+
+// percent: a number while downloading; leave it out and the bar sweeps
+function setSplash(text, percent) {
+	if (text !== splashStatus.text) console.log("[splash]", text);
+	splashStatus = { text, percent };
+	if (splashWin && !splashWin.isDestroyed()) splashWin.webContents.send("splash:status", splashStatus);
+}
+
+function closeSplash() {
+	if (splashWin && !splashWin.isDestroyed()) splashWin.destroy();
+	splashWin = null;
+}
+
+// Testing off Windows: OVERLAY_DEBUG_SPLASH=checking|downloading|installing shows that state
+// and writes a screenshot to OVERLAY_DEBUG_SPLASH_CAPTURE, then quits.
+function splashScreenshot(kind) {
+	const states = {
+		checking: ["Checking for updates…"],
+		downloading: ["Downloading Mercify 1.13.0… 42%", 42],
+		installing: ["Installing Mercify 1.13.0…"],
+	};
+	setSplash(...(states[kind] || ["Starting…"]));
+	showSplash().webContents.once("did-finish-load", () =>
+		setTimeout(async () => {
+			const img = await splashWin.webContents.capturePage();
+			if (process.env.OVERLAY_DEBUG_SPLASH_CAPTURE) fs.writeFileSync(process.env.OVERLAY_DEBUG_SPLASH_CAPTURE, img.toPNG());
+			app.exit(0);
+		}, 1200)
+	);
+}
+
+// Resolves true when an update is being installed (Mercify is quitting and the new version
+// will start), false to start Mercify as usual.
+async function launchUpdateGate() {
+	if (process.env.OVERLAY_DEBUG_SPLASH) {
+		splashScreenshot(process.env.OVERLAY_DEBUG_SPLASH);
+		return true;
+	}
+	if (updater.state().mode !== "installer") return false;
+	launchGateActive = true;
+	try {
+		const quiet = AUTOSTART;
+		const shownAt = Date.now();
+		if (!quiet) {
+			setSplash("Checking for updates…");
+			showSplash();
+		}
+		const version = await updater.checkAtLaunch();
+		if (!version) {
+			if (!quiet) await wait(Math.max(0, SPLASH_MIN_MS - (Date.now() - shownAt)));
+			closeSplash();
+			return false;
+		}
+		diag(`launch: Mercify ${version} is out, updating before opening`);
+		setSplash(`Downloading Mercify ${version}…`, 0);
+		showSplash();
+		const ok = await updater.waitForDownload((pct) => setSplash(`Downloading Mercify ${version}… ${pct}%`, pct));
+		if (!ok) {
+			// Download failed or stalled: open this version. The background check tries again,
+			// and a download that finishes later installs when Mercify closes.
+			diag("launch: update download failed or stalled; opening the current version");
+			closeSplash();
+			return false;
+		}
+		setSplash(`Installing Mercify ${version}…`);
+		await wait(600); // long enough to read
+		updater.installNow();
+		return true;
+	} finally {
+		launchGateActive = false;
+	}
+}
+
 // ------------------------------------------------------------------ lifecycle
 
 function notify(title, body) {
@@ -1293,11 +1413,15 @@ updater.on("change", () => {
 	pushSettings();
 	updateTrayMenu();
 });
-updater.on("ready", (v) => notify(`Mercify ${v} is ready`, "It installs the next time Mercify closes. To update now, open Settings and choose Restart and update."));
+updater.on("ready", (v) => {
+	if (launchGateActive) return; // the splash is installing it right now
+	notify(`Mercify ${v} is ready`, "It installs the next time Mercify closes. To update now, open Settings and choose Restart and update.");
+});
 updater.on("available", (v) => notify(`Mercify ${v} is available`, "Click to open Settings and download it."));
 updater.on("before-install", () => foreground.stop());
 
 app.whenReady().then(async () => {
+	if (await launchUpdateGate()) return; // updating: the new version starts by itself
 	updater.start();
 	foreground.start();
 	startBridgeServer();
@@ -1331,7 +1455,8 @@ app.whenReady().then(async () => {
 	if (process.env.OVERLAY_DEBUG_SETTINGS_CAPTURE) openSettings();
 });
 
-app.on("second-instance", openSettings);
+// Opened again while the splash is up: bring the splash forward, not a Settings window.
+app.on("second-instance", () => (splashWin ? splashWin.focus() : openSettings()));
 app.on("before-quit", () => lobby.leaveNow()); // say goodbye so the lobby doesn't wait for a timeout
 app.on("will-quit", () => {
 	globalShortcut.unregisterAll();

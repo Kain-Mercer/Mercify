@@ -149,7 +149,10 @@ The Now Playing panel shows a small badge while you're in a lobby. You can leave
 
 ## Updates
 
-Mercify keeps itself up to date. A few times a day it checks for a new version, downloads it quietly in the background, and installs it the next time Mercify closes. You'll get a Windows notification when an update is ready. If you don't want to wait, open **Settings** and click **Restart and update**, or choose **Restart to update** from the tray icon.
+Mercify keeps itself up to date.
+
+- **When you open it**, Mercify shows its logo for a moment while it checks for a new version. If there is one, it downloads and installs it right there, then opens the new version, a bit like Discord or Steam. If you're offline or GitHub is slow, Mercify just opens as usual. When Mercify starts with Windows, the logo only appears if there's an update to install.
+- **While it's running**, it checks a few times a day, downloads any new version quietly in the background, and installs it the next time Mercify closes. You'll get a Windows notification when an update is ready. If you don't want to wait, open **Settings** and click **Restart and update**, or choose **Restart to update** from the tray icon.
 
 The **Updates** section in Settings shows which version you have and lets you check for a new one.
 
