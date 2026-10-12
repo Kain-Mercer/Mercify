@@ -159,8 +159,8 @@ function setAnchor(hwnd) {
 	sendAnchor();
 }
 
-// Click zone: while the overlay is hidden, clicks on the Now Playing widget are caught by the
-// helper (so the overlay window never takes the keyboard from the game) and reported here as
+// Click zone: clicks on Mercify's panels are caught by the helper (so the overlay window never
+// takes the keyboard from the game) and reported here as
 // { type: "down"|"move"|"up"|"cancel"|"wheel", x, y, d } in physical screen pixels.
 let zoneListener = null;
 let zoneSent = "";
@@ -171,11 +171,12 @@ function onZone(fn) {
 function canZone() {
 	return !!child?.stdin?.writable;
 }
-// rect: { x, y, width, height } in physical screen pixels, or null for no zone.
-function setClickZone(rect) {
-	const line = rect ? `zone ${Math.round(rect.x)} ${Math.round(rect.y)} ${Math.round(rect.width)} ${Math.round(rect.height)}` : "zone off";
+// rects: [{ x, y, width, height }, ...] in physical screen pixels (up to 16), or null/[] for none.
+function setClickZone(rects) {
+	const list = (rects || []).slice(0, 16).map((r) => `${Math.round(r.x)} ${Math.round(r.y)} ${Math.round(r.width)} ${Math.round(r.height)}`);
+	const line = list.length ? "zone " + list.join(" ") : "zone off";
 	if (line === zoneSent || !child?.stdin?.writable) return;
-	if (!zoneSent && !rect) return; // nothing set yet
+	if (!zoneSent && !list.length) return; // nothing set yet
 	zoneSent = line;
 	try {
 		child.stdin.write(line + "\n");

@@ -5,8 +5,8 @@
 // (plus "cls", the window class), and once told which window is the game ("anchor <hwnd>" on stdin), its state:
 // "anchor":{"hwnd":...,"alive":1,"iconic":0,"visible":1,"mon":...}
 // "activate <hwnd>" on stdin brings that window back to the front and reports {"activate","ok","via"}.
-// "zone <x> <y> <w> <h>" on stdin (physical screen pixels) makes that rectangle a click zone; see
-// below. "zone off" ends it.
+// "zone <x> <y> <w> <h> [<x> <y> <w> <h> ...]" on stdin (physical screen pixels, up to 16
+// rectangles) sets the click zone; see below. "zone off" ends it.
 // Exits on its own when the parent process (the overlay) goes away.
 //
 // Build (from Linux):  x86_64-w64-mingw32-gcc -O2 -municode -static -s -o fgwatch.exe fgwatch.c
@@ -185,10 +185,9 @@ static void activate(HWND h) {
 
 // ---------------------------------------------------------------- click zone
 //
-// The Now Playing widget can stay clickable while the overlay is hidden. Clicking the overlay
-// window would activate it, and the game drops every held key when it loses the keyboard (you
-// stop running mid-WASD). So the window stays click-through and this helper watches the mouse
-// instead, with a low-level mouse hook on its own thread (never Mercify's busy main thread):
+// Mercify's panels take clicks without the overlay window being activated: the game drops every
+// held key when it loses the keyboard (you'd stop running mid-WASD). So the window stays
+// click-through and this helper watches the mouse instead, with a low-level mouse hook on its own thread (never Mercify's busy main thread):
 // a left press inside the zone is kept from the game and reported, with the drag and release
 // that follow, as {"zone":"down"|"move"|"up","x":..,"y":..} (physical screen pixels); a wheel
 // notch there as {"zone":"wheel","x":..,"y":..,"d":120}. Right clicks in the zone are kept from
@@ -196,7 +195,9 @@ static void activate(HWND h) {
 // is held, everything passes through untouched. The hook only exists while a zone is set.
 
 static CRITICAL_SECTION zone_lock;
-static RECT zone;            // empty: no zone
+#define MAX_ZONES 16
+static RECT zones[MAX_ZONES];
+static int nzones;           // 0: no zone
 static int capturing;        // left button went down in the zone; its drag and release are ours
 static int right_eaten;      // right button went down in the zone; its release is ours too
 static DWORD last_move;
@@ -250,7 +251,8 @@ static LRESULT CALLBACK mouse_hook(int code, WPARAM wp, LPARAM lp) {
 	POINT pt = m->pt;
 	int eat = 0;
 	EnterCriticalSection(&zone_lock);
-	int inside = PtInRect(&zone, pt);
+	int inside = 0;
+	for (int i = 0; i < nzones && !inside; i++) inside = PtInRect(&zones[i], pt);
 	LeaveCriticalSection(&zone_lock);
 	switch (wp) {
 	case WM_LBUTTONDOWN:
@@ -317,14 +319,19 @@ static DWORD WINAPI hook_thread(LPVOID unused) {
 }
 
 static void set_zone(const char *args) {
+	RECT r[MAX_ZONES];
+	int n = 0, used = 0;
 	long x, y, w, h;
-	RECT r = { 0, 0, 0, 0 };
-	if (sscanf(args, "%ld %ld %ld %ld", &x, &y, &w, &h) == 4 && w > 0 && h > 0) SetRect(&r, (int)x, (int)y, (int)(x + w), (int)(y + h));
+	while (n < MAX_ZONES && sscanf(args, " %ld %ld %ld %ld%n", &x, &y, &w, &h, &used) == 4) {
+		args += used;
+		if (w > 0 && h > 0) SetRect(&r[n++], (int)x, (int)y, (int)(x + w), (int)(y + h));
+	}
 	EnterCriticalSection(&zone_lock);
-	zone = r;
+	memcpy(zones, r, sizeof(RECT) * (size_t)n);
+	nzones = n;
 	LeaveCriticalSection(&zone_lock);
 	if (!hook_thread_id) {
-		if (IsRectEmpty(&r)) return;
+		if (!n) return;
 		hook_ready = CreateEventW(NULL, TRUE, FALSE, NULL);
 		zq_event = CreateEventW(NULL, FALSE, FALSE, NULL);
 		CreateThread(NULL, 0, zone_writer, NULL, 0, NULL);
@@ -332,7 +339,7 @@ static void set_zone(const char *args) {
 		if (t) SetThreadPriority(t, THREAD_PRIORITY_TIME_CRITICAL); // the whole desktop's mouse waits on it
 		WaitForSingleObject(hook_ready, 2000);
 	}
-	PostThreadMessageW(hook_thread_id, IsRectEmpty(&r) ? ZONE_OFF : ZONE_ON, 0, 0);
+	PostThreadMessageW(hook_thread_id, n ? ZONE_ON : ZONE_OFF, 0, 0);
 }
 
 int wmain(int argc, wchar_t **argv) {

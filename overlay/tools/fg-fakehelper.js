@@ -1,5 +1,5 @@
 // Speaks fgwatch's protocol: JSON lines out, "anchor <hwnd>" lines in.
-// "zone x y w h" answers with a click (down and up) in the middle of the zone.
+// "zone x y w h ..." answers with a click (down and up) in the middle of the first rectangle.
 // The scene is read from scene.json each tick: { fg: {pid,hwnd,exe,title}, windows: {hwnd:{iconic,visible,mon,alive}} }
 const fs = require("fs");
 let anchor = 0, inbuf = "", activated = 0, lastScene = "";

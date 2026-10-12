@@ -201,7 +201,9 @@ function createWindow() {
 	win.on("blur", () => {
 		if (!win || win.isDestroyed()) return;
 		win.setAlwaysOnTop(true, "screen-saver");
+		syncZone();
 	});
+	win.on("focus", () => syncZone());
 
 	screen.on("display-metrics-changed", () => {
 		if (!win || win.isDestroyed()) return;
@@ -275,20 +277,20 @@ function pollCursor() {
 	if (inside) sendToRenderer("cursor", { x, y });
 }
 
-// While the overlay is hidden, the Now Playing widget can stay clickable without the overlay
-// window ever taking the keyboard from the game (which drops held keys: you'd stop running).
-// The renderer says where the widget is; the helper watches for clicks there and reports them,
-// and they're replayed in the renderer. Without the helper (or on other systems) the widget
-// takes clicks the old way, by making the window clickable under the mouse.
-let zoneRect = null; // in window coordinates, from the renderer
+// Clicking a panel must not make the overlay window active: the game would lose the keyboard
+// and drop the keys you're holding (you'd stop running mid-WASD). The renderer says where its
+// clickable panels are; the helper watches for clicks there and reports them, and they're
+// replayed in the renderer. While the overlay has the keyboard anyway (typing in a text box,
+// Edit Mode) the window takes clicks itself. Without the helper (or on other systems) panels
+// take clicks the old way, by making the window clickable under the mouse.
+let zoneRects = []; // in window coordinates, from the renderer
 let zoneOn = false;
 function syncZone() {
 	if (!win || win.isDestroyed()) return;
-	const want = !!zoneRect && !overlayShown && !editMode && gateOpen && win.isVisible() && foreground.canZone();
+	const want = zoneRects.length > 0 && !editMode && gateOpen && win.isVisible() && !win.isFocused() && foreground.canZone();
 	if (want) {
 		const b = win.getBounds();
-		const r = { x: b.x + zoneRect.x, y: b.y + zoneRect.y, width: zoneRect.w, height: zoneRect.h };
-		foreground.setClickZone(screen.dipToScreenRect(win, r));
+		foreground.setClickZone(zoneRects.map((r) => screen.dipToScreenRect(win, { x: b.x + r.x, y: b.y + r.y, width: r.w, height: r.h })));
 	} else foreground.setClickZone(null);
 	if (want === zoneOn) return;
 	zoneOn = want;
@@ -918,12 +920,21 @@ ipcMain.on("set-interactive", (_e, on) => {
 	setInteractive(!!on && gateOpen);
 });
 
-ipcMain.on("click-zone", (_e, r) => {
-	zoneRect = r && r.w > 0 && r.h > 0 ? { x: +r.x || 0, y: +r.y || 0, w: +r.w, h: +r.h } : null;
+ipcMain.on("click-zone", (_e, rects) => {
+	zoneRects = (Array.isArray(rects) ? rects : []).filter((r) => r && r.w > 0 && r.h > 0).map((r) => ({ x: +r.x || 0, y: +r.y || 0, w: +r.w, h: +r.h }));
 	syncZone();
 });
 
-ipcMain.on("want-focus", () => takeFocus());
+// A text box was clicked. With the click zone on, Mercify didn't get the click itself, so
+// Windows won't let it take the keyboard by itself: the helper brings the overlay to the front.
+ipcMain.on("want-focus", async () => {
+	if (zoneOn && foreground.canActivate() && win && !win.isDestroyed()) {
+		const h = win.getNativeWindowHandle();
+		const r = await foreground.activate(h.length >= 8 ? h.readBigUInt64LE(0) : h.readUInt32LE(0));
+		diag(`text box clicked: overlay to the front ${r ? (r.ok ? "ok via " + r.via : "refused (" + r.via + ")") : "no answer"}`);
+	}
+	takeFocus();
+});
 ipcMain.on("open-settings", () => openSettings());
 
 // After a click on a button or list row: keep taking clicks, but give the keyboard back.

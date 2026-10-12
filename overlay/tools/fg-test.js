@@ -50,8 +50,9 @@ const step = async (label, want, setup) => { setup(); await sleep(500); gate(); 
 	// click zone: the rectangle goes to the helper once, and its clicks come back
 	const got = [];
 	fg.onZone((e) => got.push(e));
-	fg.setClickZone({ x: 100, y: 200, width: 40, height: 20 });
-	fg.setClickZone({ x: 100, y: 200, width: 40, height: 20 }); // unchanged: not sent again
+	const rects = [{ x: 100, y: 200, width: 40, height: 20 }, { x: 500, y: 10, width: 300, height: 400 }];
+	fg.setClickZone(rects);
+	fg.setClickZone(rects.map((r) => ({ ...r }))); // unchanged: not sent again
 	await sleep(400);
 	const okZone = got.length === 2 && got[0].type === "down" && got[1].type === "up" && got[1].x === 120 && got[1].y === 210;
 	console.log(`${okZone ? "PASS" : "FAIL"}  click zone reports clicks: ${JSON.stringify(got)}`);
