@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("overlay", {
 	onResetLayout: on("reset-layout"),
 	onToast: on("toast"),
 	onInteractiveReset: on("interactive-reset"),
+	onCursor: on("cursor"),
 	lobbyGet: () => ipcRenderer.invoke("lobby:get"),
 	lobbyGenerate: () => ipcRenderer.invoke("lobby:generate"),
 	lobbySetName: (name) => ipcRenderer.invoke("lobby:set-name", name),
