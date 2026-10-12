@@ -4,7 +4,8 @@ name: Build Windows exe
 # When overlay/package.json has a version with no release yet (e.g. you bump 1.2.0 -> 1.3.0),
 # the build is published as release v<version>. Otherwise the exes are attached to the run as
 # a download (Actions tab -> the run -> Artifacts).
-# "Run workflow" on the Actions tab does the same on demand.
+# "Run workflow" on the Actions tab does the same on demand; on any other branch it only
+# attaches the exes to the run, so a fix can be tried before it's merged.
 on:
   push:
     branches: [main]
@@ -87,8 +88,10 @@ jobs:
             overlay/dist/*.blockmap
           if-no-files-found: error
 
+      # Only main publishes. A run on another branch (Run workflow on a fix branch, to try a
+      # build before merging) just attaches the exes to the run.
       - name: Publish release
-        if: steps.released.outputs.exists == 'false'
+        if: steps.released.outputs.exists == 'false' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}

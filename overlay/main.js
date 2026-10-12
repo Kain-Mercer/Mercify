@@ -245,12 +245,34 @@ function showOverlay() {
 }
 
 // Click-through except where the renderer says the mouse is over a panel.
+// Not setIgnoreMouseEvents(true, { forward: true }): on Windows Electron forwards mouse moves
+// with a system-wide low-level mouse hook run on this (main) thread, so every mouse movement,
+// the game's included, waited for Mercify's main thread. Whenever it was busy for a moment the
+// camera chugged while steering with the right mouse button (up to 1.13.1). Instead, while
+// click-through, the cursor is looked at here a few times a second (pollCursor) and the renderer
+// says whether it's over a panel; once interactive, the renderer gets real mouse events again.
 let interactive = null;
 function setInteractive(on) {
 	if (!win || win.isDestroyed() || interactive === on) return;
 	interactive = on;
 	if (on) win.setIgnoreMouseEvents(false);
-	else win.setIgnoreMouseEvents(true, { forward: true });
+	else win.setIgnoreMouseEvents(true);
+	lastCursor = null; // report the cursor again on the next poll
+}
+
+const CURSOR_POLL_MS = 50;
+let lastCursor = null;
+function pollCursor() {
+	if (!win || win.isDestroyed() || interactive || !gateOpen || !win.isVisible()) return;
+	const p = screen.getCursorScreenPoint();
+	const b = win.getBounds();
+	const x = p.x - b.x;
+	const y = p.y - b.y;
+	const inside = x >= 0 && y >= 0 && x < b.width && y < b.height;
+	const key = inside ? x + "," + y : "out";
+	if (key === lastCursor) return;
+	lastCursor = key;
+	if (inside) sendToRenderer("cursor", { x, y });
 }
 
 function sendToRenderer(channel, payload) {
@@ -283,6 +305,7 @@ function setEdit(on) {
 function releaseFocus() {
 	if (!win || win.isDestroyed()) return;
 	setInteractive(false);
+	lastCursor = null;
 	sendToRenderer("interactive-reset");
 	giveFocusBack("release");
 }
@@ -388,6 +411,7 @@ function applyGate(open) {
 	diag(`overlay ${open ? "shown" : "hidden"} (${gateWhy})`);
 	if (open) {
 		showOverlay();
+		lastCursor = null;
 		sendToRenderer("interactive-reset");
 	} else {
 		setInteractive(false);
@@ -1430,6 +1454,7 @@ app.whenReady().then(async () => {
 	registerHotkeys();
 	tickGate();
 	setInterval(tickGate, 200);
+	setInterval(pollCursor, CURSOR_POLL_MS);
 	if (process.env.OVERLAY_DEBUG_STATE_FILE) {
 		setInterval(() => {
 			const st = { gateOpen, visible: win.isVisible(), toggleHotkey: globalShortcut.isRegistered(config.hotkeys.toggle), editHotkey: globalShortcut.isRegistered(config.hotkeys.edit), edit: editMode, update: updater.state(), giveBacks, gateWhy, gameInFront, diagTail: diagLog.slice(-5), diagnostics: diagnosticsText(), bounds: win.getBounds(), display: pickDisplay().bounds };

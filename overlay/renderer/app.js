@@ -251,14 +251,17 @@ function setInteractive(on) {
 	api.setInteractive(on);
 }
 
-document.addEventListener("mousemove", (e) => {
+function hoverAt(target) {
 	if (S.edit) return;
 	if (S.dragging) return setInteractive(true);
-	const over = e.target.closest?.(".panel:not(.off)");
+	const over = target?.closest?.(".panel:not(.off)");
 	// While hidden, only the compact Now Playing widget takes clicks (others have pointer-events: none).
 	const usable = !!over && over.style.visibility !== "hidden" && (S.shown || over.classList.contains("live-hidden"));
 	setInteractive(usable);
-});
+}
+document.addEventListener("mousemove", (e) => hoverAt(e.target));
+// While click-through, the window gets no mouse events; the main process reports the cursor instead.
+api.onCursor(({ x, y }) => hoverAt(document.elementFromPoint(x, y)));
 document.addEventListener("mouseleave", () => {
 	if (!S.edit) setInteractive(false);
 });
@@ -940,7 +943,6 @@ function tick() {
 		}
 		np.cFill.style.width = pct;
 	}
-	requestAnimationFrame(tick);
 }
 
 // ------------------------------------------------------------------ track rows (shared by results + playlist)
@@ -1687,7 +1689,9 @@ window.addEventListener("resize", () => {
 	bindPopover();
 	applyAll();
 	renderPlayer();
-	requestAnimationFrame(tick);
+	// A few times a second, not every frame: repainting the overlay at the monitor's refresh rate
+	// costs the game frames for a bar that moves a pixel or so a second.
+	setInterval(tick, 250);
 
 	const info = await api.getInfo();
 	const k = (a) => (a ? `<kbd>${esc(a.replace("Control", "Ctrl"))}</kbd>` : "");
