@@ -275,6 +275,37 @@ function pollCursor() {
 	if (inside) sendToRenderer("cursor", { x, y });
 }
 
+// While the overlay is hidden, the Now Playing widget can stay clickable without the overlay
+// window ever taking the keyboard from the game (which drops held keys: you'd stop running).
+// The renderer says where the widget is; the helper watches for clicks there and reports them,
+// and they're replayed in the renderer. Without the helper (or on other systems) the widget
+// takes clicks the old way, by making the window clickable under the mouse.
+let zoneRect = null; // in window coordinates, from the renderer
+let zoneOn = false;
+function syncZone() {
+	if (!win || win.isDestroyed()) return;
+	const want = !!zoneRect && !overlayShown && !editMode && gateOpen && win.isVisible() && foreground.canZone();
+	if (want) {
+		const b = win.getBounds();
+		const r = { x: b.x + zoneRect.x, y: b.y + zoneRect.y, width: zoneRect.w, height: zoneRect.h };
+		foreground.setClickZone(screen.dipToScreenRect(win, r));
+	} else foreground.setClickZone(null);
+	if (want === zoneOn) return;
+	zoneOn = want;
+	if (want) {
+		setInteractive(false);
+		sendToRenderer("interactive-reset");
+	}
+	sendToRenderer("zone-state", { on: want });
+}
+
+foreground.onZone((e) => {
+	if (!zoneOn || !win || win.isDestroyed()) return;
+	const p = screen.screenToDipPoint({ x: e.x, y: e.y });
+	const b = win.getBounds();
+	sendToRenderer("zone-mouse", { type: e.type, x: p.x - b.x, y: p.y - b.y, d: e.d });
+});
+
 function sendToRenderer(channel, payload) {
 	if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
@@ -284,6 +315,7 @@ function setShown(on) {
 	if (!on && editMode) setEdit(false);
 	if (!on) releaseFocus();
 	sendToRenderer("overlay", { shown: overlayShown, edit: editMode });
+	syncZone();
 }
 
 function setEdit(on) {
@@ -298,6 +330,7 @@ function setEdit(on) {
 		releaseFocus();
 	}
 	sendToRenderer("overlay", { shown: overlayShown, edit: editMode });
+	syncZone();
 	updateTrayMenu();
 }
 
@@ -417,6 +450,7 @@ function applyGate(open) {
 		setInteractive(false);
 		win.hide();
 	}
+	syncZone();
 }
 
 let gameInFront = false; // a chosen app was the last window in front (ignoring our own windows)
@@ -880,7 +914,13 @@ ipcMain.handle("cmd", async (_e, { action, args }) => {
 // The renderer decides which spots are clickable (including the compact widget while hidden).
 ipcMain.on("set-interactive", (_e, on) => {
 	if (editMode) return setInteractive(true);
+	if (zoneOn) return setInteractive(false); // the helper takes the widget's clicks
 	setInteractive(!!on && gateOpen);
+});
+
+ipcMain.on("click-zone", (_e, r) => {
+	zoneRect = r && r.w > 0 && r.h > 0 ? { x: +r.x || 0, y: +r.y || 0, w: +r.w, h: +r.h } : null;
+	syncZone();
 });
 
 ipcMain.on("want-focus", () => takeFocus());
@@ -1455,6 +1495,7 @@ app.whenReady().then(async () => {
 	tickGate();
 	setInterval(tickGate, 200);
 	setInterval(pollCursor, CURSOR_POLL_MS);
+	setInterval(syncZone, 200); // follows the gate, the window and the helper coming and going
 	if (process.env.OVERLAY_DEBUG_STATE_FILE) {
 		setInterval(() => {
 			const st = { gateOpen, visible: win.isVisible(), toggleHotkey: globalShortcut.isRegistered(config.hotkeys.toggle), editHotkey: globalShortcut.isRegistered(config.hotkeys.edit), edit: editMode, update: updater.state(), giveBacks, gateWhy, gameInFront, diagTail: diagLog.slice(-5), diagnostics: diagnosticsText(), bounds: win.getBounds(), display: pickDisplay().bounds };

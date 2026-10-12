@@ -139,6 +139,8 @@ function saveLayout() {
 
 const COMPACT_MIN = [150, 40];
 const isCompact = (id) => id === "nowplaying" && !!S.layout.panels[id].compact;
+// Now Playing can stay clickable while the rest of the overlay is hidden (both views).
+const isLiveHidden = (id) => id === "nowplaying" && S.layout.panels[id].liveHidden !== false;
 
 function rectOf(id) {
 	const c = S.layout.panels[id];
@@ -205,8 +207,8 @@ function applyPanel(id) {
 	p.style.setProperty("--shown-alpha", c.shownAlpha);
 	const compact = isCompact(id);
 	p.classList.toggle("compact", compact);
-	// The compact widget stays clickable while the overlay is toggled hidden.
-	p.classList.toggle("live-hidden", compact);
+	// Now Playing can stay clickable while the overlay is toggled hidden.
+	p.classList.toggle("live-hidden", isLiveHidden(id));
 
 	let visible = c.enabled;
 	if (id === "results" && c.autoHide && !S.edit && !S.query) visible = false;
@@ -221,6 +223,7 @@ function applyPanel(id) {
 
 	const label = p.querySelector(".edit-label");
 	label.innerHTML = esc(PANELS[id].title) + (compact ? '<span class="muted">compact</span>' : "") + (c.enabled ? "" : '<span class="muted">hidden</span>');
+	if (id === "nowplaying") sendClickZone();
 }
 
 function applyAll() {
@@ -253,11 +256,80 @@ function setInteractive(on) {
 
 function hoverAt(target) {
 	if (S.edit) return;
+	if (S.zone && !S.shown) return zoneHover(target);
 	if (S.dragging) return setInteractive(true);
 	const over = target?.closest?.(".panel:not(.off)");
-	// While hidden, only the compact Now Playing widget takes clicks (others have pointer-events: none).
+	// While hidden, only the Now Playing widget takes clicks (others have pointer-events: none).
 	const usable = !!over && over.style.visibility !== "hidden" && (S.shown || over.classList.contains("live-hidden"));
 	setInteractive(usable);
+}
+
+// ------------------------------------------------------------------ click zone
+// While the overlay is hidden, clicking the Now Playing widget mustn't make the overlay window
+// active: the game would lose the keyboard and drop the keys you're holding (WASD). So the
+// window stays click-through, and Mercify's helper catches clicks on the widget and keeps them
+// from the game. They arrive here (onZoneMouse) and are replayed on whatever is under them.
+// Hover effects follow the cursor reports instead of real mouse events (the .zh class).
+
+let zoneSent = "";
+function sendClickZone() {
+	const p = panelEls.nowplaying;
+	const c = S.layout?.panels.nowplaying;
+	let rect = null;
+	if (p && c && c.enabled && isLiveHidden("nowplaying") && c.hiddenAlpha > 0.001) {
+		const r = p.getBoundingClientRect();
+		if (r.width > 0 && r.height > 0) rect = { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+	}
+	const key = JSON.stringify(rect);
+	if (key === zoneSent) return;
+	zoneSent = key;
+	api.setClickZone(rect);
+}
+
+let zoneHovered = [];
+function zoneHover(target) {
+	const over = target?.closest?.(".panel.live-hidden");
+	const want = over ? [over, target.closest(".icon-btn"), target.closest(".bar")].filter(Boolean) : [];
+	for (const el of zoneHovered) if (!want.includes(el)) el.classList.remove("zh");
+	for (const el of want) el.classList.add("zh");
+	if (over && !zoneHovered.includes(over)) {
+		const area = target.closest(".np-main, .npc-text");
+		if (area && !S.edit) marquee(area.querySelector(".mq-box"));
+	}
+	zoneHovered = want;
+}
+
+let zoneDown = null; // { el, bar } for a press that started on the widget
+function zoneMouse({ type, x, y, d }) {
+	const at = document.elementFromPoint(x, y);
+	const opts = { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: type === "up" ? 0 : 1, pointerId: 1, pointerType: "mouse", isPrimary: true };
+	if (type === "down") {
+		if (!at?.closest?.(".panel.live-hidden")) return (zoneDown = null);
+		const bar = at.closest(".bar");
+		zoneDown = { el: at, bar };
+		if (bar) bar.dispatchEvent(new PointerEvent("pointerdown", opts));
+		at.dispatchEvent(new MouseEvent("mousedown", opts));
+	} else if (type === "move") {
+		if (zoneDown?.bar) zoneDown.bar.dispatchEvent(new PointerEvent("pointermove", opts));
+		zoneHover(at);
+	} else if (type === "up" || type === "cancel") {
+		const down = zoneDown;
+		zoneDown = null;
+		if (!down) return;
+		if (down.bar) return down.bar.dispatchEvent(new PointerEvent(type === "up" ? "pointerup" : "pointercancel", opts));
+		if (type !== "up" || !at) return;
+		// a click: pressed and released on the same button (or the same spot)
+		const target = (el) => el.closest?.("button, [data-act], .np-artist") || el;
+		if (target(down.el) === target(at)) at.dispatchEvent(new MouseEvent("click", opts));
+	} else if (type === "wheel" && at) {
+		at.dispatchEvent(new WheelEvent("wheel", { ...opts, deltaY: -d, deltaMode: 0 }));
+	}
+}
+
+function zoneReset() {
+	if (zoneDown?.bar) zoneDown.bar.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerId: 1 }));
+	zoneDown = null;
+	zoneHover(null);
 }
 document.addEventListener("mousemove", (e) => hoverAt(e.target));
 // While click-through, the window gets no mouse events; the main process reports the cursor instead.
@@ -468,6 +540,8 @@ function showPopover() {
 	$("#pop-autohide").checked = !!c.autoHide;
 	$("#pop-compact-row").hidden = id !== "nowplaying";
 	$("#pop-compact").checked = !!c.compact;
+	$("#pop-live-row").hidden = id !== "nowplaying";
+	$("#pop-live").checked = c.liveHidden !== false;
 	updatePopOutputs();
 	pop.hidden = false;
 	positionPopover();
@@ -506,6 +580,7 @@ function bindPopover() {
 	$("#pop-scale").addEventListener("input", upd((c) => (c.scale = $("#pop-scale").value / 100)));
 	$("#pop-autohide").addEventListener("change", upd((c) => (c.autoHide = $("#pop-autohide").checked)));
 	$("#pop-compact").addEventListener("change", () => setCompact($("#pop-compact").checked));
+	$("#pop-live").addEventListener("change", upd((c) => (c.liveHidden = $("#pop-live").checked)));
 	$("#pop-reset").addEventListener("click", () => {
 		if (!S.selected) return;
 		S.layout.panels[S.selected] = defaultPanel(S.selected);
@@ -1659,6 +1734,11 @@ api.onFocusSearch(() => {
 api.onResetLayout(resetLayout);
 // The window was hidden and shown again (app switched); main is click-through again.
 api.onInteractiveReset(() => (interactiveNow = false));
+api.onZoneState(({ on }) => {
+	S.zone = on;
+	zoneReset();
+});
+api.onZoneMouse(zoneMouse);
 api.onToast(({ text, kind }) => toast(esc(text), kind || "", 5000));
 
 window.addEventListener("resize", () => {

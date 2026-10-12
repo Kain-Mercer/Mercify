@@ -5,6 +5,8 @@
 // (plus "cls", the window class), and once told which window is the game ("anchor <hwnd>" on stdin), its state:
 // "anchor":{"hwnd":...,"alive":1,"iconic":0,"visible":1,"mon":...}
 // "activate <hwnd>" on stdin brings that window back to the front and reports {"activate","ok","via"}.
+// "zone <x> <y> <w> <h>" on stdin (physical screen pixels) makes that rectangle a click zone; see
+// below. "zone off" ends it.
 // Exits on its own when the parent process (the overlay) goes away.
 //
 // Build (from Linux):  x86_64-w64-mingw32-gcc -O2 -municode -static -s -o fgwatch.exe fgwatch.c
@@ -16,6 +18,16 @@
 #include <wchar.h>
 
 static char out[8192];
+
+// stdout is written by the main loop and by the click-zone writer thread.
+static CRITICAL_SECTION out_lock;
+
+static int write_line(const char *line, size_t n) {
+	EnterCriticalSection(&out_lock);
+	int ok = fwrite(line, 1, n, stdout) == n && fflush(stdout) == 0;
+	LeaveCriticalSection(&out_lock);
+	return ok;
+}
 
 // Append a UTF-16 string to `dst` as escaped JSON (UTF-8).
 static size_t json_str(char *dst, size_t cap, const wchar_t *s) {
@@ -168,13 +180,167 @@ static void activate(HWND h) {
 	}
 	char line[160];
 	int n = snprintf(line, sizeof(line), "{\"activate\":%llu,\"ok\":%d,\"via\":\"%s\"}\n", (unsigned long long)(ULONG_PTR)h, ok, via);
-	fwrite(line, 1, (size_t)n, stdout);
-	fflush(stdout);
+	write_line(line, (size_t)n);
+}
+
+// ---------------------------------------------------------------- click zone
+//
+// The Now Playing widget can stay clickable while the overlay is hidden. Clicking the overlay
+// window would activate it, and the game drops every held key when it loses the keyboard (you
+// stop running mid-WASD). So the window stays click-through and this helper watches the mouse
+// instead, with a low-level mouse hook on its own thread (never Mercify's busy main thread):
+// a left press inside the zone is kept from the game and reported, with the drag and release
+// that follow, as {"zone":"down"|"move"|"up","x":..,"y":..} (physical screen pixels); a wheel
+// notch there as {"zone":"wheel","x":..,"y":..,"d":120}. Right clicks in the zone are kept from
+// the game too. While the cursor is hidden (the game is steering the camera) or another button
+// is held, everything passes through untouched. The hook only exists while a zone is set.
+
+static CRITICAL_SECTION zone_lock;
+static RECT zone;            // empty: no zone
+static int capturing;        // left button went down in the zone; its drag and release are ours
+static int right_eaten;      // right button went down in the zone; its release is ours too
+static DWORD last_move;
+static DWORD hook_thread_id;
+static HANDLE hook_ready;
+
+#define ZQ 64
+static char zq[ZQ][80];
+static int zq_head, zq_tail;
+static HANDLE zq_event;
+
+static void zone_report(const char *kind, POINT pt, int d) {
+	EnterCriticalSection(&zone_lock);
+	int next = (zq_tail + 1) % ZQ;
+	if (next != zq_head) { // full: drop (only ever a burst of moves)
+		snprintf(zq[zq_tail], sizeof(zq[0]), "{\"zone\":\"%s\",\"x\":%ld,\"y\":%ld,\"d\":%d}\n", kind, pt.x, pt.y, d);
+		zq_tail = next;
+	}
+	LeaveCriticalSection(&zone_lock);
+	SetEvent(zq_event);
+}
+
+static DWORD WINAPI zone_writer(LPVOID unused) {
+	(void)unused;
+	char line[80];
+	for (;;) {
+		WaitForSingleObject(zq_event, INFINITE);
+		for (;;) {
+			EnterCriticalSection(&zone_lock);
+			int have = zq_head != zq_tail;
+			if (have) {
+				memcpy(line, zq[zq_head], sizeof(line));
+				zq_head = (zq_head + 1) % ZQ;
+			}
+			LeaveCriticalSection(&zone_lock);
+			if (!have) break;
+			write_line(line, strlen(line));
+		}
+	}
+	return 0;
+}
+
+static int cursor_showing(void) {
+	CURSORINFO ci = { sizeof(ci) };
+	return GetCursorInfo(&ci) && (ci.flags & CURSOR_SHOWING);
+}
+
+static LRESULT CALLBACK mouse_hook(int code, WPARAM wp, LPARAM lp) {
+	if (code != HC_ACTION) return CallNextHookEx(NULL, code, wp, lp);
+	const MSLLHOOKSTRUCT *m = (const MSLLHOOKSTRUCT *)lp;
+	POINT pt = m->pt;
+	int eat = 0;
+	EnterCriticalSection(&zone_lock);
+	int inside = PtInRect(&zone, pt);
+	LeaveCriticalSection(&zone_lock);
+	switch (wp) {
+	case WM_LBUTTONDOWN:
+		if (inside && !right_eaten && !(GetAsyncKeyState(VK_RBUTTON) & 0x8000) && cursor_showing()) {
+			capturing = 1;
+			eat = 1;
+			last_move = GetTickCount();
+			zone_report("down", pt, 0);
+		}
+		break;
+	case WM_MOUSEMOVE: // never kept from the game: the cursor has to move
+		if (capturing && GetTickCount() - last_move >= 15) {
+			last_move = GetTickCount();
+			zone_report("move", pt, 0);
+		}
+		break;
+	case WM_LBUTTONUP:
+		if (capturing) {
+			capturing = 0;
+			eat = 1;
+			zone_report("up", pt, 0);
+		}
+		break;
+	case WM_RBUTTONDOWN:
+		if (inside && !capturing && !(GetAsyncKeyState(VK_LBUTTON) & 0x8000) && cursor_showing()) right_eaten = eat = 1;
+		break;
+	case WM_RBUTTONUP:
+		if (right_eaten) right_eaten = 0, eat = 1;
+		break;
+	case WM_MOUSEWHEEL:
+		if (inside && !capturing && cursor_showing()) {
+			eat = 1;
+			zone_report("wheel", pt, (int)(short)HIWORD(m->mouseData));
+		}
+		break;
+	}
+	return eat ? 1 : CallNextHookEx(NULL, code, wp, lp);
+}
+
+#define ZONE_ON (WM_APP + 1)
+#define ZONE_OFF (WM_APP + 2)
+
+static DWORD WINAPI hook_thread(LPVOID unused) {
+	(void)unused;
+	MSG msg;
+	HHOOK hook = NULL;
+	PeekMessageW(&msg, NULL, WM_USER, WM_USER, PM_NOREMOVE); // create the queue before anyone posts to it
+	SetEvent(hook_ready);
+	while (GetMessageW(&msg, NULL, 0, 0) > 0) {
+		if (msg.message == ZONE_ON && !hook) hook = SetWindowsHookExW(WH_MOUSE_LL, mouse_hook, GetModuleHandleW(NULL), 0);
+		else if (msg.message == ZONE_OFF && hook) {
+			UnhookWindowsHookEx(hook);
+			hook = NULL;
+			if (capturing) {
+				// the release will go to the game; tell the overlay the drag is over
+				POINT pt;
+				GetCursorPos(&pt);
+				zone_report("cancel", pt, 0);
+			}
+			capturing = right_eaten = 0;
+		}
+	}
+	return 0;
+}
+
+static void set_zone(const char *args) {
+	long x, y, w, h;
+	RECT r = { 0, 0, 0, 0 };
+	if (sscanf(args, "%ld %ld %ld %ld", &x, &y, &w, &h) == 4 && w > 0 && h > 0) SetRect(&r, (int)x, (int)y, (int)(x + w), (int)(y + h));
+	EnterCriticalSection(&zone_lock);
+	zone = r;
+	LeaveCriticalSection(&zone_lock);
+	if (!hook_thread_id) {
+		if (IsRectEmpty(&r)) return;
+		hook_ready = CreateEventW(NULL, TRUE, FALSE, NULL);
+		zq_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+		CreateThread(NULL, 0, zone_writer, NULL, 0, NULL);
+		HANDLE t = CreateThread(NULL, 0, hook_thread, NULL, 0, &hook_thread_id);
+		if (t) SetThreadPriority(t, THREAD_PRIORITY_TIME_CRITICAL); // the whole desktop's mouse waits on it
+		WaitForSingleObject(hook_ready, 2000);
+	}
+	PostThreadMessageW(hook_thread_id, IsRectEmpty(&r) ? ZONE_OFF : ZONE_ON, 0, 0);
 }
 
 int wmain(int argc, wchar_t **argv) {
 	if (argc >= 3 && wcscmp(argv[1], L"--hide") == 0) return hide_windows(argv[2], argc >= 4 ? (DWORD)_wtoi(argv[3]) : 0);
 	if (argc >= 2 && wcscmp(argv[1], L"--show") == 0) return show_windows(argc, argv);
+
+	InitializeCriticalSection(&out_lock);
+	InitializeCriticalSection(&zone_lock);
 
 	HANDLE parent = NULL;
 	if (argc > 1) {
@@ -208,6 +374,7 @@ int wmain(int argc, wchar_t **argv) {
 					*nl = 0;
 					if (strncmp(inbuf, "anchor ", 7) == 0) anchor = (HWND)(ULONG_PTR)_strtoui64(inbuf + 7, NULL, 10);
 					else if (strncmp(inbuf, "activate ", 9) == 0) activate((HWND)(ULONG_PTR)_strtoui64(inbuf + 9, NULL, 10));
+					else if (strncmp(inbuf, "zone ", 5) == 0) set_zone(inbuf + 5);
 					size_t rest = inlen - (size_t)(nl + 1 - inbuf);
 					memmove(inbuf, nl + 1, rest + 1);
 					inlen = rest;
@@ -246,7 +413,7 @@ int wmain(int argc, wchar_t **argv) {
 
 		DWORD now = GetTickCount();
 		if (strcmp(out, last_line) != 0 || now - last_emit > 2000) {
-			if (fwrite(out, 1, o, stdout) != o || fflush(stdout) != 0) return 0; // pipe closed: overlay is gone
+			if (!write_line(out, o)) return 0; // pipe closed: overlay is gone
 			strncpy(last_line, out, sizeof(last_line) - 1);
 			last_emit = now;
 		}

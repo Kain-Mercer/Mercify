@@ -1,9 +1,10 @@
 // Speaks fgwatch's protocol: JSON lines out, "anchor <hwnd>" lines in.
+// "zone x y w h" answers with a click (down and up) in the middle of the zone.
 // The scene is read from scene.json each tick: { fg: {pid,hwnd,exe,title}, windows: {hwnd:{iconic,visible,mon,alive}} }
 const fs = require("fs");
 let anchor = 0, inbuf = "", activated = 0, lastScene = "";
 process.stdin.setEncoding("utf8");
-process.stdin.on("data", (d) => { inbuf += d; let i; while ((i = inbuf.indexOf("\n")) >= 0) { const l = inbuf.slice(0, i); inbuf = inbuf.slice(i + 1); if (l.startsWith("anchor ")) anchor = Number(l.slice(7)); else if (l.startsWith("activate ")) { activated = Number(l.slice(9)); process.stdout.write(`{"activate":${activated},"ok":1,"via":"fake"}\n`); } } });
+process.stdin.on("data", (d) => { inbuf += d; let i; while ((i = inbuf.indexOf("\n")) >= 0) { const l = inbuf.slice(0, i); inbuf = inbuf.slice(i + 1); if (l.startsWith("anchor ")) anchor = Number(l.slice(7)); else if (l.startsWith("zone ") && l !== "zone off") { const [x, y, w, h] = l.slice(5).split(" ").map(Number); const c = `"x":${x + (w >> 1)},"y":${y + (h >> 1)}`; process.stdout.write(`{"zone":"down",${c},"d":0}\n{"zone":"up",${c},"d":0}\n`); } else if (l.startsWith("activate ")) { activated = Number(l.slice(9)); process.stdout.write(`{"activate":${activated},"ok":1,"via":"fake"}\n`); } } });
 setInterval(() => {
 	let raw, sc; try { raw = fs.readFileSync(process.argv[2], "utf8"); sc = JSON.parse(raw); } catch { return; }
 	if (raw !== lastScene) { lastScene = raw; activated = 0; } // a new scene overrides an earlier activate

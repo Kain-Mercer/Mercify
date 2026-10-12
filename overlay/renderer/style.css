@@ -197,12 +197,14 @@ body.edit #edit-bar {
 body.hidden .panel {
 	pointer-events: none;
 }
-/* The compact Now Playing widget stays usable while the overlay is hidden,
-   and comes up to full opacity while the mouse is over it. */
+/* The Now Playing widget stays usable while the overlay is hidden,
+   and comes up to full opacity while the mouse is over it.
+   .zh is hover while the helper takes the clicks (the window gets no mouse events then). */
 body.hidden .panel.live-hidden {
 	pointer-events: auto;
 }
-body.hidden .panel.live-hidden:hover {
+body.hidden .panel.live-hidden:hover,
+body.hidden .panel.live-hidden.zh {
 	opacity: var(--shown-alpha) !important;
 }
 body.edit .panel.off {
@@ -315,7 +317,8 @@ body.edit .rh {
 	cursor: pointer;
 	flex: none;
 }
-.icon-btn:hover {
+.icon-btn:hover,
+.icon-btn.zh {
 	color: var(--text);
 	background: var(--hover);
 }
@@ -333,7 +336,8 @@ body.edit .rh {
 	background: var(--text);
 	color: #000;
 }
-.icon-btn.big:hover {
+.icon-btn.big:hover,
+.icon-btn.big.zh {
 	transform: scale(1.05);
 	background: #fff;
 	color: #000;
@@ -416,6 +420,7 @@ body.edit .rh {
 	pointer-events: none;
 }
 .bar:hover .bar-thumb,
+.bar.zh .bar-thumb,
 .bar.dragging .bar-thumb {
 	opacity: 1;
 }
@@ -437,7 +442,8 @@ body.edit .rh {
 	background: var(--text);
 	border-radius: 2px;
 }
-.bar:hover .bar-fill {
+.bar:hover .bar-fill,
+.bar.zh .bar-fill {
 	background: var(--accent);
 }
 .np-controls {
@@ -825,7 +831,8 @@ body.edit .rh {
 	width: 12px;
 	height: 12px;
 }
-.panel:hover .np-collapse {
+.panel:hover .np-collapse,
+.panel.zh .np-collapse {
 	opacity: 1;
 }
 
@@ -903,7 +910,8 @@ body.edit .rh {
 	opacity: 0;
 	transition: opacity 0.12s;
 }
-.panel:hover .npc-expand {
+.panel:hover .npc-expand,
+.panel.zh .npc-expand {
 	opacity: 1;
 }
 .npc-progress {

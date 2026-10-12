@@ -94,7 +94,7 @@ Notifications still pop up while the overlay is hidden. Set the Notifications pa
 
 Hover over Now Playing and click the small arrows in its top-right corner to shrink it to a compact bar with the song and previous, play/pause and next. Click them again to make it full size. It shrinks and grows in place, towards the nearest corner of your screen. You can also switch it with **Compact view** in Edit Mode, and move and resize it there like any other panel.
 
-When you hide the overlay with `Ctrl` + `` ` ``, the compact bar stays on screen faintly and **still works**: pause or skip without bringing everything back. It brightens while your mouse is over it. To hide it completely too, set its *Opacity when hidden* to 0%.
+When you hide the overlay with `Ctrl` + `` ` ``, Now Playing (full size or compact) stays on screen faintly and **still works**: pause, skip or change the volume without bringing everything back. It brightens while your mouse is over it. Clicking it doesn't take the keyboard from your game, so you can keep running with WASD while you skip a song. To make it ignore clicks while hidden, untick **Clickable while hidden** in Edit Mode; to hide it completely, set its *Opacity when hidden* to 0%.
 
 </details>
 
