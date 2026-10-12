@@ -201,7 +201,9 @@ function createWindow() {
 	win.on("blur", () => {
 		if (!win || win.isDestroyed()) return;
 		win.setAlwaysOnTop(true, "screen-saver");
+		syncZone();
 	});
+	win.on("focus", () => syncZone());
 
 	screen.on("display-metrics-changed", () => {
 		if (!win || win.isDestroyed()) return;
@@ -275,6 +277,37 @@ function pollCursor() {
 	if (inside) sendToRenderer("cursor", { x, y });
 }
 
+// Clicking a panel must not make the overlay window active: the game would lose the keyboard
+// and drop the keys you're holding (you'd stop running mid-WASD). The renderer says where its
+// clickable panels are; the helper watches for clicks there and reports them, and they're
+// replayed in the renderer. While the overlay has the keyboard anyway (typing in a text box,
+// Edit Mode) the window takes clicks itself. Without the helper (or on other systems) panels
+// take clicks the old way, by making the window clickable under the mouse.
+let zoneRects = []; // in window coordinates, from the renderer
+let zoneOn = false;
+function syncZone() {
+	if (!win || win.isDestroyed()) return;
+	const want = zoneRects.length > 0 && !editMode && gateOpen && win.isVisible() && !win.isFocused() && foreground.canZone();
+	if (want) {
+		const b = win.getBounds();
+		foreground.setClickZone(zoneRects.map((r) => screen.dipToScreenRect(win, { x: b.x + r.x, y: b.y + r.y, width: r.w, height: r.h })));
+	} else foreground.setClickZone(null);
+	if (want === zoneOn) return;
+	zoneOn = want;
+	if (want) {
+		setInteractive(false);
+		sendToRenderer("interactive-reset");
+	}
+	sendToRenderer("zone-state", { on: want });
+}
+
+foreground.onZone((e) => {
+	if (!zoneOn || !win || win.isDestroyed()) return;
+	const p = screen.screenToDipPoint({ x: e.x, y: e.y });
+	const b = win.getBounds();
+	sendToRenderer("zone-mouse", { type: e.type, x: p.x - b.x, y: p.y - b.y, d: e.d });
+});
+
 function sendToRenderer(channel, payload) {
 	if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
@@ -284,6 +317,7 @@ function setShown(on) {
 	if (!on && editMode) setEdit(false);
 	if (!on) releaseFocus();
 	sendToRenderer("overlay", { shown: overlayShown, edit: editMode });
+	syncZone();
 }
 
 function setEdit(on) {
@@ -298,6 +332,7 @@ function setEdit(on) {
 		releaseFocus();
 	}
 	sendToRenderer("overlay", { shown: overlayShown, edit: editMode });
+	syncZone();
 	updateTrayMenu();
 }
 
@@ -417,6 +452,7 @@ function applyGate(open) {
 		setInteractive(false);
 		win.hide();
 	}
+	syncZone();
 }
 
 let gameInFront = false; // a chosen app was the last window in front (ignoring our own windows)
@@ -880,10 +916,25 @@ ipcMain.handle("cmd", async (_e, { action, args }) => {
 // The renderer decides which spots are clickable (including the compact widget while hidden).
 ipcMain.on("set-interactive", (_e, on) => {
 	if (editMode) return setInteractive(true);
+	if (zoneOn) return setInteractive(false); // the helper takes the widget's clicks
 	setInteractive(!!on && gateOpen);
 });
 
-ipcMain.on("want-focus", () => takeFocus());
+ipcMain.on("click-zone", (_e, rects) => {
+	zoneRects = (Array.isArray(rects) ? rects : []).filter((r) => r && r.w > 0 && r.h > 0).map((r) => ({ x: +r.x || 0, y: +r.y || 0, w: +r.w, h: +r.h }));
+	syncZone();
+});
+
+// A text box was clicked. With the click zone on, Mercify didn't get the click itself, so
+// Windows won't let it take the keyboard by itself: the helper brings the overlay to the front.
+ipcMain.on("want-focus", async () => {
+	if (zoneOn && foreground.canActivate() && win && !win.isDestroyed()) {
+		const h = win.getNativeWindowHandle();
+		const r = await foreground.activate(h.length >= 8 ? h.readBigUInt64LE(0) : h.readUInt32LE(0));
+		diag(`text box clicked: overlay to the front ${r ? (r.ok ? "ok via " + r.via : "refused (" + r.via + ")") : "no answer"}`);
+	}
+	takeFocus();
+});
 ipcMain.on("open-settings", () => openSettings());
 
 // After a click on a button or list row: keep taking clicks, but give the keyboard back.
@@ -1455,6 +1506,7 @@ app.whenReady().then(async () => {
 	tickGate();
 	setInterval(tickGate, 200);
 	setInterval(pollCursor, CURSOR_POLL_MS);
+	setInterval(syncZone, 200); // follows the gate, the window and the helper coming and going
 	if (process.env.OVERLAY_DEBUG_STATE_FILE) {
 		setInterval(() => {
 			const st = { gateOpen, visible: win.isVisible(), toggleHotkey: globalShortcut.isRegistered(config.hotkeys.toggle), editHotkey: globalShortcut.isRegistered(config.hotkeys.edit), edit: editMode, update: updater.state(), giveBacks, gateWhy, gameInFront, diagTail: diagLog.slice(-5), diagnostics: diagnosticsText(), bounds: win.getBounds(), display: pickDisplay().bounds };

@@ -142,13 +142,15 @@ body.edit #edit-bar {
 	background: var(--edit);
 	color: #1b1406;
 }
-.btn.primary:hover {
+.btn.primary:hover,
+.btn.primary.zh {
 	filter: brightness(1.08);
 }
 .btn.ghost {
 	background: rgba(255, 255, 255, 0.07);
 }
-.btn.ghost:hover {
+.btn.ghost:hover,
+.btn.ghost.zh {
 	background: rgba(255, 255, 255, 0.13);
 }
 .btn.small {
@@ -170,6 +172,8 @@ body.edit #edit-bar {
 }
 
 /* ---------------------------------------------------------------- panels */
+/* Every :hover rule has a .zh twin: while Mercify's helper takes the clicks, the window gets no
+   mouse events, so app.js marks what's under the cursor with .zh instead. */
 
 #panels {
 	position: fixed;
@@ -197,12 +201,13 @@ body.edit #edit-bar {
 body.hidden .panel {
 	pointer-events: none;
 }
-/* The compact Now Playing widget stays usable while the overlay is hidden,
+/* Now Playing can stay usable while the overlay is hidden,
    and comes up to full opacity while the mouse is over it. */
 body.hidden .panel.live-hidden {
 	pointer-events: auto;
 }
-body.hidden .panel.live-hidden:hover {
+body.hidden .panel.live-hidden:hover,
+body.hidden .panel.live-hidden.zh {
 	opacity: var(--shown-alpha) !important;
 }
 body.edit .panel.off {
@@ -315,7 +320,8 @@ body.edit .rh {
 	cursor: pointer;
 	flex: none;
 }
-.icon-btn:hover {
+.icon-btn:hover,
+.icon-btn.zh {
 	color: var(--text);
 	background: var(--hover);
 }
@@ -333,7 +339,8 @@ body.edit .rh {
 	background: var(--text);
 	color: #000;
 }
-.icon-btn.big:hover {
+.icon-btn.big:hover,
+.icon-btn.big.zh {
 	transform: scale(1.05);
 	background: #fff;
 	color: #000;
@@ -416,6 +423,7 @@ body.edit .rh {
 	pointer-events: none;
 }
 .bar:hover .bar-thumb,
+.bar.zh .bar-thumb,
 .bar.dragging .bar-thumb {
 	opacity: 1;
 }
@@ -437,7 +445,8 @@ body.edit .rh {
 	background: var(--text);
 	border-radius: 2px;
 }
-.bar:hover .bar-fill {
+.bar:hover .bar-fill,
+.bar.zh .bar-fill {
 	background: var(--accent);
 }
 .np-controls {
@@ -599,7 +608,8 @@ body.edit .rh {
 	cursor: pointer;
 	min-width: 0;
 }
-.row:hover {
+.row:hover,
+.row.zh {
 	background: var(--hover);
 }
 .row.playing .row-title {
@@ -655,7 +665,8 @@ body.edit .rh {
 	height: 26px;
 	opacity: 0;
 }
-.row:hover .icon-btn {
+.row:hover .icon-btn,
+.row.zh .icon-btn {
 	opacity: 1;
 }
 .row .icon-btn svg {
@@ -685,7 +696,8 @@ body.edit .rh {
 	cursor: pointer;
 	text-align: left;
 }
-.picker-btn:hover {
+.picker-btn:hover,
+.picker-btn.zh {
 	background: var(--hover);
 }
 .picker-btn img {
@@ -825,7 +837,8 @@ body.edit .rh {
 	width: 12px;
 	height: 12px;
 }
-.panel:hover .np-collapse {
+.panel:hover .np-collapse,
+.panel.zh .np-collapse {
 	opacity: 1;
 }
 
@@ -903,7 +916,8 @@ body.edit .rh {
 	opacity: 0;
 	transition: opacity 0.12s;
 }
-.panel:hover .npc-expand {
+.panel:hover .npc-expand,
+.panel.zh .npc-expand {
 	opacity: 1;
 }
 .npc-progress {
@@ -1016,14 +1030,16 @@ body.edit .rh {
 	background: var(--accent);
 	color: #04130a;
 }
-.lb-btn.primary:hover {
+.lb-btn.primary:hover,
+.lb-btn.primary.zh {
 	filter: brightness(1.08);
 }
 .lb-btn.ghost {
 	background: rgba(255, 255, 255, 0.07);
 	color: var(--text);
 }
-.lb-btn.ghost:hover {
+.lb-btn.ghost:hover,
+.lb-btn.ghost.zh {
 	background: rgba(255, 255, 255, 0.13);
 }
 .lb-btn.small {
@@ -1176,7 +1192,8 @@ body.edit .rh {
 	border-radius: 7px;
 	cursor: pointer;
 }
-.sp-tab:hover {
+.sp-tab:hover,
+.sp-tab.zh {
 	background: var(--hover);
 	color: var(--text);
 }
@@ -1245,7 +1262,8 @@ body.edit .rh {
 	opacity: 0;
 	pointer-events: none;
 }
-.sp-row:hover .sp-ops {
+.sp-row:hover .sp-ops,
+.sp-row.zh .sp-ops {
 	opacity: 1;
 	pointer-events: auto;
 }
@@ -1378,7 +1396,8 @@ body.edit .notice.sample {
 	cursor: pointer;
 	white-space: nowrap;
 }
-.pill-btn:hover {
+.pill-btn:hover,
+.pill-btn.zh {
 	background: var(--accent);
 	color: #04130a;
 }
@@ -1401,7 +1420,8 @@ body.edit .notice.sample {
 	border-radius: 50%;
 	cursor: pointer;
 }
-.row .row-play:hover {
+.row .row-play:hover,
+.row .row-play.zh {
 	background: var(--accent);
 	color: #04130a;
 }
@@ -1419,6 +1439,7 @@ body.edit .notice.sample {
 	display: none;
 }
 .sp-now:hover .sp-vote,
+.sp-now.zh .sp-vote,
 .sp-now.voted .sp-vote {
 	display: inline-flex;
 }
@@ -1427,6 +1448,7 @@ body.edit .notice.sample {
 	height: 14px;
 }
 .sp-vote:hover,
+.sp-vote.zh,
 .sp-now.voted .sp-vote {
 	color: #ff4d4f;
 }

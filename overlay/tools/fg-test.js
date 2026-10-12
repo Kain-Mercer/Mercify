@@ -47,5 +47,16 @@ const step = async (label, want, setup) => { setup(); await sleep(500); gate(); 
 	const tb = fg.getForeground();
 	console.log(`${tb?.cls === "Shell_TrayWnd" ? "PASS" : "FAIL"}  window class is reported: ${tb?.cls}`);
 	if (tb?.cls !== "Shell_TrayWnd") fails++;
+	// click zone: the rectangle goes to the helper once, and its clicks come back
+	const got = [];
+	fg.onZone((e) => got.push(e));
+	const rects = [{ x: 100, y: 200, width: 40, height: 20 }, { x: 500, y: 10, width: 300, height: 400 }];
+	fg.setClickZone(rects);
+	fg.setClickZone(rects.map((r) => ({ ...r }))); // unchanged: not sent again
+	await sleep(400);
+	const okZone = got.length === 2 && got[0].type === "down" && got[1].type === "up" && got[1].x === 120 && got[1].y === 210;
+	console.log(`${okZone ? "PASS" : "FAIL"}  click zone reports clicks: ${JSON.stringify(got)}`);
+	if (!okZone) fails++;
+	fg.setClickZone(null);
 	console.log(fails ? `${fails} FAILED` : "ALL PASSED"); fg.stop(); try { fs.unlinkSync(SCENE); } catch {} process.exit(fails ? 1 : 0);
 })();

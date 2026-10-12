@@ -53,6 +53,7 @@ function start() {
 	child = spawn(exe, [String(process.pid)], { windowsHide: true, stdio: ["pipe", "pipe", "ignore"] });
 	child.stdin.on("error", () => {}); // helper gone; the exit handler restarts it
 	if (anchorHwnd) sendAnchor();
+	zoneSent = ""; // a new helper has no zone yet
 	let buf = "";
 	child.stdout.setEncoding("utf8");
 	child.stdout.on("data", (d) => {
@@ -64,6 +65,10 @@ function start() {
 			if (!line) continue;
 			try {
 				const j = JSON.parse(line);
+				if (j.zone !== undefined) {
+					zoneListener?.({ type: String(j.zone), x: Number(j.x) || 0, y: Number(j.y) || 0, d: Number(j.d) || 0 });
+					continue;
+				}
 				if (j.activate !== undefined) {
 					// the helper's answer to "activate <hwnd>"
 					const p = activations.shift();
@@ -154,6 +159,30 @@ function setAnchor(hwnd) {
 	sendAnchor();
 }
 
+// Click zone: clicks on Mercify's panels are caught by the helper (so the overlay window never
+// takes the keyboard from the game) and reported here as
+// { type: "down"|"move"|"up"|"cancel"|"wheel", x, y, d } in physical screen pixels.
+let zoneListener = null;
+let zoneSent = "";
+function onZone(fn) {
+	zoneListener = fn;
+}
+// True when the helper can run a click zone.
+function canZone() {
+	return !!child?.stdin?.writable;
+}
+// rects: [{ x, y, width, height }, ...] in physical screen pixels (up to 16), or null/[] for none.
+function setClickZone(rects) {
+	const list = (rects || []).slice(0, 16).map((r) => `${Math.round(r.x)} ${Math.round(r.y)} ${Math.round(r.width)} ${Math.round(r.height)}`);
+	const line = list.length ? "zone " + list.join(" ") : "zone off";
+	if (line === zoneSent || !child?.stdin?.writable) return;
+	if (!zoneSent && !list.length) return; // nothing set yet
+	zoneSent = line;
+	try {
+		child.stdin.write(line + "\n");
+	} catch (_) {}
+}
+
 // { pid, hwnd, mon, exe, title, anchor } for the window in front, or null if unknown.
 function getForeground() {
 	if (!latest || Date.now() - latest.at > 5000) return null; // helper stalled
@@ -171,7 +200,7 @@ function stop() {
 	child = null;
 }
 
-module.exports = { start, stop, getForeground, supported, setAnchor, activate, canActivate, _toInfo: toInfo };
+module.exports = { start, stop, getForeground, supported, setAnchor, activate, canActivate, canZone, setClickZone, onZone, _toInfo: toInfo };
 
 // ------------------------------------------------------------------ hide / show another program's window
 // Used to send Spotify to the tray: the helper waits for the program's main window, hides it,

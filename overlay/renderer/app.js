@@ -139,6 +139,8 @@ function saveLayout() {
 
 const COMPACT_MIN = [150, 40];
 const isCompact = (id) => id === "nowplaying" && !!S.layout.panels[id].compact;
+// Now Playing can stay clickable while the rest of the overlay is hidden (both views).
+const isLiveHidden = (id) => id === "nowplaying" && S.layout.panels[id].liveHidden !== false;
 
 function rectOf(id) {
 	const c = S.layout.panels[id];
@@ -205,8 +207,8 @@ function applyPanel(id) {
 	p.style.setProperty("--shown-alpha", c.shownAlpha);
 	const compact = isCompact(id);
 	p.classList.toggle("compact", compact);
-	// The compact widget stays clickable while the overlay is toggled hidden.
-	p.classList.toggle("live-hidden", compact);
+	// Now Playing can stay clickable while the overlay is toggled hidden.
+	p.classList.toggle("live-hidden", isLiveHidden(id));
 
 	let visible = c.enabled;
 	if (id === "results" && c.autoHide && !S.edit && !S.query) visible = false;
@@ -221,6 +223,7 @@ function applyPanel(id) {
 
 	const label = p.querySelector(".edit-label");
 	label.innerHTML = esc(PANELS[id].title) + (compact ? '<span class="muted">compact</span>' : "") + (c.enabled ? "" : '<span class="muted">hidden</span>');
+	sendClickZone();
 }
 
 function applyAll() {
@@ -253,11 +256,112 @@ function setInteractive(on) {
 
 function hoverAt(target) {
 	if (S.edit) return;
+	if (S.zone) return zoneHover(target);
 	if (S.dragging) return setInteractive(true);
 	const over = target?.closest?.(".panel:not(.off)");
-	// While hidden, only the compact Now Playing widget takes clicks (others have pointer-events: none).
+	// While hidden, only the Now Playing widget takes clicks (others have pointer-events: none).
 	const usable = !!over && over.style.visibility !== "hidden" && (S.shown || over.classList.contains("live-hidden"));
 	setInteractive(usable);
+}
+
+// ------------------------------------------------------------------ click zone
+// Clicking a panel mustn't make the overlay window active: the game would lose the keyboard and
+// drop the keys you're holding (WASD). So the window stays click-through, and Mercify's helper
+// catches clicks on the panels and keeps them from the game. They arrive here (onZoneMouse) and
+// are replayed on whatever is under them; a text box takes the keyboard on purpose (wantFocus).
+// Hover effects follow the cursor reports instead of real mouse events: every element under the
+// cursor gets the .zh class (style.css pairs each :hover rule with it) and mouseenter/mouseleave.
+
+// The panels that take clicks right now: all visible ones while the overlay is shown, only a
+// "clickable while hidden" Now Playing while it's hidden.
+function clickablePanels() {
+	if (!S.layout || S.edit) return [];
+	return Object.keys(PANELS).filter((id) => {
+		const p = panelEls[id];
+		if (!p || PANELS[id].passive || p.classList.contains("off") || p.style.visibility === "hidden") return false;
+		return S.shown || isLiveHidden(id);
+	});
+}
+
+let zoneSent = "";
+function sendClickZone() {
+	const rects = [];
+	for (const id of clickablePanels()) {
+		const r = panelEls[id].getBoundingClientRect();
+		if (r.width > 0 && r.height > 0) rects.push({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) });
+	}
+	const key = JSON.stringify(rects);
+	if (key === zoneSent) return;
+	zoneSent = key;
+	api.setClickZone(rects);
+}
+
+const zonePanel = (el) => {
+	const p = el?.closest?.(".panel");
+	return p && clickablePanels().some((id) => panelEls[id] === p) ? p : null;
+};
+
+let zoneHovered = [];
+function zoneHover(target) {
+	const want = [];
+	const panel = zonePanel(target);
+	for (let el = panel && target; el && el !== panel.parentElement; el = el.parentElement) want.push(el);
+	for (const el of zoneHovered) if (!want.includes(el)) el.classList.remove("zh"), el.dispatchEvent(new MouseEvent("mouseleave"));
+	for (const el of want) if (!zoneHovered.includes(el)) el.classList.add("zh"), el.dispatchEvent(new MouseEvent("mouseenter"));
+	zoneHovered = want;
+}
+
+const scrollerOf = (el) => {
+	for (; el && el !== document.body; el = el.parentElement) {
+		const o = getComputedStyle(el).overflowY;
+		if ((o === "auto" || o === "scroll") && el.scrollHeight > el.clientHeight) return el;
+	}
+	return null;
+};
+
+let zoneDown = null; // { el, bar, scroll } for a press that started on a panel
+function zoneMouse({ type, x, y, d }) {
+	const at = document.elementFromPoint(x, y);
+	const opts = { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: type === "up" ? 0 : 1, pointerId: 1, pointerType: "mouse", isPrimary: true };
+	if (type === "down") {
+		zoneDown = null;
+		if (!zonePanel(at)) return;
+		// a text box: take the keyboard (Enter/Esc or picking a song hands it back)
+		if (at.matches('input[type="text"]')) return focusInput(at);
+		const bar = at.closest(".bar");
+		// on a list's scrollbar (the press lands on the scrolling element itself, right of its content)
+		const sc = scrollerOf(at);
+		const onScrollbar = sc && at === sc && x > sc.getBoundingClientRect().left + sc.clientWidth;
+		zoneDown = { el: at, bar, scroll: onScrollbar ? { el: sc, y, top: sc.scrollTop } : null };
+		if (bar) bar.dispatchEvent(new PointerEvent("pointerdown", opts));
+		at.dispatchEvent(new MouseEvent("mousedown", opts));
+	} else if (type === "move") {
+		if (zoneDown?.bar) zoneDown.bar.dispatchEvent(new PointerEvent("pointermove", opts));
+		const s = zoneDown?.scroll;
+		if (s) s.el.scrollTop = s.top + ((y - s.y) * s.el.scrollHeight) / s.el.clientHeight;
+		zoneHover(at);
+	} else if (type === "up" || type === "cancel") {
+		const down = zoneDown;
+		zoneDown = null;
+		if (!down) return;
+		if (down.bar) return down.bar.dispatchEvent(new PointerEvent(type === "up" ? "pointerup" : "pointercancel", opts));
+		if (type !== "up" || !at || down.scroll) return;
+		at.dispatchEvent(new MouseEvent("mouseup", opts));
+		// a click: pressed and released on the same button or row (or the same spot)
+		const target = (el) => el.closest?.("button, [data-act], .row, .sp-row, .np-artist") || el;
+		if (target(down.el) === target(at)) at.dispatchEvent(new MouseEvent("click", opts));
+	} else if (type === "wheel" && at && zonePanel(at)) {
+		// replayed wheel events don't scroll by themselves
+		const ev = new WheelEvent("wheel", { ...opts, deltaY: -d, deltaMode: 0 });
+		at.dispatchEvent(ev);
+		if (!ev.defaultPrevented) scrollerOf(at)?.scrollBy({ top: (-d / 120) * 100 });
+	}
+}
+
+function zoneReset() {
+	if (zoneDown?.bar) zoneDown.bar.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerId: 1 }));
+	zoneDown = null;
+	zoneHover(null);
 }
 document.addEventListener("mousemove", (e) => hoverAt(e.target));
 // While click-through, the window gets no mouse events; the main process reports the cursor instead.
@@ -468,6 +572,8 @@ function showPopover() {
 	$("#pop-autohide").checked = !!c.autoHide;
 	$("#pop-compact-row").hidden = id !== "nowplaying";
 	$("#pop-compact").checked = !!c.compact;
+	$("#pop-live-row").hidden = id !== "nowplaying";
+	$("#pop-live").checked = c.liveHidden !== false;
 	updatePopOutputs();
 	pop.hidden = false;
 	positionPopover();
@@ -506,6 +612,7 @@ function bindPopover() {
 	$("#pop-scale").addEventListener("input", upd((c) => (c.scale = $("#pop-scale").value / 100)));
 	$("#pop-autohide").addEventListener("change", upd((c) => (c.autoHide = $("#pop-autohide").checked)));
 	$("#pop-compact").addEventListener("change", () => setCompact($("#pop-compact").checked));
+	$("#pop-live").addEventListener("change", upd((c) => (c.liveHidden = $("#pop-live").checked)));
 	$("#pop-reset").addEventListener("click", () => {
 		if (!S.selected) return;
 		S.layout.panels[S.selected] = defaultPanel(S.selected);
@@ -1659,6 +1766,11 @@ api.onFocusSearch(() => {
 api.onResetLayout(resetLayout);
 // The window was hidden and shown again (app switched); main is click-through again.
 api.onInteractiveReset(() => (interactiveNow = false));
+api.onZoneState(({ on }) => {
+	S.zone = on;
+	zoneReset();
+});
+api.onZoneMouse(zoneMouse);
 api.onToast(({ text, kind }) => toast(esc(text), kind || "", 5000));
 
 window.addEventListener("resize", () => {
