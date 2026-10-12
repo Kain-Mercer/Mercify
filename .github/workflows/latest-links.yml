@@ -1,0 +1,35 @@
+name: Add fixed-name downloads to a release
+
+# Copies a release's Mercify-Setup-<v>.exe and Mercify-<v>-portable.exe to Mercify-Setup.exe and
+# Mercify-portable.exe, which the README links to through .../releases/latest/download/<name>.
+# New releases get these from the build workflow; this is for releases made before that.
+# Run it from the Actions tab ("Run workflow"), optionally with a tag.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v1.13.1 (leave blank for the latest release)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Copy the installer and portable exe to fixed names
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [ -n "$TAG" ] || TAG=$(gh api "repos/$REPO/releases/latest" --jq .tag_name)
+          v="${TAG#v}"
+          gh release download "$TAG" -R "$REPO" -p "Mercify-Setup-$v.exe" -p "Mercify-$v-portable.exe"
+          mv "Mercify-Setup-$v.exe" Mercify-Setup.exe
+          mv "Mercify-$v-portable.exe" Mercify-portable.exe
+          gh release upload "$TAG" -R "$REPO" --clobber Mercify-Setup.exe Mercify-portable.exe
+          echo "Added Mercify-Setup.exe and Mercify-portable.exe to $TAG"

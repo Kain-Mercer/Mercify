@@ -66,6 +66,17 @@ jobs:
       - name: Check the packaged app is complete
         run: node tools/check-package.js dist/win-unpacked/resources/app.asar
 
+      # Fixed-name copies, so links can always point at the newest release:
+      #   https://github.com/<repo>/releases/latest/download/Mercify-Setup.exe
+      # (the README's download buttons). The versioned files stay exactly as they are:
+      # latest.yml names them, and installed copies update from that.
+      - name: Fixed-name copies for "latest" download links
+        shell: bash
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          cp "dist/Mercify-Setup-$v.exe" dist/Mercify-Setup.exe
+          cp "dist/Mercify-$v-portable.exe" dist/Mercify-portable.exe
+
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:

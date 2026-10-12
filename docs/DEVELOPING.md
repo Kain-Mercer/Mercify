@@ -42,6 +42,7 @@ Technical notes for building and changing Mercify. Players don't need any of thi
 - **Running from source:** updates are off.
 - The exe isn't code-signed, so there's no publisher check on downloads (`publisherName` isn't set): integrity comes from the SHA-512 in `latest.yml` served over HTTPS from GitHub. Protect the GitHub account (2FA); anyone who can publish a release can ship an update.
 - Releases must stay **published** (not draft or pre-release), and the release must include `latest.yml`, or installed copies won't see it. Don't rename release assets.
+- Each release also carries fixed-name copies, `Mercify-Setup.exe` and `Mercify-portable.exe` (made by the build), so the README's download buttons can link to `https://github.com/Kain-Mercer/Mercify/releases/latest/download/Mercify-Setup.exe` and always get the newest version. They're extra assets: the updater only uses the versioned files named in `latest.yml`. For a release made without them, run the **Add fixed-name downloads to a release** workflow (`latest-links.yml`) from the Actions tab.
 
 To test locally, serve a folder containing `latest-linux.yml` (the updater names its feed file after the OS it runs on; Windows uses `latest.yml`) and a matching exe, put a `dev-app-update.yml` (`provider: generic`, `url`, `updaterCacheDirName`) in `overlay/`, and run with `OVERLAY_DEBUG_UPDATE_FEED=<url>`. `OVERLAY_DEBUG_UPDATE_MODE=portable` with `OVERLAY_DEBUG_RELEASE_API=<url>` tests the portable check.
 

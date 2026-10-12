@@ -2,7 +2,7 @@
 
 <p align="center"><b>Your Spotify, right inside your game.</b><br/>Skip songs, search and pick playlists without ever alt-tabbing.</p>
 
-<p align="center"><a href="https://github.com/Kain-Mercer/Mercify/releases/latest"><b>⬇ Download Mercify</b></a></p>
+<p align="center"><a href="https://github.com/Kain-Mercer/Mercify/releases/latest/download/Mercify-Setup.exe"><b>⬇ Download Mercify</b></a></p>
 
 <p align="center">
 <a href="#get-started">🚀 Get started</a> ·
@@ -16,7 +16,7 @@
 
 ## Get started
 
-1. [**Download `Mercify-Setup`**](https://github.com/Kain-Mercer/Mercify/releases/latest) and run it.
+1. [**Download `Mercify-Setup`**](https://github.com/Kain-Mercer/Mercify/releases/latest/download/Mercify-Setup.exe) and run it.
    *If Windows says "Windows protected your PC", click **More info**, then **Run anyway**. It says that because Mercify is new.*
 2. Press the big green **Set up everything** button and wait a few minutes. It sets up Spotify for you.
 3. Log in to Spotify when it opens.
@@ -49,7 +49,7 @@ From then on, opening Mercify also opens Spotify and tucks Spotify's own window 
 <details>
 <summary><b>The portable version</b></summary>
 
-Prefer not to install anything? Download **`Mercify-portable`** instead. It runs straight from the file, but starts a little slower and can't update itself: Settings tells you when there's a new version and gives you a **Download** button.
+Prefer not to install anything? Download [**`Mercify-portable`**](https://github.com/Kain-Mercer/Mercify/releases/latest/download/Mercify-portable.exe) instead. It runs straight from the file, but starts a little slower and can't update itself: Settings tells you when there's a new version and gives you a **Download** button.
 
 </details>
 
@@ -202,7 +202,7 @@ Mercify keeps itself up to date; you don't need to do anything. When you open it
 - **When you open it:** if you're offline or GitHub is slow, Mercify just opens as usual. When Mercify starts with Windows, the logo only appears if there's an update to install.
 - **While it's running**, it checks a few times a day, downloads any new version quietly, and installs it the next time Mercify closes. You'll get a Windows notification when an update is ready. To update straight away, choose **Restart and update** in Settings or **Restart to update** from the tray icon.
 - The **Updates** section in Settings shows which version you have and lets you check for a new one.
-- **Upgrading from version 1.2.0 or earlier?** Those versions can't update themselves, so download and run the newest `Mercify-Setup` from the [Releases page](https://github.com/Kain-Mercer/Mercify/releases/latest) one last time. Your layout and settings are kept.
+- **Upgrading from version 1.2.0 or earlier?** Those versions can't update themselves, so [download and run the newest `Mercify-Setup`](https://github.com/Kain-Mercer/Mercify/releases/latest/download/Mercify-Setup.exe) one last time. Your layout and settings are kept.
 - **Portable version?** It can't replace itself while running. Settings tells you when a new version is out and gives you a **Download** button; replace your old file with the new one.
 
 </details>
