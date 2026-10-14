@@ -59,6 +59,13 @@ const ICON = {
 
 // ------------------------------------------------------------------ app state
 
+// The display the overlay covers, and which part of it the window shows right now. Hidden, the
+// window only covers the panels that stay visible (see placeWindow in main.js); panels are still
+// laid out in display coordinates and the page is shifted by the window's offset.
+let dispW = window.innerWidth;
+let dispH = window.innerHeight;
+const view = { x: 0, y: 0 };
+
 const S = {
 	connected: false,
 	edit: false,
@@ -118,7 +125,7 @@ const PANELS = {
 };
 
 function defaultPanel(id) {
-	return { enabled: true, scale: 1, ...PANELS[id].def(innerWidth, innerHeight) };
+	return { enabled: true, scale: 1, ...PANELS[id].def(dispW, dispH) };
 }
 
 function defaultLayout() {
@@ -161,8 +168,8 @@ function setCompact(on) {
 	const c = S.layout.panels.nowplaying;
 	if (!!c.compact === on) return;
 	const from = rectOf("nowplaying");
-	const right = from.x + from.w / 2 > innerWidth / 2;
-	const bottom = from.y + from.h / 2 > innerHeight / 2;
+	const right = from.x + from.w / 2 > dispW / 2;
+	const bottom = from.y + from.h / 2 > dispH / 2;
 	c.compact = on;
 	const w = on ? c.cw : c.w;
 	const h = on ? c.ch : c.h;
@@ -224,6 +231,7 @@ function applyPanel(id) {
 	const label = p.querySelector(".edit-label");
 	label.innerHTML = esc(PANELS[id].title) + (compact ? '<span class="muted">compact</span>' : "") + (c.enabled ? "" : '<span class="muted">hidden</span>');
 	sendClickZone();
+	sendHiddenArea();
 }
 
 function applyAll() {
@@ -238,10 +246,10 @@ function applyAll() {
 function clampPanel(id) {
 	const r = rectOf(id);
 	const [mw, mh] = minOf(id);
-	r.w = clamp(r.w, mw, innerWidth);
-	r.h = clamp(r.h, mh, innerHeight);
-	r.x = clamp(r.x, 0, innerWidth - r.w);
-	r.y = clamp(r.y, 0, innerHeight - r.h);
+	r.w = clamp(r.w, mw, dispW);
+	r.h = clamp(r.h, mh, dispH);
+	r.x = clamp(r.x, 0, dispW - r.w);
+	r.y = clamp(r.y, 0, dispH - r.h);
 	setRect(id, r);
 }
 
@@ -281,6 +289,24 @@ function clickablePanels() {
 		if (!p || PANELS[id].passive || p.classList.contains("off") || p.style.visibility === "hidden") return false;
 		return S.shown || isLiveHidden(id);
 	});
+}
+
+// The panels that stay visible while the overlay is hidden, in display coordinates: main.js
+// sizes the window to just these then.
+let hiddenSent = "";
+function sendHiddenArea() {
+	if (!S.layout) return;
+	const rects = [];
+	for (const id of Object.keys(PANELS)) {
+		const p = panelEls[id];
+		if (!p || p.classList.contains("off") || !(S.layout.panels[id].hiddenAlpha > 0.001)) continue;
+		const r = p.getBoundingClientRect();
+		if (r.width > 0 && r.height > 0) rects.push({ x: Math.round(r.left + view.x), y: Math.round(r.top + view.y), w: Math.round(r.width), h: Math.round(r.height) });
+	}
+	const key = JSON.stringify(rects);
+	if (key === hiddenSent) return;
+	hiddenSent = key;
+	api.setHiddenArea(rects);
 }
 
 let zoneSent = "";
@@ -427,8 +453,8 @@ function snapAxis(value, size, targets, gridOn) {
 }
 
 function snapTargets(exceptId) {
-	const xs = [0, innerWidth, innerWidth / 2];
-	const ys = [0, innerHeight, innerHeight / 2];
+	const xs = [0, dispW, dispW / 2];
+	const ys = [0, dispH, dispH / 2];
 	for (const [id, c] of Object.entries(S.layout.panels)) {
 		if (id === exceptId || !c.enabled) continue;
 		const r = rectOf(id);
@@ -488,8 +514,8 @@ document.addEventListener("pointermove", (e) => {
 	const lines = { xs: [], ys: [] };
 
 	if (!drag.edge) {
-		let x = clamp(drag.start.x + dx, 0, innerWidth - c.w);
-		let y = clamp(drag.start.y + dy, 0, innerHeight - c.h);
+		let x = clamp(drag.start.x + dx, 0, dispW - c.w);
+		let y = clamp(drag.start.y + dy, 0, dispH - c.h);
 		if (useSnap) {
 			const sx = snapAxis(x, c.w, t.xs, true);
 			const sy = snapAxis(y, c.h, t.ys, true);
@@ -498,8 +524,8 @@ document.addEventListener("pointermove", (e) => {
 			if (sx.line != null) lines.xs.push(sx.line);
 			if (sy.line != null) lines.ys.push(sy.line);
 		}
-		c.x = clamp(x, 0, innerWidth - c.w);
-		c.y = clamp(y, 0, innerHeight - c.h);
+		c.x = clamp(x, 0, dispW - c.w);
+		c.y = clamp(y, 0, dispH - c.h);
 	} else {
 		if (drag.edge.includes("r")) {
 			let right = drag.start.x + drag.start.w + dx;
@@ -508,7 +534,7 @@ document.addEventListener("pointermove", (e) => {
 				right = s.v;
 				if (s.line != null) lines.xs.push(s.line);
 			}
-			c.w = clamp(right - c.x, mw, innerWidth - c.x);
+			c.w = clamp(right - c.x, mw, dispW - c.x);
 		}
 		if (drag.edge.includes("b")) {
 			let bottom = drag.start.y + drag.start.h + dy;
@@ -517,7 +543,7 @@ document.addEventListener("pointermove", (e) => {
 				bottom = s.v;
 				if (s.line != null) lines.ys.push(s.line);
 			}
-			c.h = clamp(bottom - c.y, mh, innerHeight - c.y);
+			c.h = clamp(bottom - c.y, mh, dispH - c.y);
 		}
 	}
 	setRect(drag.id, c);
@@ -544,8 +570,8 @@ document.addEventListener("keydown", (e) => {
 	const m = moves[e.key];
 	if (!m) return;
 	e.preventDefault();
-	c.x = clamp(c.x + m[0], 0, innerWidth - c.w);
-	c.y = clamp(c.y + m[1], 0, innerHeight - c.h);
+	c.x = clamp(c.x + m[0], 0, dispW - c.w);
+	c.y = clamp(c.y + m[1], 0, dispH - c.h);
 	setRect(S.selected, c);
 	applyPanel(S.selected);
 	positionPopover();
@@ -591,9 +617,9 @@ function positionPopover() {
 	const pw = pop.offsetWidth;
 	const ph = pop.offsetHeight;
 	let x = c.x + c.w + 12;
-	if (x + pw > innerWidth - 8) x = c.x - pw - 12;
-	if (x < 8) x = clamp(c.x + 12, 8, innerWidth - pw - 8);
-	const y = clamp(c.y, 70, innerHeight - ph - 8);
+	if (x + pw > dispW - 8) x = c.x - pw - 12;
+	if (x < 8) x = clamp(c.x + 12, 8, dispW - pw - 8);
+	const y = clamp(c.y, 70, dispH - ph - 8);
 	pop.style.left = x + "px";
 	pop.style.top = y + "px";
 }
@@ -670,7 +696,7 @@ function dismiss(card) {
 // New notifications appear nearest the screen edge the panel sits at.
 function noticesFromBottom() {
 	const r = rectOf("notices");
-	return r.y + r.h / 2 > innerHeight / 2;
+	return r.y + r.h / 2 > dispH / 2;
 }
 
 const nt = {};
@@ -1362,7 +1388,7 @@ function playlistPanelShowing() {
 	const c = S.layout.panels.playlist;
 	if (!c?.enabled || (c.shownAlpha ?? 1) < 0.05) return false;
 	const r = rectOf("playlist");
-	return r.x < innerWidth - 40 && r.y < innerHeight - 40 && r.x + r.w > 40 && r.y + r.h > 40;
+	return r.x < dispW - 40 && r.y < dispH - 40 && r.x + r.w > 40 && r.y + r.h > 40;
 }
 
 function flashPanel(id) {
@@ -1772,6 +1798,23 @@ api.onZoneState(({ on }) => {
 });
 api.onZoneMouse(zoneMouse);
 api.onToast(({ text, kind }) => toast(esc(text), kind || "", 5000));
+
+api.onViewport(({ x, y, dw, dh, seq }) => {
+	const resized = dw !== dispW || dh !== dispH;
+	view.x = x;
+	view.y = y;
+	dispW = dw;
+	dispH = dh;
+	const b = document.body.style;
+	b.width = dw + "px";
+	b.height = dh + "px";
+	b.transform = x || y ? `translate(${-x}px, ${-y}px)` : "";
+	if (resized && S.layout) {
+		for (const id of Object.keys(S.layout.panels)) clampPanel(id);
+		applyAll();
+	} else sendClickZone(); // the panels moved within the window
+	requestAnimationFrame(() => api.viewportApplied(seq));
+});
 
 window.addEventListener("resize", () => {
 	if (!S.layout) return;

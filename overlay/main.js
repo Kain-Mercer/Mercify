@@ -1,5 +1,6 @@
 // Mercify: main process
-// - one transparent, always-on-top, click-through window covering a monitor
+// - one transparent, always-on-top, click-through window: the whole monitor while shown,
+//   only the panels still visible while hidden
 // - a localhost WebSocket server the Spicetify "overlay-bridge" extension connects to
 // - shows only while a chosen app (e.g. WoW) is in front
 // - global hotkeys, tray menu, Settings window with built-in setup, config + layout persistence
@@ -191,7 +192,7 @@ function createWindow() {
 
 	win.loadFile(path.join(__dirname, "renderer", "index.html"));
 	win.once("ready-to-show", () => {
-		if (gateOpen) showOverlay(); // inactive: don't steal focus from the game on launch
+		placeWindow("shown"); // inactive: doesn't steal focus from the game on launch
 		sendToRenderer("overlay", { shown: overlayShown, edit: editMode });
 		sendToRenderer("bridge-status", { connected: !!bridge });
 		if (process.env.OVERLAY_DEBUG_EDIT) setEdit(true);
@@ -210,43 +211,108 @@ function createWindow() {
 
 	screen.on("display-metrics-changed", () => {
 		if (!win || win.isDestroyed()) return;
-		fitToDisplay("display changed");
+		placeWindow("display changed");
 	});
-	screen.on("display-added", () => fitToDisplay("display added"));
-	screen.on("display-removed", () => fitToDisplay("display removed"));
+	screen.on("display-added", () => placeWindow("display added"));
+	screen.on("display-removed", () => placeWindow("display removed"));
 }
 
-// Cover the whole display, taskbar area included. Windows pulls a window that's bigger than the
-// work area (the screen minus the taskbar) back inside it when it's shown, so the overlay and
-// Edit Mode's grid stopped at the top of the taskbar. Put the full size back after every show,
-// and once more a moment later in case Windows adjusts it afterwards.
-// The 200 ms check gives up after a few tries in a row (logged), so it can't fight Windows
-// forever; showing the overlay, Edit Mode or a display change start it again.
+// Where the overlay window goes. Shown (or in Edit Mode) it covers the whole display, taskbar
+// area included. Hidden, it only covers the panels that stay visible while hidden (their
+// "opacity when hidden" isn't 0; usually the compact Now Playing and notices), or isn't there
+// at all when none do. A full-screen window on top of a game, even a see-through one, makes
+// Windows composite every game frame with it instead of letting the game present directly,
+// which cost a lot of FPS (160 → 90) and kicked in again after every alt-tab back in. The
+// renderer keeps laying panels out in display coordinates and shifts them by the window's
+// offset (`viewport`), so the panels don't move on screen when the window changes.
+//
+// Windows pulls a window that's bigger than the work area (the screen minus the taskbar) back
+// inside it when it's shown, so after every show the bounds are put back, and once more a
+// moment later. The 200 ms check gives up after a few tries in a row (logged), so it can't
+// fight Windows forever; showing the overlay, Edit Mode or a display change start it again.
+const HIDDEN_PAD = 24; // room for the panels' shadows
+let hiddenArea = []; // display-relative rects of the panels visible while hidden (from the renderer)
+
+function wantedBounds() {
+	const d = pickDisplay().bounds;
+	if (editMode || overlayShown) return d;
+	if (!hiddenArea.length) return null;
+	let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+	for (const r of hiddenArea) {
+		x0 = Math.min(x0, r.x - HIDDEN_PAD);
+		y0 = Math.min(y0, r.y - HIDDEN_PAD);
+		x1 = Math.max(x1, r.x + r.w + HIDDEN_PAD);
+		y1 = Math.max(y1, r.y + r.h + HIDDEN_PAD);
+	}
+	x0 = Math.max(0, Math.floor(x0));
+	y0 = Math.max(0, Math.floor(y0));
+	x1 = Math.min(d.width, Math.ceil(x1));
+	y1 = Math.min(d.height, Math.ceil(y1));
+	if (x1 - x0 < 1 || y1 - y0 < 1) return null;
+	return { x: d.x + x0, y: d.y + y0, width: x1 - x0, height: y1 - y0 };
+}
+
+const sameRect = (a, b) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+
+// Tell the renderer which part of the display the window shows, then move the window. Growing,
+// the renderer goes first and says when it has (so the visible panels don't jump to the
+// window's corner for a frame); shrinking, the window goes first.
+let viewportSeq = 0;
+let pendingBounds = null;
+function setViewport(want) {
+	const d = pickDisplay().bounds;
+	const cur = win.getBounds();
+	const msg = { x: want.x - d.x, y: want.y - d.y, dw: d.width, dh: d.height, seq: ++viewportSeq };
+	if (want.width * want.height > cur.width * cur.height) {
+		pendingBounds = want;
+		sendToRenderer("viewport", msg);
+		const seq = msg.seq;
+		setTimeout(() => viewportApplied(seq), 200); // in case the renderer doesn't answer
+	} else {
+		pendingBounds = null;
+		win.setBounds(want);
+		sendToRenderer("viewport", msg);
+		syncZone();
+	}
+}
+function viewportApplied(seq) {
+	if (seq !== viewportSeq || !pendingBounds || !win || win.isDestroyed()) return;
+	win.setBounds(pendingBounds);
+	pendingBounds = null;
+	syncZone();
+}
+
 let fitTries = 0;
 let fitLastTry = 0;
-function fitToDisplay(why = "") {
+function placeWindow(why = "") {
 	if (!win || win.isDestroyed()) return;
-	const b = pickDisplay().bounds;
-	const cur = win.getBounds();
-	if (cur.x === b.x && cur.y === b.y && cur.width === b.width && cur.height === b.height) {
-		fitTries = 0;
+	const want = gateOpen ? wantedBounds() : null;
+	if (!want) {
+		if (win.isVisible()) {
+			setInteractive(false);
+			win.hide();
+			if (gateOpen) diag("overlay window hidden: no panels show while hidden");
+		}
+		syncZone();
 		return;
 	}
-	if (why === "checked") {
-		if (Date.now() - fitLastTry < 600) return; // let the last resize land before checking again
-		if (fitTries >= 4) return;
-		if (++fitTries === 4) diag(`window stays ${cur.width}x${cur.height}; Windows won't let it cover the full display ${b.width}x${b.height}`);
-	} else fitTries = 0;
-	fitLastTry = Date.now();
-	diag(`window was ${cur.width}x${cur.height} at ${cur.x},${cur.y}; set to the full display ${b.width}x${b.height} at ${b.x},${b.y}${why ? " (" + why + ")" : ""}`);
-	win.setBounds(b);
-}
-
-function showOverlay() {
-	win.showInactive();
-	win.setAlwaysOnTop(true, "screen-saver");
-	fitToDisplay("shown");
-	setTimeout(() => fitToDisplay("after show"), 400);
+	const cur = win.getBounds();
+	if (sameRect(cur, want) || (pendingBounds && sameRect(pendingBounds, want))) fitTries = 0;
+	else if (why === "checked" && (Date.now() - fitLastTry < 600 || fitTries >= 4)) {
+		// let the last resize land before checking again; stop after a few tries
+	} else {
+		if (why === "checked" && ++fitTries === 4) diag(`window stays ${cur.width}x${cur.height}; Windows won't let it be ${want.width}x${want.height}`);
+		if (why !== "checked") fitTries = 0;
+		fitLastTry = Date.now();
+		diag(`window was ${cur.width}x${cur.height} at ${cur.x},${cur.y}; set to ${want.width}x${want.height} at ${want.x},${want.y}${why ? " (" + why + ")" : ""}`);
+		setViewport(want);
+	}
+	if (!win.isVisible()) {
+		win.showInactive(); // inactive: don't take the keyboard from the game
+		win.setAlwaysOnTop(true, "screen-saver");
+		lastCursor = null;
+		setTimeout(() => placeWindow("after show"), 400);
+	}
 }
 
 // Click-through except where the renderer says the mouse is over a panel.
@@ -315,20 +381,25 @@ function sendToRenderer(channel, payload) {
 	if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 
+let shrinkTimer = null;
 function setShown(on) {
 	overlayShown = on;
 	if (!on && editMode) setEdit(false);
 	if (!on) releaseFocus();
+	clearTimeout(shrinkTimer);
+	if (on) placeWindow("overlay shown");
 	sendToRenderer("overlay", { shown: overlayShown, edit: editMode });
+	// shrink once the panels have faded out (their fade takes about 0.16 s)
+	if (!on) shrinkTimer = setTimeout(() => placeWindow("overlay hidden"), 250);
 	syncZone();
 }
 
 function setEdit(on) {
 	editMode = on;
 	if (on) {
-		fitToDisplay("edit mode");
 		overlayShown = true;
 		applyGate(true);
+		placeWindow("edit mode");
 		setInteractive(true);
 		takeFocus(); // so arrow-key nudging works
 	} else {
@@ -448,7 +519,7 @@ function applyGate(open) {
 	gateOpen = open;
 	diag(`overlay ${open ? "shown" : "hidden"} (${gateWhy})`);
 	if (open) {
-		showOverlay();
+		placeWindow("shown");
 		lastCursor = null;
 		sendToRenderer("interactive-reset");
 	} else {
@@ -505,7 +576,7 @@ function tickGate() {
 		else [open, gateWhy] = [false, "other-app"];
 	}
 	applyGate(open);
-	if (gateOpen && win.isVisible()) fitToDisplay("checked");
+	if (gateOpen && win.isVisible()) placeWindow("checked");
 	reportGate(fg);
 	// Hotkeys follow the game itself being in front, so they're yours again in other apps,
 	// even while the overlay stays up over the game on another monitor.
@@ -933,6 +1004,12 @@ ipcMain.on("set-interactive", (_e, on) => {
 	setInteractive(!!on && gateOpen);
 });
 
+ipcMain.on("hidden-area", (_e, rects) => {
+	hiddenArea = (Array.isArray(rects) ? rects : []).filter((r) => r && r.w > 0 && r.h > 0).map((r) => ({ x: +r.x || 0, y: +r.y || 0, w: +r.w, h: +r.h }));
+	if (!overlayShown && !editMode) placeWindow("panels changed");
+});
+ipcMain.on("viewport-applied", (_e, seq) => viewportApplied(seq));
+
 ipcMain.on("click-zone", (_e, rects) => {
 	zoneRects = (Array.isArray(rects) ? rects : []).filter((r) => r && r.w > 0 && r.h > 0).map((r) => ({ x: +r.x || 0, y: +r.y || 0, w: +r.w, h: +r.h }));
 	syncZone();
@@ -994,7 +1071,9 @@ const hotkeyActions = {
 		if (editMode) return;
 		forceOpenUntil = Date.now() + 1500;
 		overlayShown = true;
+		clearTimeout(shrinkTimer);
 		applyGate(true);
+		placeWindow("search");
 		sendToRenderer("overlay", { shown: true, edit: false });
 		takeFocus();
 		sendToRenderer("focus-search");
