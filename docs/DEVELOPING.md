@@ -89,6 +89,7 @@ The helper is rebuilt with MinGW (`x86_64-w64-mingw32-gcc -O2 -municode -static 
 | `launchSpotify` | Start Spotify with Mercify. |
 | `minimiseSpotify` | Hide Spotify's window to the tray when Mercify opens. |
 | `lobbyName` | Your name in listening lobbies. |
+| `spotifyPremium` | `true`, `false` or `null` (not known). Premium gets SpotX's `-premium` mode. Set by the Settings checkbox, and by the extension once it reads the account's plan from the Web API (`/v1/me`; the app's own product state can't be trusted, SpotX's free mode overrides it). Setup records the mode it ran SpotX in (`%APPDATA%\Spotify\mercify-spotx-mode.txt`) and runs it again when that doesn't match. |
 | `lobbyRelays` | Optional list of `wss://` MQTT relays to use instead of the public ones (everyone in a lobby must share at least one). |
 | `display` | `"primary"`, `"cursor"`, or a 0-based monitor index. |
 | `port` | WebSocket port (default 7317). The extension reads `localStorage["overlay-bridge:port"]` if you change it. |
