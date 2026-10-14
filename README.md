@@ -36,6 +36,7 @@
 
 It installs Spotify if you don't have it, plus the two add-ons Mercify needs to talk to Spotify (SpotX and Spicetify). It doesn't ask you anything, and the bar at the top shows how far along it is, so you can do something else meanwhile.
 
+- **Got Spotify Premium?** Tick **I have Spotify Premium** first. SpotX then runs in its Premium mode, which leaves your account's details alone. Mercify also notices by itself once you're logged in, and offers to switch SpotX over if it was set up the other way.
 - At the end Spotify opens. Log in, and the last row, **Connected to Spotify**, turns green by itself. Spotify not showing? Press **Open Spotify** on that row.
 - Spotify's window blank after you log in? That can happen the first time. Mercify notices and restarts Spotify for you a few seconds later.
 - If something goes wrong, Settings says what in plain words, with a **Try again** button. **Copy details** copies everything that happened, to paste into a message or an [issue](https://github.com/Kain-Mercer/Mercify/issues).

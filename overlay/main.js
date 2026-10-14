@@ -60,6 +60,9 @@ const DEFAULT_CONFIG = {
 	launchSpotify: true, // start Spotify when the overlay starts
 	minimiseSpotify: true, // send Spotify's window to the tray when Mercify opens
 	lobbyName: "", // your name in listening lobbies
+	// Spotify Premium? true / false / null (not known yet). Set in Settings, or by the extension
+	// once Spotify says which plan the logged-in account is on. Premium gets SpotX's Premium mode.
+	spotifyPremium: null,
 	// lobbyRelays: ["wss://..."], // optional: use your own MQTT-over-WebSocket relays instead of the public ones
 };
 
@@ -587,6 +590,16 @@ function startBridgeServer() {
 				pending.delete(msg.id);
 				clearTimeout(p.timer);
 				msg.ok ? p.resolve(msg.data) : p.reject(new Error(msg.error || "bridge error"));
+			} else if (msg.type === "account") {
+				// The plan Spotify's servers report for the logged-in account (the extension asks
+				// the Web API: SpotX's free mode makes the app itself always say "premium").
+				const premium = msg.product === "premium" ? true : msg.product ? false : null;
+				if (premium !== null && premium !== config.spotifyPremium) {
+					diag(`account: Spotify says ${msg.product}; was ${config.spotifyPremium}`);
+					config.spotifyPremium = premium;
+					saveConfig();
+					pushSettings(); // the Spotify row says if SpotX needs setting up again for it
+				}
 			} else if (msg.type === "hello") {
 				heardFromSpotify();
 				bridgeInfo = msg;
@@ -1105,7 +1118,8 @@ async function settingsState() {
 	return {
 		lobby: lobbyView(),
 		update: updater.state(),
-		setup: await setup.status(),
+		setup: await setup.status({ premium: config.spotifyPremium }),
+		spotifyPremium: config.spotifyPremium,
 		connected: !!bridge,
 		foregroundSupported: foreground.supported(),
 		onlyShowOver: config.onlyShowOver,
@@ -1163,7 +1177,7 @@ async function runSetup(force = {}) {
 	for (const k of Object.keys(setupSteps)) delete setupSteps[k];
 	lastSetup = { running: true };
 	pushSettings();
-	const r = await setup.setupAll({ log: setupLogLine, progress: setupProgress, isConnected: () => !!bridge, force });
+	const r = await setup.setupAll({ log: setupLogLine, progress: setupProgress, isConnected: () => !!bridge, force, premium: config.spotifyPremium });
 	lastSetup = { ok: r.ok, step: r.step, why: r.why };
 	if (!r.ok && r.tail?.length) setupLogLine("(last lines above are what went wrong)");
 	return r;
@@ -1198,6 +1212,7 @@ ipcMain.handle("settings:set", async (_e, key, value) => {
 	else if (key === "launchSpotify") config.launchSpotify = !!value;
 	else if (key === "minimiseSpotify") config.minimiseSpotify = !!value;
 	else if (key === "lobbyName") setLobbyName(value);
+	else if (key === "spotifyPremium") config.spotifyPremium = !!value;
 	else if (key === "startWithWindows") setStartWithWindows(value);
 	saveConfig();
 	tickGate();
@@ -1516,7 +1531,7 @@ app.whenReady().then(async () => {
 
 	if (setup.IS_WIN) {
 		migrateLoginItem();
-		const s = await setup.status();
+		const s = await setup.status({ premium: config.spotifyPremium });
 		if (config.launchSpotify && s.spotify) setup.startSpotify({ minimized: config.minimiseSpotify });
 		// Set up, but Spotify hasn't connected: it's probably at its login screen, started minimised
 		// where nobody sees it. Bring it up once, so you can log in.

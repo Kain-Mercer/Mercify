@@ -32,10 +32,11 @@ let setupRunning = false;
 const STEP_ROW = { spotify: "spotify", firstrun: "spotify", spicetify: "spicetify", extension: "extension", connect: "connect" };
 
 function setupDone(s) {
-	return s.spotify && s.spotx && s.spicetify && s.extension === "current";
+	return s.spotify && s.spotx && !s.spotxWrongMode && s.spicetify && s.extension === "current";
 }
 
 let connectNote = "";
+let premiumNow = false;
 function renderSetup(s, run, connected) {
 	if (!s.supported) {
 		$("#setup-section").hidden = true;
@@ -53,7 +54,9 @@ function renderSetup(s, run, connected) {
 	// Settings opened (or re-rendered) mid-run: show each step as far as it got
 	if (setupRunning && run.steps) for (const [step, p] of Object.entries(run.steps)) onSetupProgress({ step, ...p });
 	if (!setupRunning) {
-		if (s.spotify && s.spotx) setRow("spotify", "ok", s.spotifyRunning ? "Installed and running" : "Installed");
+		if (s.spotify && s.spotx && s.spotxWrongMode)
+			setRow("spotify", "warn", premiumNow ? "SpotX is set up for a free account. Press Finish setup to switch it to Premium mode." : "SpotX is set up for Premium, but this account is free. Press Finish setup to switch it.");
+		else if (s.spotify && s.spotx) setRow("spotify", "ok", s.spotifyRunning ? "Installed and running" : "Installed");
 		else if (s.spotify) setRow("spotify", "warn", "Installed, but without SpotX (it stops Spotify updates from breaking Mercify)");
 		else if (s.storeSpotify) setRow("spotify", "warn", "You have the Microsoft Store version, which can't be used. Setup replaces it.");
 		else if (s.spotifyLeftovers) setRow("spotify", "neutral", "Not installed (an earlier Spotify left a few files behind; setup tidies them up)");
@@ -336,6 +339,7 @@ function showLobbyError(msg) {
 
 function render(d) {
 	current = d;
+	premiumNow = d.spotifyPremium === true;
 	renderUpdate(d.update);
 	renderLobby(d.lobby);
 	const s = d.setup;
@@ -370,6 +374,7 @@ function render(d) {
 	$("#hotkeys-only").checked = d.hotkeysOnlyOverApps;
 	$("#start-windows").checked = d.startWithWindows;
 	$("#launch-spotify").checked = d.launchSpotify;
+	$("#spotify-premium").checked = premiumNow;
 	$("#minimise-spotify").checked = d.minimiseSpotify;
 
 	const names = { toggle: "Show / hide", edit: "Edit Mode", search: "Search", playPause: "Play / pause", next: "Next track", prev: "Previous" };
@@ -403,6 +408,7 @@ $("#only-enabled").addEventListener("change", async (e) => render(await S.set("o
 $("#other-monitor").addEventListener("change", async (e) => render(await S.set("onlyShowOver.stayOnOtherMonitor", e.target.checked)));
 $("#hotkeys-only").addEventListener("change", async (e) => render(await S.set("hotkeysOnlyOverApps", e.target.checked)));
 $("#start-windows").addEventListener("change", async (e) => render(await S.set("startWithWindows", e.target.checked)));
+$("#spotify-premium").addEventListener("change", async (e) => render(await S.set("spotifyPremium", e.target.checked)));
 $("#launch-spotify").addEventListener("change", async (e) => render(await S.set("launchSpotify", e.target.checked)));
 $("#minimise-spotify").addEventListener("change", async (e) => render(await S.set("minimiseSpotify", e.target.checked)));
 $("#open-config").addEventListener("click", () => S.openConfig());

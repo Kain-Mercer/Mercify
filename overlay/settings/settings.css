@@ -415,6 +415,13 @@ kbd {
 	gap: 6px;
 	margin-bottom: 10px;
 }
+.premium-check {
+	flex-wrap: wrap;
+	margin-bottom: 10px;
+}
+.premium-check .muted {
+	font-size: 12px;
+}
 .setup-go[hidden] {
 	display: none;
 }

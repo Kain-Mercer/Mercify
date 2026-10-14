@@ -16,6 +16,9 @@ const SPOTIFY_EXE = path.join(SPOTIFY_DIR, "Spotify.exe");
 const SPOTIFY_PREFS = path.join(SPOTIFY_DIR, "prefs");
 const APPLIED_EXT = path.join(SPOTIFY_DIR, "Apps", "xpui", "extensions", "overlay-bridge.js");
 const STORE_SPOTIFY = path.join(LOCALAPPDATA, "Microsoft", "WindowsApps", "Spotify.exe");
+// Which SpotX mode Mercify last ran ("premium" or "free"). Kept in Spotify's folder so a
+// reinstalled Spotify (which also loses SpotX) loses it too.
+const SPOTX_MODE_FILE = path.join(SPOTIFY_DIR, "mercify-spotx-mode.txt");
 
 // Installed means it can run: Spotify.exe plus its app (Apps\xpui.spa, or the Apps\xpui folder
 // Spicetify unpacks it into). Uninstalling Spotify can leave Spotify.exe and SpotX's .bak copies
@@ -49,6 +52,7 @@ function spotifyLeftovers() {
 	return spotifyInstalled() ? [] : LEFTOVER_FILES.filter((f) => fs.existsSync(path.join(SPOTIFY_DIR, f)));
 }
 function removeLeftovers(log) {
+	if (!spotifyInstalled()) clearSpotxMode(); // Mercify's own note, not one of Spotify's files
 	for (const f of spotifyLeftovers()) {
 		try {
 			fs.rmSync(path.join(SPOTIFY_DIR, f), { force: true, recursive: true, maxRetries: 5, retryDelay: 400 });
@@ -121,6 +125,33 @@ function isSpotifyRunning() {
 
 // Run Spotify.exe from its own folder, as its shortcut and SpotX do. "minimized" uses Spotify's
 // own --minimized flag (the one its "open at login" option uses): it starts in the tray.
+// "premium", "free", or null (SpotX was put on before Mercify recorded its mode: that was
+// always the free mode, or someone else's SpotX with unknown options).
+function clearSpotxMode() {
+	try {
+		fs.rmSync(SPOTX_MODE_FILE, { force: true });
+	} catch (_) {}
+}
+function spotxMode() {
+	try {
+		const m = fs.readFileSync(SPOTX_MODE_FILE, "utf8").trim();
+		return m === "premium" || m === "free" ? m : null;
+	} catch (_) {
+		return null;
+	}
+}
+
+// Does the SpotX on this Spotify need running again to match the account? Premium accounts need
+// the premium mode: the free mode overrides Spotify's account details (product, catalogue…),
+// which can break a Premium account. Going back to free only once we know it's free (`false`),
+// so an unknown account never triggers a reinstall.
+function spotxModeMismatch(premium) {
+	const m = spotxMode();
+	if (premium === true) return m !== "premium";
+	if (premium === false) return m === "premium";
+	return false;
+}
+
 function launchSpotify(minimized) {
 	spawn(SPOTIFY_EXE, minimized ? ["--minimized"] : [], { detached: true, stdio: "ignore", cwd: SPOTIFY_DIR }).unref();
 }
@@ -303,11 +334,12 @@ async function removeAddonsOnce(log, { extensionOnly = false } = {}) {
 		log,
 		{ idleMs: 60000 }
 	);
+	clearSpotxMode();
 	log(restored ? "SpotX removed: Spotify is back to normal." : "No SpotX backups found (SpotX wasn't installed, or Spotify was reinstalled since).");
 	return { ok: true };
 }
 
-async function status() {
+async function status({ premium = null } = {}) {
 	if (process.env.OVERLAY_DEBUG_FAKE_SETUP) return JSON.parse(process.env.OVERLAY_DEBUG_FAKE_SETUP); // UI testing off Windows
 	if (!IS_WIN) return { supported: false };
 	const bundled = readOrNull(bundledExtensionPath());
@@ -322,6 +354,8 @@ async function status() {
 		spotifyRunning: await isSpotifyRunning(),
 		spicetify: !!spicetify,
 		spotx: spotifyInstalled() && detectSpotX(), // traces in an uninstalled Spotify's leftovers don't count
+		spotxMode: spotxMode(),
+		spotxWrongMode: spotifyInstalled() && detectSpotX() && spotxModeMismatch(premium),
 		extension: applied ? (bundled && applied.equals(bundled) ? "current" : "outdated") : "missing",
 		appliedVersion: extVersion(applied),
 		bundledVersion: extVersion(bundled),
@@ -436,9 +470,10 @@ const psq = (s) => "'" + String(s).replace(/'/g, "''") + "'"; // PowerShell sing
 // SpotX, with every question answered: install or replace Spotify with the version SpotX
 // recommends, remove the Microsoft Store version, block Spotify's updates (they break Spicetify),
 // keep podcasts as they are, skip the Defender question, don't pause at the end.
+// Premium accounts add -premium: no ad blocking and none of the free-account patches.
 const SPOTX_FLAGS = ["-confirm_uninstall_ms_spoti", "-confirm_spoti_recomended_over", "-block_update_on", "-podcasts_on", "-defender_exclusions_off", "-no_pause", "-new_theme"];
 
-async function runSpotX(log) {
+async function runSpotX(log, { premium = false } = {}) {
 	log("Downloading SpotX…");
 	const file = path.join(os.tmpdir(), "mercify-spotx-run.ps1");
 	try {
@@ -455,8 +490,9 @@ async function runSpotX(log) {
 		log("Undoing Spicetify's changes first (SpotX needs an unmodified Spotify)…");
 		await spice(spicetify, ["restore"], log);
 	}
-	log("Running SpotX. This downloads and installs Spotify if needed, and can take a few minutes…");
-	const r = await runPowerShell(`& ${psq(file)} ${SPOTX_FLAGS.join(" ")}`, log);
+	log(`Running SpotX${premium ? " (Premium mode)" : ""}. This downloads and installs Spotify if needed, and can take a few minutes…`);
+	const flags = premium ? [...SPOTX_FLAGS, "-premium"] : SPOTX_FLAGS;
+	const r = await runPowerShell(`& ${psq(file)} ${flags.join(" ")}`, log);
 	try {
 		fs.unlinkSync(file);
 	} catch (_) {}
@@ -465,6 +501,9 @@ async function runSpotX(log) {
 		return { ok: false, why: r.problem ? `SpotX: ${r.problem}` : e ? `SpotX couldn't install Spotify: ${e}` : "SpotX finished, but Spotify still isn't installed.", tail: r.tail };
 	}
 	if (r.problem) return { ok: false, why: `SpotX: ${r.problem}`, tail: r.tail };
+	try {
+		fs.writeFileSync(SPOTX_MODE_FILE, premium ? "premium" : "free");
+	} catch (_) {}
 	return { ok: true };
 }
 
@@ -503,7 +542,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // checklist (state: running | done | failed | waiting); `isConnected()` says whether the
 // Mercify extension in Spotify has connected. Resolves { ok, step, why, tail }.
 let setupRunning = false;
-async function setupAll({ log, progress, isConnected, force = {} }) {
+async function setupAll({ log, progress, isConnected, force = {}, premium = null }) {
 	if (setupRunning) return { ok: false, why: "Setup is already running." };
 	setupRunning = true;
 	const fail = (step, why, tail) => (progress(step, "failed", why), { ok: false, step, why, tail });
@@ -533,11 +572,14 @@ async function setupAll({ log, progress, isConnected, force = {} }) {
 	}
 	try {
 		// 1. Spotify (installed by SpotX), plus SpotX itself
-		const needSpotX = force.spotx || !spotifyInstalled() || !detectSpotX();
+		//    (in Premium mode for Premium accounts, and again if it was put on in the other mode)
+		const wrongMode = spotifyInstalled() && detectSpotX() && spotxModeMismatch(premium);
+		const needSpotX = force.spotx || !spotifyInstalled() || !detectSpotX() || wrongMode;
 		if (needSpotX) {
-			progress("spotify", "running", spotifyInstalled() ? "Adding SpotX to Spotify…" : "Installing Spotify (with SpotX)… a few minutes");
+			if (wrongMode) log(premium ? "SpotX was set up for a free account; setting it up again for Premium…" : "SpotX was set up for Premium, but this account is free; setting it up again…");
+			progress("spotify", "running", !spotifyInstalled() ? "Installing Spotify (with SpotX)… a few minutes" : wrongMode ? (premium ? "Switching SpotX to Premium mode…" : "Switching SpotX to free mode…") : "Adding SpotX to Spotify…");
 			removeLeftovers(log);
-			const r = await runSpotX(log);
+			const r = await runSpotX(log, { premium: premium === true });
 			if (!r.ok) return fail("spotify", r.why, r.tail);
 		}
 		progress("spotify", "done", "Installed");

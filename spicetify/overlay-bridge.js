@@ -13,7 +13,7 @@
 (function OverlayBridge() {
 	"use strict";
 
-	const VERSION = "1.2.0";
+	const VERSION = "1.3.0";
 	const DEFAULT_PORT = 7317;
 	const LOG = (...a) => console.log("[overlay-bridge]", ...a);
 
@@ -373,6 +373,18 @@
 
 	const pushState = () => send({ type: "state", state: currentState() });
 
+	// Which plan the logged-in account is on ("premium", "free", "open"…), so Mercify can set
+	// SpotX up in the right mode. Asked from the Web API, not the app's own product state, which
+	// SpotX's free mode overrides to "premium". Unknown (offline, older client) sends nothing.
+	async function sendAccount() {
+		try {
+			const me = await Spicetify.CosmosAsync.get("https://api.spotify.com/v1/me");
+			if (me && typeof me.product === "string") send({ type: "account", product: me.product });
+		} catch (e) {
+			LOG("couldn't read the account's plan", e);
+		}
+	}
+
 	function connect() {
 		try {
 			ws = new WebSocket(`ws://127.0.0.1:${getPort()}`);
@@ -383,6 +395,7 @@
 			retryMs = 1000;
 			LOG("connected to overlay");
 			send({ type: "hello", version: VERSION, spotify: Spicetify.Platform.version ?? null });
+			sendAccount();
 			pushState();
 			clearInterval(progressTimer);
 			progressTimer = setInterval(() => {
