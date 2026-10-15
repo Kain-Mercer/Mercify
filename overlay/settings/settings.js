@@ -303,6 +303,32 @@ function renderUpdate(u) {
 	if (u.status !== "ready" && u.status !== "available") delete btn.dataset.install;
 }
 
+function renderAvatar(av, name) {
+	const prev = $("#avatar-preview");
+	if (av) {
+		if (prev.dataset.src !== av) {
+			prev.innerHTML = "";
+			const img = document.createElement("img");
+			img.src = av;
+			img.alt = "";
+			prev.append(img);
+			prev.dataset.src = av;
+		}
+	} else {
+		prev.dataset.src = "";
+		prev.textContent = (name || "?").trim().charAt(0).toUpperCase() || "?";
+	}
+	$("#avatar-choose").textContent = av ? "Change picture" : "Choose a profile picture";
+	$("#avatar-clear").hidden = !av;
+}
+
+async function pickAvatar() {
+	const r = await S.pickAvatar();
+	$("#avatar-error").textContent = r.ok ? "" : r.error;
+	$("#avatar-error").hidden = r.ok;
+	render(r.state);
+}
+
 function renderLobby(l) {
 	if (!l) return;
 	const nameEl = $("#lobby-name");
@@ -342,6 +368,7 @@ function render(d) {
 	premiumNow = d.spotifyPremium === true;
 	renderUpdate(d.update);
 	renderLobby(d.lobby);
+	renderAvatar(d.avatar, d.lobby?.name);
 	const s = d.setup;
 
 	$("#conn").textContent = d.connected ? "Connected to Spotify" : "Waiting for Spotify";
@@ -451,6 +478,9 @@ const saveLobbyName = async () => {
 	if (v !== (current?.lobby?.name || "")) render(await S.set("lobbyName", v));
 };
 $("#lobby-name").addEventListener("change", saveLobbyName);
+$("#avatar-pick").addEventListener("click", pickAvatar);
+$("#avatar-choose").addEventListener("click", pickAvatar);
+$("#avatar-clear").addEventListener("click", async () => render(await S.clearAvatar()));
 $("#lobby-name").addEventListener("keydown", (e) => e.key === "Enter" && e.target.blur());
 $("#lobby-leave").addEventListener("click", async () => render(await S.action("leaveLobby")));
 

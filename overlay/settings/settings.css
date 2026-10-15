@@ -616,3 +616,73 @@ kbd {
 #lobby-out[hidden] {
 	display: none;
 }
+
+/* ---------------------------------------------------------------- profile picture + name */
+
+.profile-row {
+	align-items: center;
+	gap: 12px;
+}
+.profile-fields {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.profile-fields input {
+	width: 100%;
+	box-sizing: border-box;
+}
+.profile-links {
+	display: flex;
+	gap: 12px;
+}
+.profile-links .link {
+	padding: 0;
+}
+.muted-link {
+	color: var(--faint) !important;
+}
+.avatar-pick {
+	position: relative;
+	width: 52px;
+	height: 52px;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: none;
+	cursor: pointer;
+	flex: none;
+	overflow: hidden;
+}
+.avatar-preview {
+	width: 100%;
+	height: 100%;
+	display: grid;
+	place-items: center;
+	border-radius: 50%;
+	background: rgba(30, 215, 96, 0.16);
+	color: var(--accent);
+	font: 700 20px var(--font);
+	overflow: hidden;
+}
+.avatar-preview img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+.avatar-edit {
+	position: absolute;
+	inset: auto 0 0 0;
+	padding: 2px 0 4px;
+	font: 600 10px var(--font);
+	color: #fff;
+	background: rgba(0, 0, 0, 0.55);
+	opacity: 0;
+	transition: opacity 0.15s;
+}
+.avatar-pick:hover .avatar-edit {
+	opacity: 1;
+}

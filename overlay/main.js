@@ -5,7 +5,7 @@
 // - shows only while a chosen app (e.g. WoW) is in front
 // - global hotkeys, tray menu, Settings window with built-in setup, config + layout persistence
 
-const { app, BrowserWindow, globalShortcut, ipcMain, screen, Tray, Menu, nativeImage, shell, Notification, clipboard } = require("electron");
+const { app, BrowserWindow, globalShortcut, ipcMain, screen, Tray, Menu, nativeImage, shell, Notification, clipboard, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { WebSocketServer } = require("ws");
@@ -76,6 +76,7 @@ const userDir = app.getPath("userData");
 const CONFIG_PATH = path.join(userDir, "config.json");
 const LAYOUT_PATH = path.join(userDir, "layout.json");
 const FRIENDS_PATH = path.join(userDir, "friends.json");
+const AVATAR_PATH = path.join(userDir, "avatar.jpg"); // your profile picture, 96x96
 
 function readJSON(p, fallback) {
 	try {
@@ -923,6 +924,73 @@ function setLobbyName(name) {
 	friends.setName(config.lobbyName);
 }
 
+// ------------------------------------------------------------------ profile picture
+// Chosen in Settings, cropped to a square and shrunk to a 96x96 JPEG (a few KB), so it can go
+// to lobby members and friends with the rest of their messages.
+
+const AVATAR_SIZE = 96;
+let avatar = null; // data URL
+try {
+	if (fs.existsSync(AVATAR_PATH)) avatar = "data:image/jpeg;base64," + fs.readFileSync(AVATAR_PATH).toString("base64");
+} catch (_) {}
+
+function applyAvatar() {
+	lobby.setAvatar(avatar);
+	friends.setAvatar(avatar);
+	sendToRenderer("lobby", lobbyView());
+	sendToRenderer("friends", friendsView());
+}
+
+function makeAvatar(file) {
+	const img = nativeImage.createFromPath(file);
+	if (img.isEmpty()) throw new Error("That file isn't a picture Mercify can read (try a PNG or JPEG).");
+	const { width, height } = img.getSize();
+	const side = Math.min(width, height);
+	const square = img.crop({ x: Math.floor((width - side) / 2), y: Math.floor((height - side) / 2), width: side, height: side });
+	const small = square.resize({ width: AVATAR_SIZE, height: AVATAR_SIZE, quality: "best" });
+	for (const q of [85, 70, 55, 40]) {
+		const jpg = small.toJPEG(q);
+		if (jpg.length <= 12000) return jpg;
+	}
+	throw new Error("Couldn't make that picture small enough.");
+}
+
+async function pickAvatar() {
+	const r = await dialog.showOpenDialog(settingsWin && !settingsWin.isDestroyed() ? settingsWin : undefined, {
+		title: "Choose a profile picture",
+		properties: ["openFile"],
+		filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg", "bmp", "gif", "webp"] }],
+	});
+	if (r.canceled || !r.filePaths[0]) return null;
+	const jpg = makeAvatar(r.filePaths[0]);
+	fs.mkdirSync(userDir, { recursive: true });
+	fs.writeFileSync(AVATAR_PATH, jpg);
+	avatar = "data:image/jpeg;base64," + jpg.toString("base64");
+	applyAvatar();
+	return avatar;
+}
+
+function clearAvatar() {
+	try {
+		fs.unlinkSync(AVATAR_PATH);
+	} catch (_) {}
+	avatar = null;
+	applyAvatar();
+}
+
+ipcMain.handle("settings:pick-avatar", async () => {
+	try {
+		await pickAvatar();
+		return { ok: true, state: await settingsState() };
+	} catch (err) {
+		return { ok: false, error: err.message, state: await settingsState() };
+	}
+});
+ipcMain.handle("settings:clear-avatar", async () => {
+	clearAvatar();
+	return settingsState();
+});
+
 // ------------------------------------------------------------------ friends
 
 const friendsView = () => ({ ...friends.state(), name: config.lobbyName });
@@ -1338,6 +1406,7 @@ function openSettings() {
 async function settingsState() {
 	return {
 		lobby: lobbyView(),
+		avatar,
 		update: updater.state(),
 		setup: await setup.status({ premium: config.spotifyPremium }),
 		spotifyPremium: config.spotifyPremium,
@@ -1768,6 +1837,8 @@ app.whenReady().then(async () => {
 	if (await launchUpdateGate()) return; // updating: the new version starts by itself
 	updater.start();
 	foreground.start();
+	lobby.setAvatar(avatar);
+	friends.setAvatar(avatar);
 	friends.start();
 	startBridgeServer();
 	createWindow();

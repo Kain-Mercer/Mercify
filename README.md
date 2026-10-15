@@ -202,7 +202,8 @@ Met someone in a lobby you'd like to listen with again? **Right-click them** in 
 - Hover over a friend and press **Request to join**. They get a notification with **Accept** and **Decline**. If they accept, their Mercify starts a lobby (or uses the one they're in) and yours joins it straight away.
 - Requests also show in the tray menu, and as a Windows notification while you're not in your game.
 - Right-click a friend to remove them. They're removed from both lists.
-- In Settings under **Listening lobby** you can stop showing friends what you're listening to, or stop friends from asking to join you.
+- In Settings under **Listening lobby**, click the circle next to your name to choose a **profile picture**. Friends and people in your lobbies see it, with the green "online" dot (or the host's crown) in its corner.
+- There you can also stop showing friends what you're listening to, or stop friends from asking to join you.
 
 Friends are Mercify's own, not Spotify's: Spotify doesn't let apps read or change your Spotify friends. Your friends and your messages to them go through the same relays as lobbies, **encrypted so only the two of you can read them**. Your friends list is kept in `%APPDATA%\Mercify\friends.json`.
 

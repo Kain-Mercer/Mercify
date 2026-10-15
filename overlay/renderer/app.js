@@ -1796,7 +1796,8 @@ function renderLobby() {
 		lb.members.innerHTML = st.members
 			.map((m) => {
 				const tag = m.you ? '<span class="lb-you">you</span>' : friendIds.has(m.fid) ? `<span class="lb-friend" title="Your friend">${ICON.person}friend</span>` : pending.has(m.fid) ? '<span class="lb-you">request sent</span>' : "";
-				return `<div class="lb-member${m.role === "host" ? " host" : ""}${m.you ? " you" : ""}" data-mid="${esc(m.id)}"${m.you ? "" : ' title="Right-click to add as a friend"'}>${m.role === "host" ? `<span class="lb-crown" title="Host">${ICON.crown}</span>` : `<span class="lb-dot"></span>`}<span class="lb-mname">${esc(m.name)}</span>${tag}</div>`;
+				const badge = m.role === "host" ? `<span class="av-badge crown" title="Host">${ICON.crown}</span>` : `<span class="av-badge dot"></span>`;
+				return `<div class="lb-member${m.role === "host" ? " host" : ""}${m.you ? " you" : ""}" data-mid="${esc(m.id)}"${m.you ? "" : ' title="Right-click to add as a friend"'}>${avatarHtml(m.name, m.av, m.fid || m.id, badge, "small")}<span class="lb-mname">${esc(m.name)}</span>${tag}</div>`;
 			})
 			.join("");
 		lb.activity.innerHTML = (st.activity || [])
@@ -1943,9 +1944,16 @@ function buildFriends() {
 	});
 }
 
+// A round profile picture (or the name's first letter on a colour), with a badge in the
+// lower-right corner: the online dot, or the host's crown.
+function avatarHtml(name, av, seed, badge = "", size = "") {
+	const hue = AVATAR_HUES[parseInt(String(seed || "00").slice(0, 2), 16) % AVATAR_HUES.length || 0];
+	const face = av && /^data:image\/(jpeg|png|webp);base64,/.test(av) ? `<img src="${esc(av)}" alt="" />` : esc((name || "?").trim().charAt(0).toUpperCase() || "?");
+	return `<span class="av${size ? " " + size : ""}" style="--hue:${hue}"><span class="av-face">${face}</span>${badge}</span>`;
+}
+
 function avatar(f) {
-	const hue = AVATAR_HUES[parseInt(f.fid.slice(0, 2), 16) % AVATAR_HUES.length];
-	return `<span class="fr-avatar" style="--hue:${hue}">${esc((f.name || "?").trim().charAt(0).toUpperCase())}<span class="fr-status"></span></span>`;
+	return avatarHtml(f.name, f.av, f.fid, '<span class="av-badge dot fr-status"></span>');
 }
 
 function ago(t) {

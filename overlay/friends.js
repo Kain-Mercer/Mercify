@@ -88,6 +88,19 @@ function open(key, buf) {
 
 const URI_RE = /^spotify:(track|episode|local):[^\s]{1,200}$/;
 
+// Profile pictures travel as small data URLs (Mercify makes a 96x96 JPEG of a few KB). Anything
+// else from the network is dropped. Heartbeats carry only a short hash; the picture itself is
+// asked for when the hash is one we don't have.
+const AVATAR_MAX = 24000;
+const AVATAR_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+function cleanAvatar(v) {
+	return typeof v === "string" && v.length <= AVATAR_MAX && AVATAR_RE.test(v) ? v : null;
+}
+function avatarHash(v) {
+	return v ? crypto.createHash("sha256").update(v).digest("hex").slice(0, 12) : "";
+}
+const AVATAR_ASK_MS = 30000; // don't ask the same person for their picture more often than this
+
 // A friend's "listening to", from the network: keep only what we show, in safe shapes.
 function cleanTrack(t) {
 	if (!t || typeof t !== "object") return null;
@@ -129,6 +142,7 @@ function createFriends({ store, relays, connect, lobbyCode, log = () => {}, conn
 	let outbox = []; // sent while no relay was connected: { topic, buf, at }
 
 	let name = "";
+	let myAv = null; // our profile picture (data URL)
 	let share = true; // show friends what I'm listening to
 	let allowJoin = true; // friends may ask to join
 	let presence = { track: null, playing: false, inLobby: false, host: false };
@@ -152,6 +166,9 @@ function createFriends({ store, relays, connect, lobbyCode, log = () => {}, conn
 			addedAt: Number(f.addedAt) || Date.now(),
 			key,
 			topic,
+			av: cleanAvatar(f.av),
+			avh: avatarHash(cleanAvatar(f.av)),
+			avAskedAt: 0,
 			lastSeen: 0,
 			online: false,
 			p: null, // their last presence
@@ -171,7 +188,7 @@ function createFriends({ store, relays, connect, lobbyCode, log = () => {}, conn
 
 	function save() {
 		try {
-			store.save({ v: 1, identity, friends: [...friends.values()].map((f) => ({ fid: f.fid, pub: f.pub, name: f.name, addedAt: f.addedAt })) });
+			store.save({ v: 1, identity, friends: [...friends.values()].map((f) => ({ fid: f.fid, pub: f.pub, name: f.name, addedAt: f.addedAt, av: f.av || undefined })) });
 		} catch (err) {
 			log(`friends: couldn't save: ${err.message}`);
 		}
@@ -188,6 +205,7 @@ function createFriends({ store, relays, connect, lobbyCode, log = () => {}, conn
 		return {
 			fid: f.fid,
 			name: f.name,
+			av: f.av || null,
 			online,
 			lastSeen: f.lastSeen || null,
 			shared: online && !!p.share,
@@ -212,6 +230,7 @@ function createFriends({ store, relays, connect, lobbyCode, log = () => {}, conn
 		return {
 			fid: myFid,
 			pub: identity.pub,
+			av: myAv,
 			friends: list,
 			requests,
 			pendingAdds: [...pendingAdds.keys()],
@@ -342,6 +361,16 @@ function createFriends({ store, relays, connect, lobbyCode, log = () => {}, conn
 					save();
 				}
 				f.p = { share: !!msg.share, track: msg.share ? cleanTrack(msg.track) : null, playing: !!msg.playing, lobby: !!msg.lobby, host: !!msg.host, join: !!msg.join };
+				if (typeof msg.avh === "string" && msg.avh !== f.avh) {
+					if (!msg.avh) {
+						f.av = null; // they removed their picture
+						f.avh = "";
+						save();
+					} else if (Date.now() - f.avAskedAt > AVATAR_ASK_MS) {
+						f.avAskedAt = Date.now();
+						sendTo(f, "avq");
+					}
+				}
 				if (msg.ask) sendPresence(f); // they just came online: tell them how we are
 				if (!wasOnline) log(`friends: ${f.name} is online`);
 				changed();
@@ -351,6 +380,18 @@ function createFriends({ store, relays, connect, lobbyCode, log = () => {}, conn
 				f.online = false;
 				changed();
 				break;
+			case "avq": // they want our picture
+				sendTo(f, "av", { av: myAv });
+				break;
+			case "av": {
+				const av = cleanAvatar(msg.av);
+				if (msg.av && !av) return;
+				f.av = av;
+				f.avh = avatarHash(av);
+				save();
+				changed();
+				break;
+			}
 			case "ok": // they accepted our request again (we were already friends): nothing to do
 				f.lastSeen = Date.now();
 				break;
@@ -419,6 +460,7 @@ function createFriends({ store, relays, connect, lobbyCode, log = () => {}, conn
 			lobby: !!presence.inLobby,
 			host: !!presence.host,
 			join: allowJoin,
+			avh: avatarHash(myAv),
 			...(ask ? { ask: true } : {}),
 		};
 	}
@@ -659,6 +701,14 @@ function createFriends({ store, relays, connect, lobbyCode, log = () => {}, conn
 		presenceChanged();
 	}
 
+	function setAvatar(dataUrl) {
+		const av = cleanAvatar(dataUrl);
+		if (av === myAv) return;
+		myAv = av;
+		presenceChanged(); // friends see the new hash and ask for the picture
+		changed();
+	}
+
 	function setOptions(o = {}) {
 		let diff = false;
 		if (o.share !== undefined && !!o.share !== share) (share = !!o.share), (diff = true);
@@ -721,6 +771,7 @@ function createFriends({ store, relays, connect, lobbyCode, log = () => {}, conn
 		pub: identity.pub,
 		state: snapshot,
 		setName,
+		setAvatar,
 		setOptions,
 		setPresence,
 		startAdd,
@@ -737,4 +788,4 @@ function createFriends({ store, relays, connect, lobbyCode, log = () => {}, conn
 	};
 }
 
-module.exports = { createFriends, fidOf, cleanName };
+module.exports = { createFriends, fidOf, cleanName, cleanAvatar, avatarHash };

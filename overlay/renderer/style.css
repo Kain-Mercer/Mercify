@@ -1102,7 +1102,7 @@ body.edit .rh {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 4px 4px;
+	padding: 3px 4px;
 	font-size: 12.5px;
 }
 .lb-mname {
@@ -1112,20 +1112,6 @@ body.edit .rh {
 }
 .lb-member.host .lb-mname {
 	font-weight: 650;
-}
-.lb-crown svg {
-	width: 13px;
-	height: 13px;
-	fill: #f5c542;
-	display: block;
-}
-.lb-dot {
-	width: 7px;
-	height: 7px;
-	margin: 0 3px;
-	border-radius: 50%;
-	background: var(--accent);
-	flex: none;
 }
 .lb-you {
 	font-size: 10.5px;
@@ -1570,12 +1556,22 @@ body.edit .notice.sample {
 .fr-row {
 	cursor: default;
 }
-.fr-avatar {
+/* profile pictures: the picture (or first letter), with a badge in the lower-right corner */
+.av {
 	position: relative;
 	width: 32px;
 	height: 32px;
-	border-radius: 50%;
 	flex: none;
+}
+.av.small {
+	width: 24px;
+	height: 24px;
+}
+.av-face {
+	width: 100%;
+	height: 100%;
+	border-radius: 50%;
+	overflow: hidden;
 	display: grid;
 	place-items: center;
 	font-weight: 700;
@@ -1583,25 +1579,54 @@ body.edit .notice.sample {
 	color: hsl(var(--hue) 70% 85%);
 	background: hsl(var(--hue) 45% 28%);
 }
-.fr-row:not(.online) .fr-avatar {
+.av.small .av-face {
+	font-size: 11px;
+}
+.av-face img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+.av-badge {
+	position: absolute;
+	right: -2px;
+	bottom: -2px;
+}
+.av-badge.dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--accent);
+	border: 2px solid rgb(18, 20, 24);
+}
+.av.small .av-badge.dot {
+	width: 8px;
+	height: 8px;
+}
+.av-badge.crown {
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background: rgb(18, 20, 24);
+	display: grid;
+	place-items: center;
+}
+.av-badge.crown svg {
+	width: 10px;
+	height: 10px;
+	fill: #f5c542;
+	display: block;
+}
+.fr-row:not(.online) .av-face {
 	filter: grayscale(1);
 	opacity: 0.55;
 }
 .fr-row:not(.online) .row-title {
 	color: var(--text-dim);
 }
-.fr-status {
-	position: absolute;
-	right: -1px;
-	bottom: -1px;
-	width: 10px;
-	height: 10px;
-	border-radius: 50%;
+.fr-row:not(.online) .fr-status {
 	background: var(--text-faint);
-	border: 2px solid rgb(18, 20, 24);
-}
-.fr-row.online .fr-status {
-	background: var(--accent);
 }
 .fr-note svg {
 	width: 10px;

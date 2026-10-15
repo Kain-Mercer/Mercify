@@ -82,9 +82,17 @@
 						<h2>Listening lobby</h2>
 						<span class="muted" id="lobby-status">Not in a lobby</span>
 					</div>
-					<div class="add-row">
-						<input type="text" id="lobby-name" maxlength="24" placeholder="Your name, as friends will see it" spellcheck="false" />
+					<div class="add-row profile-row">
+						<button class="avatar-pick" id="avatar-pick" title="Choose a profile picture"><span class="avatar-preview" id="avatar-preview"></span><span class="avatar-edit">Edit</span></button>
+						<div class="profile-fields">
+							<input type="text" id="lobby-name" maxlength="24" placeholder="Your name, as friends will see it" spellcheck="false" />
+							<div class="profile-links">
+								<button class="link" id="avatar-choose">Choose a profile picture</button>
+								<button class="link muted-link" id="avatar-clear" hidden>Remove picture</button>
+							</div>
+						</div>
 					</div>
+					<p class="lobby-error" id="avatar-error" hidden></p>
 					<div class="add-row" id="lobby-out">
 						<button class="btn" id="lobby-start">Start a lobby</button>
 						<input type="text" id="lobby-code" maxlength="19" placeholder="Or enter a friend's code" spellcheck="false" />

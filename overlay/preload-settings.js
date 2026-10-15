@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("settings", {
 	lobbyStart: () => ipcRenderer.invoke("settings:lobby-start"),
 	lobbyJoin: (code) => ipcRenderer.invoke("settings:lobby-join", code),
 	lobbyCopy: () => ipcRenderer.send("settings:lobby-copy"),
+	pickAvatar: () => ipcRenderer.invoke("settings:pick-avatar"),
+	clearAvatar: () => ipcRenderer.invoke("settings:clear-avatar"),
 	onLog: on("settings:log"),
 	onChanged: on("settings:changed"),
 	onGate: on("settings:gate"),

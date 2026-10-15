@@ -146,6 +146,20 @@ function addFriendInLobby(from, to) {
 	await until(() => al.lobby.state().members.length === 3 && al.lobby.state().members.every((m) => m.fid));
 	check("lobby members carry their friend ids", al.lobby.state().members.every((m) => m.fid), al.lobby.state().members.map((m) => `${m.name}:${m.fid}`).join(" "));
 
+	// ---------------------------------------------------------------- profile pictures in the lobby
+	const PIC = "data:image/jpeg;base64," + Buffer.from("not really a jpeg, but the right shape " + "x".repeat(3000)).toString("base64");
+	al.lobby.setAvatar(PIC);
+	await until(() => bea.lobby.state().members.find((m) => m.fid === al.friends.fid)?.av === PIC);
+	check("lobby members see a new profile picture", bea.lobby.state().members.find((m) => m.fid === al.friends.fid)?.av === PIC);
+	const dan = install("Dan");
+	await dan.lobby.join(code);
+	await until(() => dan.lobby.state().members.find((m) => m.fid === al.friends.fid)?.av === PIC);
+	check("someone joining later gets it too", dan.lobby.state().members.find((m) => m.fid === al.friends.fid)?.av === PIC);
+	await dan.lobby.leave();
+	bea.lobby.setAvatar("javascript:alert(1)");
+	await sleep(300);
+	check("anything that isn't a picture is ignored", !al.lobby.state().members.find((m) => m.fid === bea.friends.fid)?.av);
+
 	// ---------------------------------------------------------------- friend request, accepted
 	check("Al sends Bea a friend request", addFriendInLobby(al, bea) === "sent");
 	await until(() => bea.friends.state().requests.some((r) => r.kind === "add"));
@@ -188,6 +202,15 @@ function addFriendInLobby(from, to) {
 	await until(() => bea.friendOf(al)?.track === null);
 	check("sharing off: friends don't see the song", bea.friendOf(al)?.track === null && bea.friendOf(al)?.online);
 	al.friends.setOptions({ share: true });
+
+	al.friends.setAvatar(PIC);
+	await until(() => bea.friendOf(al)?.av === PIC);
+	check("friends get your profile picture", bea.friendOf(al)?.av === PIC);
+	check("and keep it for when you're offline", bea.store.data.friends.find((f) => f.fid === al.friends.fid)?.av === PIC);
+	al.friends.setAvatar(null);
+	await until(() => bea.friendOf(al)?.av === null);
+	check("removing it removes it for friends", bea.friendOf(al)?.av === null);
+	al.friends.setAvatar(PIC);
 
 	// ---------------------------------------------------------------- request to join, accepted
 	check("Al isn't in a lobby", al.lobby.state().status === "idle");

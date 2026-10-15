@@ -16,6 +16,8 @@
 //   Mercify plays the next one from the list (so everyone follows). The host owns the list and
 //   broadcasts it; if the host leaves, the new host carries on with its copy.
 //
+// - Heartbeats also carry a hash of the member's profile picture; the picture itself (a few KB) is
+//   sent along with "hello", in answer to one, and to anyone who asks ("av-ask").
 // - Each member's heartbeat carries their friends public key (see friends.js), so you can send
 //   someone in the lobby a friend request; the request and its answer go through the lobby.
 //
@@ -24,7 +26,7 @@
 const crypto = require("crypto");
 const { EventEmitter } = require("events");
 const mqtt = require("mqtt");
-const { fidOf } = require("./friends");
+const { fidOf, cleanAvatar, avatarHash } = require("./friends");
 
 // Free public MQTT relays, all checked by the "Check lobby relays" workflow.
 // (mqtt.eclipseprojects.io on port 443 was tried and never connected.)
@@ -141,6 +143,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 	const ev = new EventEmitter();
 
 	let name = "";
+	let avatar = null; // our profile picture (data URL)
 	let clients = [];
 	let key = null;
 	let topic = null;
@@ -186,8 +189,8 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 
 	function snapshot() {
 		const list = [];
-		if (me) list.push({ id: me.id, name: me.name, role, you: true, fid: friendPub ? fidOf(friendPub) : null });
-		for (const m of members.values()) list.push({ id: m.id, name: m.name, role: m.id === hostId ? "host" : "listener", you: false, fid: m.fid || null });
+		if (me) list.push({ id: me.id, name: me.name, role, you: true, fid: friendPub ? fidOf(friendPub) : null, av: avatar });
+		for (const m of members.values()) list.push({ id: m.id, name: m.name, role: m.id === hostId ? "host" : "listener", you: false, fid: m.fid || null, av: m.av || null });
 		list.sort((a, b) => (a.role === "host" ? -1 : b.role === "host" ? 1 : 0));
 		const host = list.find((m) => m.role === "host");
 		return {
@@ -227,6 +230,12 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		if (!key || !me) return;
 		const msg = { id: me.id, n: ++seq, ty: type, name: me.name, joinedAt: me.joinedAt, ...fields };
 		if (friendPub && (type === "hello" || type === "here")) msg.fpub = friendPub;
+		if (type === "hello" || type === "here") {
+			msg.avh = avatarHash(avatar);
+			// the picture itself goes to newcomers (our hello, our answer to theirs) and on a change
+			if (avatar && (type === "hello" || fields.to || fields.withAv)) msg.av = avatar;
+			delete msg.withAv;
+		}
 		const buf = seal(key, msg);
 		if (trace) log(`send ${type} n=${msg.n} relays=${clients.filter((c) => c.connected).length}`);
 		for (const c of clients) if (c.connected) c.publish(topic, buf, { qos: 0, retain: false });
@@ -259,6 +268,17 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		// their friends public key (older versions don't send one)
 		const fid = typeof msg.fpub === "string" ? fidOf(msg.fpub) : null;
 		if (fid) Object.assign(m, { fpub: msg.fpub, fid });
+		// their profile picture: sent along, or asked for when the hash says ours is out of date
+		const av = cleanAvatar(msg.av);
+		if (av) Object.assign(m, { av, avh: avatarHash(av) });
+		else if (typeof msg.avh === "string" && msg.avh !== (m.avh || "")) {
+			if (!msg.avh) Object.assign(m, { av: null, avh: "" });
+			else if (!m.avAskedAt || Date.now() - m.avAskedAt > 30000) {
+				m.avAskedAt = Date.now();
+				members.set(msg.id, m);
+				send("av-ask", { to: msg.id });
+			}
+		}
 		members.set(msg.id, m);
 		return { m, isNew };
 	}
@@ -347,6 +367,9 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 				if (msg.op === "remove" && item && item.byId === msg.id) hostRemove(msg.qid);
 				break;
 			}
+			case "av-ask":
+				if (avatar) send("here", { role, to: msg.id });
+				break;
 			case "friend-add":
 			case "friend-ok":
 			case "friend-no": {
@@ -877,6 +900,16 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		if (code && me && key) send("bye");
 	}
 
+	function setAvatar(dataUrl) {
+		const av = cleanAvatar(dataUrl);
+		if (av === avatar) return;
+		avatar = av;
+		if (me) {
+			send("here", { role, withAv: true });
+			changed();
+		}
+	}
+
 	function setName(n) {
 		name = cleanName(n);
 		if (me && name) {
@@ -977,6 +1010,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		member,
 		leaveNow,
 		setName,
+		setAvatar,
 		queueAdd,
 		queueAddMany,
 		queueRemove,
