@@ -1,18 +1,250 @@
-:root {
+/* Themes: Classic (default), Neon, Light and Vice, picked in Settings (General) and set as
+   <html data-theme> by app.js. Classic is the full set of variables (the overlay's look before
+   themes); the others override it. Edit Mode's amber and the snapping guides stay the same in
+   every theme. Fonts are the ones Settings bundles (../settings/fonts, SIL OFL). */
+
+@font-face {
+	font-family: "Fredoka";
+	src: url("../settings/fonts/fredoka.woff2") format("woff2");
+	font-weight: 300 700;
+	font-display: swap;
+}
+@font-face {
+	font-family: "Nunito Sans";
+	src: url("../settings/fonts/nunito-sans.woff2") format("woff2");
+	font-weight: 200 1000;
+	font-display: swap;
+}
+@font-face {
+	font-family: "Instrument Sans";
+	src: url("../settings/fonts/instrument-sans.woff2") format("woff2");
+	font-weight: 400 700;
+	font-display: swap;
+}
+@font-face {
+	font-family: "JetBrains Mono";
+	src: url("../settings/fonts/jetbrains-mono.woff2") format("woff2");
+	font-weight: 100 800;
+	font-display: swap;
+}
+@font-face {
+	font-family: "Outfit";
+	src: url("../settings/fonts/outfit.woff2") format("woff2");
+	font-weight: 100 900;
+	font-display: swap;
+}
+@font-face {
+	font-family: "Righteous";
+	src: url("../settings/fonts/righteous.woff2") format("woff2");
+	font-weight: 400;
+	font-display: swap;
+}
+
+:root,
+:root[data-theme="classic"] {
 	--panel-bg: rgba(14, 16, 20, 0.86);
 	--panel-border: rgba(255, 255, 255, 0.08);
 	--panel-radius: 12px;
+	--panel-solid: rgb(18, 20, 24); /* the panel's colour where something needs it opaque (badge rims) */
+	--row-solid: rgb(31, 33, 37); /* a hovered row, opaque (behind a session row's buttons) */
+	--surface: rgba(20, 22, 27, 0.95); /* notifications, the Edit Mode bar and popover */
+	--picker-bg: rgba(14, 16, 20, 0.98);
+	--menu-bg: rgb(26, 28, 33);
+	--menu-border: rgba(255, 255, 255, 0.12);
 	--text: #f2f3f5;
 	--text-dim: #a3a7b0;
 	--text-faint: #6c717c;
 	--accent: #1ed760;
 	--accent-dim: rgba(30, 215, 96, 0.16);
+	--accent-hover: #3be477;
+	--accent-line: rgba(30, 215, 96, 0.3);
+	--accent-line-strong: rgba(30, 215, 96, 0.4);
+	--accent-focus: rgba(30, 215, 96, 0.55);
+	--accent-ring: rgba(30, 215, 96, 0.12);
+	--accent-glow: rgba(30, 215, 96, 0.45);
+	--on-accent: #04130a;
 	--hover: rgba(255, 255, 255, 0.07);
+	--well: rgba(255, 255, 255, 0.06); /* behind artwork that hasn't loaded */
+	--ghost: rgba(255, 255, 255, 0.07);
+	--ghost-hover: rgba(255, 255, 255, 0.13);
+	--chip: rgba(255, 255, 255, 0.1);
+	--chip-hover: rgba(255, 255, 255, 0.18);
+	--input-bg: rgba(255, 255, 255, 0.05);
+	--tab-on: rgba(255, 255, 255, 0.09);
+	--track: rgba(255, 255, 255, 0.16);
+	--track-faint: rgba(255, 255, 255, 0.08);
+	--bar-fill: var(--text);
+	--thumb: #fff;
+	--scroll-thumb: rgba(255, 255, 255, 0.14);
+	--scroll-thumb-hover: rgba(255, 255, 255, 0.25);
+	--spinner-ring: rgba(255, 255, 255, 0.15);
+	--kbd-bg: rgba(255, 255, 255, 0.1);
+	--kbd-border: rgba(255, 255, 255, 0.12);
+	--play-bg: var(--text);
+	--play-hover: #fff;
+	--play-fg: #000;
+	--danger: #ff8a8a;
+	--error-border: rgba(255, 90, 90, 0.5);
+	--vote: #ff4d4f;
+	--vote-text: #ff6b6d;
+	--vote-soft: rgba(255, 77, 79, 0.16);
 	--edit: #f5b83d;
 	--edit-dim: rgba(245, 184, 61, 0.14);
+	--edit-text: var(--edit); /* Edit Mode's labels */
 	--guide: #4fc3ff;
 	--shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
 	--font: "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
+	--font-title: var(--font);
+	--title-weight: 650;
+	--mono: "Cascadia Mono", Consolas, monospace;
+}
+
+:root[data-theme="neon"] {
+	--panel-bg: rgba(7, 9, 8, 0.88);
+	--panel-border: rgba(244, 236, 200, 0.1);
+	--panel-solid: rgb(12, 15, 13);
+	--row-solid: rgb(24, 26, 23);
+	--surface: rgba(10, 13, 11, 0.96);
+	--picker-bg: rgba(7, 9, 8, 0.98);
+	--menu-bg: rgb(17, 22, 19);
+	--menu-border: rgba(244, 236, 200, 0.14);
+	--text: #f4ecc8;
+	--text-dim: #c9c4ad;
+	--text-faint: #a8a38c;
+	--accent: #3dff8a;
+	--accent-dim: rgba(61, 255, 138, 0.14);
+	--accent-hover: #7dffb0;
+	--accent-line: rgba(61, 255, 138, 0.32);
+	--accent-line-strong: rgba(61, 255, 138, 0.42);
+	--accent-focus: rgba(61, 255, 138, 0.55);
+	--accent-ring: rgba(61, 255, 138, 0.14);
+	--accent-glow: rgba(61, 255, 138, 0.5);
+	--on-accent: #04150a;
+	--hover: rgba(244, 236, 200, 0.07);
+	--well: rgba(244, 236, 200, 0.06);
+	--ghost: rgba(244, 236, 200, 0.08);
+	--ghost-hover: rgba(244, 236, 200, 0.14);
+	--chip: rgba(244, 236, 200, 0.1);
+	--chip-hover: rgba(244, 236, 200, 0.18);
+	--input-bg: rgba(244, 236, 200, 0.05);
+	--tab-on: rgba(61, 255, 138, 0.12);
+	--track: rgba(244, 236, 200, 0.16);
+	--track-faint: rgba(244, 236, 200, 0.08);
+	--bar-fill: var(--accent);
+	--thumb: #f4ecc8;
+	--scroll-thumb: rgba(244, 236, 200, 0.14);
+	--scroll-thumb-hover: rgba(244, 236, 200, 0.25);
+	--spinner-ring: rgba(244, 236, 200, 0.15);
+	--kbd-bg: rgba(61, 255, 138, 0.08);
+	--kbd-border: rgba(61, 255, 138, 0.3);
+	--play-bg: var(--accent);
+	--play-hover: #7dffb0;
+	--play-fg: #04150a;
+	--shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35), 0 0 22px rgba(61, 255, 138, 0.07);
+	--font: "Nunito Sans", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+	--font-title: "Fredoka", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+	--title-weight: 600;
+}
+
+:root[data-theme="light"] {
+	--panel-bg: rgba(251, 250, 247, 0.94);
+	--panel-border: rgba(23, 24, 26, 0.1);
+	--panel-solid: rgb(251, 250, 247);
+	--row-solid: rgb(237, 236, 232);
+	--surface: rgba(255, 255, 255, 0.97);
+	--picker-bg: rgba(251, 250, 247, 0.99);
+	--menu-bg: #fff;
+	--menu-border: rgba(23, 24, 26, 0.14);
+	--text: #17181a;
+	--text-dim: #4d4f55;
+	--text-faint: #6a6c72;
+	--accent: #0b6b35;
+	--accent-dim: rgba(11, 107, 53, 0.1);
+	--accent-hover: #0e8042;
+	--accent-line: rgba(11, 107, 53, 0.3);
+	--accent-line-strong: rgba(11, 107, 53, 0.4);
+	--accent-focus: rgba(11, 107, 53, 0.55);
+	--accent-ring: rgba(11, 107, 53, 0.12);
+	--accent-glow: rgba(11, 107, 53, 0.35);
+	--on-accent: #fff;
+	--hover: rgba(23, 24, 26, 0.06);
+	--well: rgba(23, 24, 26, 0.06);
+	--ghost: rgba(23, 24, 26, 0.06);
+	--ghost-hover: rgba(23, 24, 26, 0.11);
+	--chip: rgba(23, 24, 26, 0.07);
+	--chip-hover: rgba(23, 24, 26, 0.13);
+	--input-bg: #fff;
+	--tab-on: rgba(23, 24, 26, 0.08);
+	--track: rgba(23, 24, 26, 0.14);
+	--track-faint: rgba(23, 24, 26, 0.08);
+	--bar-fill: var(--text);
+	--thumb: #fff;
+	--scroll-thumb: rgba(23, 24, 26, 0.2);
+	--scroll-thumb-hover: rgba(23, 24, 26, 0.35);
+	--spinner-ring: rgba(23, 24, 26, 0.15);
+	--kbd-bg: #f6f5f1;
+	--kbd-border: rgba(23, 24, 26, 0.18);
+	--play-bg: #17181a;
+	--play-hover: #000;
+	--play-fg: #fff;
+	--danger: #b3261e;
+	--error-border: rgba(179, 38, 30, 0.5);
+	--vote: #c62828;
+	--vote-text: #c62828;
+	--vote-soft: rgba(198, 40, 40, 0.12);
+	--shadow: 0 10px 30px rgba(20, 20, 30, 0.2), 0 2px 6px rgba(20, 20, 30, 0.14);
+	--font: "Instrument Sans", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+	--font-title: var(--font);
+	--title-weight: 600;
+	--mono: "JetBrains Mono", Consolas, monospace;
+	--edit-text: #8a5200; /* amber text is too faint on light panels */
+}
+
+:root[data-theme="vice"] {
+	--panel-bg: rgba(20, 8, 38, 0.88);
+	--panel-border: rgba(255, 63, 164, 0.28);
+	--panel-solid: rgb(30, 14, 52);
+	--row-solid: rgb(40, 17, 62);
+	--surface: rgba(18, 7, 34, 0.96);
+	--picker-bg: rgba(20, 8, 38, 0.98);
+	--menu-bg: rgb(29, 15, 52);
+	--menu-border: rgba(255, 63, 164, 0.3);
+	--text: #fff2fb;
+	--text-dim: #e3d6f5;
+	--text-faint: #cbb8e6;
+	--accent: #ff3fa4;
+	--accent-dim: rgba(255, 63, 164, 0.16);
+	--accent-hover: #ff6bb9;
+	--accent-line: rgba(255, 63, 164, 0.4);
+	--accent-line-strong: rgba(255, 63, 164, 0.5);
+	--accent-focus: rgba(255, 63, 164, 0.6);
+	--accent-ring: rgba(255, 63, 164, 0.16);
+	--accent-glow: rgba(255, 63, 164, 0.55);
+	--on-accent: #23051a;
+	--hover: rgba(255, 63, 164, 0.1);
+	--well: rgba(255, 242, 251, 0.07);
+	--ghost: rgba(255, 242, 251, 0.08);
+	--ghost-hover: rgba(255, 242, 251, 0.14);
+	--chip: rgba(61, 232, 255, 0.1);
+	--chip-hover: rgba(61, 232, 255, 0.18);
+	--input-bg: rgba(13, 5, 25, 0.6);
+	--tab-on: rgba(255, 63, 164, 0.16);
+	--track: rgba(255, 242, 251, 0.16);
+	--track-faint: rgba(255, 242, 251, 0.08);
+	--bar-fill: linear-gradient(90deg, #3de8ff, #ff3fa4);
+	--thumb: #fff2fb;
+	--scroll-thumb: rgba(255, 242, 251, 0.16);
+	--scroll-thumb-hover: rgba(255, 242, 251, 0.28);
+	--spinner-ring: rgba(255, 242, 251, 0.15);
+	--kbd-bg: rgba(61, 232, 255, 0.1);
+	--kbd-border: rgba(61, 232, 255, 0.4);
+	--play-bg: var(--accent);
+	--play-hover: #ff6bb9;
+	--play-fg: #fff;
+	--shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35), 0 0 22px rgba(255, 63, 164, 0.12);
+	--font: "Outfit", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+	--font-title: "Righteous", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+	--title-weight: 400;
 }
 
 * {
@@ -106,7 +338,7 @@ body.edit:not(.snap) #grid {
 	align-items: center;
 	gap: 14px;
 	padding: 8px 10px 8px 14px;
-	background: rgba(20, 22, 27, 0.96);
+	background: var(--surface);
 	border: 1px solid rgba(245, 184, 61, 0.35);
 	border-radius: 12px;
 	box-shadow: var(--shadow);
@@ -119,7 +351,7 @@ body.edit #edit-bar {
 	visibility: visible;
 }
 .edit-badge {
-	color: var(--edit);
+	color: var(--edit-text);
 	font-weight: 700;
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
@@ -147,11 +379,11 @@ body.edit #edit-bar {
 	filter: brightness(1.08);
 }
 .btn.ghost {
-	background: rgba(255, 255, 255, 0.07);
+	background: var(--ghost);
 }
 .btn.ghost:hover,
 .btn.ghost.zh {
-	background: rgba(255, 255, 255, 0.13);
+	background: var(--ghost-hover);
 }
 .btn.small {
 	padding: 4px 10px;
@@ -256,8 +488,8 @@ body.edit .panel.selected .edit-mask {
 	margin: 6px;
 	padding: 2px 8px;
 	border-radius: 6px;
-	background: rgba(20, 22, 27, 0.92);
-	color: var(--edit);
+	background: var(--surface);
+	color: var(--edit-text);
 	font-size: 11px;
 	font-weight: 700;
 	letter-spacing: 0.04em;
@@ -341,14 +573,14 @@ body.edit .rh {
 .icon-btn.big {
 	width: 34px;
 	height: 34px;
-	background: var(--text);
-	color: #000;
+	background: var(--play-bg);
+	color: var(--play-fg);
 }
 .icon-btn.big:hover,
 .icon-btn.big.zh {
 	transform: scale(1.05);
-	background: #fff;
-	color: #000;
+	background: var(--play-hover);
+	color: var(--play-fg);
 }
 
 /* ---------------------------------------------------------------- now playing */
@@ -367,7 +599,7 @@ body.edit .rh {
 	aspect-ratio: 1;
 	border-radius: 8px;
 	object-fit: cover;
-	background: rgba(255, 255, 255, 0.06);
+	background: var(--well);
 	flex: none;
 }
 .np-art[src=""] {
@@ -421,7 +653,7 @@ body.edit .rh {
 	height: 12px;
 	margin: -6px 0 0 -6px;
 	border-radius: 50%;
-	background: #fff;
+	background: var(--thumb);
 	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 	opacity: 0;
 	transition: opacity 0.12s;
@@ -440,14 +672,14 @@ body.edit .rh {
 	width: 100%;
 	height: 4px;
 	border-radius: 2px;
-	background: rgba(255, 255, 255, 0.16);
+	background: var(--track);
 	overflow: hidden;
 }
 .bar-fill {
 	position: absolute;
 	inset: 0 auto 0 0;
 	width: 0;
-	background: var(--text);
+	background: var(--bar-fill);
 	border-radius: 2px;
 }
 .bar:hover .bar-fill,
@@ -528,16 +760,16 @@ body.edit .rh {
 	color: var(--text-faint);
 }
 .panel:focus-within.bare {
-	border-color: rgba(30, 215, 96, 0.55);
+	border-color: var(--accent-focus);
 	box-shadow:
 		var(--shadow),
-		0 0 0 3px rgba(30, 215, 96, 0.12);
+		0 0 0 3px var(--accent-ring);
 }
 .spinner {
 	width: 14px;
 	height: 14px;
 	border-radius: 50%;
-	border: 2px solid rgba(255, 255, 255, 0.15);
+	border: 2px solid var(--spinner-ring);
 	border-top-color: var(--accent);
 	animation: spin 0.7s linear infinite;
 	flex: none;
@@ -586,13 +818,13 @@ body.edit .rh {
 	width: 8px;
 }
 .scroll::-webkit-scrollbar-thumb {
-	background: rgba(255, 255, 255, 0.14);
+	background: var(--scroll-thumb);
 	border-radius: 4px;
 	border: 2px solid transparent;
 	background-clip: padding-box;
 }
 .scroll::-webkit-scrollbar-thumb:hover {
-	background-color: rgba(255, 255, 255, 0.25);
+	background-color: var(--scroll-thumb-hover);
 }
 
 .section-label {
@@ -639,7 +871,7 @@ body.edit .rh {
 	height: 34px;
 	border-radius: 5px;
 	object-fit: cover;
-	background: rgba(255, 255, 255, 0.06);
+	background: var(--well);
 	flex: none;
 }
 .row img.round {
@@ -710,7 +942,7 @@ body.edit .rh {
 	height: 28px;
 	border-radius: 5px;
 	object-fit: cover;
-	background: rgba(255, 255, 255, 0.06);
+	background: var(--well);
 	flex: none;
 }
 .picker-btn .title {
@@ -727,7 +959,7 @@ body.edit .rh {
 	inset: 0;
 	display: flex;
 	flex-direction: column;
-	background: rgba(14, 16, 20, 0.98);
+	background: var(--picker-bg);
 	z-index: 3;
 }
 .picker[hidden] {
@@ -740,7 +972,7 @@ body.edit .rh {
 	outline: 0;
 	border-radius: 7px;
 	padding: 6px 10px;
-	background: rgba(255, 255, 255, 0.07);
+	background: var(--ghost);
 	color: var(--text);
 	font: inherit;
 }
@@ -773,7 +1005,7 @@ body.edit .rh {
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
-	background: rgba(20, 22, 27, 0.97);
+	background: var(--surface);
 	border: 1px solid rgba(245, 184, 61, 0.35);
 	border-radius: 12px;
 	box-shadow: var(--shadow);
@@ -784,7 +1016,7 @@ body.edit .rh {
 }
 .pop-head {
 	font-weight: 700;
-	color: var(--edit);
+	color: var(--edit-text);
 }
 .slider-row {
 	display: grid;
@@ -872,7 +1104,7 @@ body.edit .rh {
 	aspect-ratio: 1;
 	border-radius: 6px;
 	object-fit: cover;
-	background: rgba(255, 255, 255, 0.06);
+	background: var(--well);
 	flex: none;
 }
 .npc-art[src=""] {
@@ -931,7 +1163,7 @@ body.edit .rh {
 	right: 0;
 	bottom: 0;
 	height: 2px;
-	background: rgba(255, 255, 255, 0.08);
+	background: var(--track-faint);
 }
 .npc-fill {
 	height: 100%;
@@ -994,16 +1226,16 @@ body.edit .rh {
 	padding: 7px 10px;
 	border-radius: 8px;
 	border: 1px solid var(--panel-border);
-	background: rgba(255, 255, 255, 0.05);
+	background: var(--input-bg);
 	color: var(--text);
 	font: inherit;
 	outline: 0;
 }
 .lb-input:focus {
-	border-color: rgba(30, 215, 96, 0.55);
+	border-color: var(--accent-focus);
 }
 .lb-code {
-	font-family: "Cascadia Mono", Consolas, monospace;
+	font-family: var(--mono);
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
 }
@@ -1021,7 +1253,7 @@ body.edit .rh {
 	width: 32px;
 	height: 32px;
 	border-radius: 8px;
-	background: rgba(255, 255, 255, 0.07);
+	background: var(--ghost);
 }
 .lb-btn {
 	border: 0;
@@ -1033,19 +1265,19 @@ body.edit .rh {
 }
 .lb-btn.primary {
 	background: var(--accent);
-	color: #04130a;
+	color: var(--on-accent);
 }
 .lb-btn.primary:hover,
 .lb-btn.primary.zh {
 	filter: brightness(1.08);
 }
 .lb-btn.ghost {
-	background: rgba(255, 255, 255, 0.07);
+	background: var(--ghost);
 	color: var(--text);
 }
 .lb-btn.ghost:hover,
 .lb-btn.ghost.zh {
-	background: rgba(255, 255, 255, 0.13);
+	background: var(--ghost-hover);
 }
 .lb-btn.small {
 	padding: 4px 10px;
@@ -1058,11 +1290,11 @@ body.edit .rh {
 	margin-top: auto;
 }
 .lb-error {
-	color: #ff8a8a;
+	color: var(--danger);
 	font-size: 11.5px;
 }
 .lb-relays.bad {
-	color: #ff8a8a;
+	color: var(--danger);
 }
 .lb-connecting {
 	display: flex;
@@ -1078,11 +1310,11 @@ body.edit .rh {
 	padding: 6px 6px 6px 12px;
 	border-radius: 9px;
 	background: var(--accent-dim);
-	border: 1px solid rgba(30, 215, 96, 0.3);
+	border: 1px solid var(--accent-line);
 }
 .lb-codeval {
 	flex: 1;
-	font: 700 16px "Cascadia Mono", Consolas, monospace;
+	font: 700 16px var(--mono);
 	letter-spacing: 0.12em;
 	color: var(--accent);
 	user-select: text;
@@ -1123,7 +1355,7 @@ body.edit .rh {
 	color: var(--text-faint);
 	padding: 0 6px;
 	border-radius: 999px;
-	background: rgba(255, 255, 255, 0.06);
+	background: var(--well);
 }
 .lb-activity {
 	font-size: 11px;
@@ -1189,7 +1421,7 @@ body.edit .rh {
 	color: var(--text);
 }
 .sp-tab.on {
-	background: rgba(255, 255, 255, 0.09);
+	background: var(--tab-on);
 	color: var(--text);
 }
 .sp-count {
@@ -1229,7 +1461,7 @@ body.edit .rh {
 	max-width: 80px;
 	padding: 1px 7px;
 	border-radius: 999px;
-	background: rgba(255, 255, 255, 0.07);
+	background: var(--ghost);
 	color: var(--text-dim);
 	font-size: 10.5px;
 	white-space: nowrap;
@@ -1248,7 +1480,7 @@ body.edit .rh {
 	transform: translateY(-50%);
 	display: flex;
 	padding-left: 18px;
-	background: linear-gradient(90deg, transparent, rgb(31, 33, 37) 18px);
+	background: linear-gradient(90deg, transparent, var(--row-solid) 18px);
 	border-radius: 0 8px 8px 0;
 	opacity: 0;
 	pointer-events: none;
@@ -1265,7 +1497,7 @@ body.edit .rh {
 	width: 34px;
 	height: 34px;
 	border-radius: 5px;
-	background: rgba(255, 255, 255, 0.06);
+	background: var(--well);
 	display: grid;
 	place-items: center;
 	flex: none;
@@ -1326,7 +1558,7 @@ body:not(.edit) .panel[data-id="notices"] {
 	max-width: 100%;
 	padding: 8px 14px;
 	border-radius: 10px;
-	background: rgba(20, 22, 27, 0.95);
+	background: var(--surface);
 	border: 1px solid var(--panel-border);
 	box-shadow: var(--shadow);
 	text-align: center;
@@ -1342,14 +1574,14 @@ body:not(.edit) .panel[data-id="notices"] {
 	transform: none;
 }
 .notice.error {
-	border-color: rgba(255, 90, 90, 0.5);
+	border-color: var(--error-border);
 }
 .notice kbd {
 	font: 600 11px var(--font);
 	padding: 1px 6px;
 	border-radius: 4px;
-	background: rgba(255, 255, 255, 0.1);
-	border: 1px solid rgba(255, 255, 255, 0.12);
+	background: var(--kbd-bg);
+	border: 1px solid var(--kbd-border);
 }
 /* a sample so the panel has something to show while you place it */
 .notice.sample {
@@ -1398,7 +1630,7 @@ body.edit .notice.sample {
 .pill-btn:hover,
 .pill-btn.zh {
 	background: var(--accent);
-	color: #04130a;
+	color: var(--on-accent);
 }
 .pill-btn svg {
 	width: 12px;
@@ -1422,7 +1654,7 @@ body.edit .notice.sample {
 .row .row-play:hover,
 .row .row-play.zh {
 	background: var(--accent);
-	color: #04130a;
+	color: var(--on-accent);
 }
 
 /* vote skip on the Now row: the prohibition sign appears on hover, like the host's row buttons */
@@ -1449,10 +1681,10 @@ body.edit .notice.sample {
 .sp-vote:hover,
 .sp-vote.zh,
 .sp-now.voted .sp-vote {
-	color: #ff4d4f;
+	color: var(--vote);
 }
 .sp-now.voted .sp-vote {
-	background: rgba(255, 77, 79, 0.16);
+	background: var(--vote-soft);
 }
 .sp-votes {
 	display: inline-flex;
@@ -1461,8 +1693,8 @@ body.edit .notice.sample {
 	flex: none;
 	padding: 1px 7px 1px 5px;
 	border-radius: 999px;
-	background: rgba(255, 77, 79, 0.16);
-	color: #ff6b6d;
+	background: var(--vote-soft);
+	color: var(--vote-text);
 	font-size: 10.5px;
 	font-weight: 650;
 	font-variant-numeric: tabular-nums;
@@ -1479,7 +1711,7 @@ body.edit .notice.sample {
 @keyframes panel-flash {
 	0%,
 	30% {
-		box-shadow: 0 0 0 2px var(--accent), 0 0 24px rgba(30, 215, 96, 0.45);
+		box-shadow: 0 0 0 2px var(--accent), 0 0 24px var(--accent-glow);
 	}
 	100% {
 		box-shadow: 0 0 0 0 transparent;
@@ -1488,8 +1720,8 @@ body.edit .notice.sample {
 
 /* a listener's Next button while their vote to skip counts */
 .icon-btn[data-act="next"].voted {
-	color: #ff4d4f;
-	background: rgba(255, 77, 79, 0.16);
+	color: var(--vote);
+	background: var(--vote-soft);
 }
 
 /* "Not set up yet? Click here to open Setup" while Spotify isn't connected */
@@ -1540,7 +1772,7 @@ body.edit .notice.sample {
 	padding: 6px 6px 6px 10px;
 	border-radius: 8px;
 	background: var(--accent-dim);
-	border: 1px solid rgba(30, 215, 96, 0.3);
+	border: 1px solid var(--accent-line);
 	font-size: 12px;
 }
 .fr-req-text {
@@ -1552,13 +1784,13 @@ body.edit .notice.sample {
 	color: var(--text);
 }
 .pill-btn.ghost {
-	background: rgba(255, 255, 255, 0.08);
+	background: var(--chip);
 	color: var(--text-dim);
 	padding: 4px 10px;
 }
 .pill-btn.ghost:hover,
 .pill-btn.ghost.zh {
-	background: rgba(255, 255, 255, 0.16);
+	background: var(--chip-hover);
 	color: var(--text);
 }
 
@@ -1616,7 +1848,7 @@ body.edit .notice.sample {
 	height: 10px;
 	border-radius: 50%;
 	background: var(--accent);
-	border: 2px solid rgb(18, 20, 24);
+	border: 2px solid var(--panel-solid);
 }
 .av.small .av-badge.dot {
 	width: 8px;
@@ -1626,7 +1858,7 @@ body.edit .notice.sample {
 	width: 14px;
 	height: 14px;
 	border-radius: 50%;
-	background: rgb(18, 20, 24);
+	background: var(--panel-solid);
 	display: grid;
 	place-items: center;
 }
@@ -1666,7 +1898,7 @@ body.edit .notice.sample {
 	display: inline-flex;
 }
 .fr-btn.waiting {
-	background: rgba(255, 255, 255, 0.08);
+	background: var(--chip);
 	color: var(--text-dim);
 	padding: 4px 10px;
 }
@@ -1691,8 +1923,8 @@ body.edit .notice.sample {
 	max-width: 240px;
 	padding: 4px;
 	border-radius: 9px;
-	background: rgb(26, 28, 33);
-	border: 1px solid rgba(255, 255, 255, 0.12);
+	background: var(--menu-bg);
+	border: 1px solid var(--menu-border);
 	box-shadow: var(--shadow);
 	display: flex;
 	flex-direction: column;
@@ -1716,7 +1948,7 @@ body.edit .notice.sample {
 	cursor: default;
 }
 .ctx-item.danger {
-	color: #ff8a8a;
+	color: var(--danger);
 }
 
 /* notifications with buttons take clicks, even while the overlay is hidden */
@@ -1726,7 +1958,7 @@ body .panel .notice.actionable {
 	align-items: center;
 	gap: 12px;
 	text-align: left;
-	border-color: rgba(30, 215, 96, 0.4);
+	border-color: var(--accent-line-strong);
 }
 .nt-actions {
 	display: flex;
@@ -1739,18 +1971,31 @@ body .panel .notice.actionable {
 	padding: 5px 12px;
 	font: 600 12px var(--font);
 	cursor: pointer;
-	background: rgba(255, 255, 255, 0.1);
+	background: var(--chip);
 	color: var(--text);
 }
 .nt-btn:hover,
 .nt-btn.zh {
-	background: rgba(255, 255, 255, 0.18);
+	background: var(--chip-hover);
 }
 .nt-btn.primary {
 	background: var(--accent);
-	color: #04130a;
+	color: var(--on-accent);
 }
 .nt-btn.primary:hover,
 .nt-btn.primary.zh {
-	background: #3be477;
+	background: var(--accent-hover);
+}
+
+/* ---------------------------------------------------------------- theme type */
+/* Titles take the theme's display face (Classic: the body font at 650, as before). */
+.np-title,
+.npc-title,
+.list-head .title {
+	font-family: var(--font-title);
+	font-weight: var(--title-weight);
+}
+:root[data-theme="vice"] .np-title,
+:root[data-theme="vice"] .list-head .title {
+	letter-spacing: 0.02em;
 }

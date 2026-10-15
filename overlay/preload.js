@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("overlay", {
 	onFocusSearch: on("focus-search"),
 	onResetLayout: on("reset-layout"),
 	onToast: on("toast"),
+	onTheme: on("theme"),
 	onInteractiveReset: on("interactive-reset"),
 	onCursor: on("cursor"),
 	setClickZone: (rect) => ipcRenderer.send("click-zone", rect),

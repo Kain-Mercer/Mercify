@@ -67,12 +67,14 @@ const DEFAULT_CONFIG = {
 	// Spotify Premium? true / false / null (not known yet). Set in Settings, or by the extension
 	// once Spotify says which plan the logged-in account is on. Premium gets SpotX's Premium mode.
 	spotifyPremium: null,
-	theme: "neon", // the Settings window's look: "neon", "classic", "light" or "vice"
+	theme: "classic", // the look of Settings and the overlay: "classic", "neon", "light" or "vice"
 	// lobbyRelays: ["wss://..."], // optional: use your own MQTT-over-WebSocket relays instead of the public ones
 };
 
-// Settings window themes and their background (the window's colour before the page paints).
-const THEME_BG = { neon: "#070908", classic: "#0d0f13", light: "#f6f5f1", vice: "#140826" };
+// Themes (Settings and the overlay) and Settings' background in each (the window's colour before
+// the page paints).
+const THEME_BG = { classic: "#0d0f13", neon: "#070908", light: "#f6f5f1", vice: "#140826" };
+const themeName = () => (THEME_BG[config.theme] ? config.theme : "classic");
 
 // Testing: run a second copy side by side with its own settings.
 if (process.env.OVERLAY_DEBUG_USERDATA) app.setPath("userData", process.env.OVERLAY_DEBUG_USERDATA);
@@ -200,7 +202,7 @@ function createWindow() {
 	win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 	setInteractive(false);
 
-	win.loadFile(path.join(__dirname, "renderer", "index.html"));
+	win.loadFile(path.join(__dirname, "renderer", "index.html"), { query: { theme: themeName() } });
 	win.once("ready-to-show", () => {
 		placeWindow("shown"); // inactive: doesn't steal focus from the game on launch
 		sendToRenderer("overlay", { shown: overlayShown, edit: editMode });
@@ -1510,7 +1512,7 @@ function openSettings(page) {
 		useContentSize: true,
 		center: true,
 		title: "Mercify",
-		backgroundColor: THEME_BG[config.theme] || THEME_BG.neon,
+		backgroundColor: THEME_BG[themeName()],
 		autoHideMenuBar: true,
 		icon: path.join(__dirname, "assets", "icon.png"),
 		show: false,
@@ -1523,7 +1525,7 @@ function openSettings(page) {
 	});
 	settingsWin.setMenu(null);
 	// the theme goes in the address too, so the page is drawn in it from the first frame
-	settingsWin.loadFile(path.join(__dirname, "settings", "settings.html"), { query: { theme: THEME_BG[config.theme] ? config.theme : "neon", page: page || "home" } });
+	settingsWin.loadFile(path.join(__dirname, "settings", "settings.html"), { query: { theme: themeName(), page: page || "home" } });
 	settingsWin.once("ready-to-show", () => settingsWin.show());
 	settingsWin.on("closed", () => {
 		settingsWin = null;
@@ -1568,7 +1570,7 @@ async function settingsState() {
 		hotkeys: config.hotkeys,
 		hotkeyDefaults: DEFAULT_CONFIG.hotkeys,
 		failedHotkeys: [...failedHotkeys],
-		theme: THEME_BG[config.theme] ? config.theme : "neon",
+		theme: themeName(),
 		player: settingsPlayer,
 		friends: friendsView(),
 		version: app.getVersion(),
@@ -1712,6 +1714,7 @@ ipcMain.handle("settings:set", async (_e, key, value) => {
 	else if (key === "theme" && THEME_BG[value]) {
 		config.theme = value;
 		if (settingsWin && !settingsWin.isDestroyed()) settingsWin.setBackgroundColor(THEME_BG[value]);
+		sendToRenderer("theme", value); // the overlay's panels follow straight away
 	}
 	else if (key === "friendsShareListening" || key === "friendsAllowJoin") {
 		config[key] = !!value;

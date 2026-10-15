@@ -6,9 +6,9 @@ const $$ = (s) => document.querySelectorAll(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 // The theme comes in the address too (main.js), so the first frame is already drawn in it.
-const THEMES = ["neon", "classic", "light", "vice"];
+const THEMES = ["classic", "neon", "light", "vice"];
 function applyTheme(t) {
-	document.documentElement.dataset.theme = THEMES.includes(t) ? t : "neon";
+	document.documentElement.dataset.theme = THEMES.includes(t) ? t : "classic";
 }
 applyTheme(new URLSearchParams(location.search).get("theme"));
 
@@ -1002,7 +1002,7 @@ function render(d) {
 	premiumNow = d.spotifyPremium === true;
 	connectNote = d.connectNote || "";
 	if (d.theme && d.theme !== document.documentElement.dataset.theme) applyTheme(d.theme);
-	$$('input[name="theme"]').forEach((el) => (el.checked = el.value === (d.theme || "neon")));
+	$$('input[name="theme"]').forEach((el) => (el.checked = el.value === (d.theme || "classic")));
 	if ("player" in d && !player) player = d.player;
 
 	const s = d.setup;

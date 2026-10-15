@@ -1,5 +1,6 @@
-/* Mercify Settings. One layout (sidebar + pages) in four themes: Neon (default), Classic, Light
-   and Vice, picked in General and set as <html data-theme>. Every colour and type choice is a
+/* Mercify Settings. One layout (sidebar + pages) in four themes: Classic (default), Neon, Light
+   and Vice, picked in General and set as <html data-theme>. The Neon block holds the full set of
+   variables; the others override it. Every colour and type choice is a
    variable below; the components further down only use the variables. Fonts are bundled
    (fonts/, Latin subsets, SIL OFL: fonts/LICENSE.txt), since the window can't load from the web. */
 

@@ -3,6 +3,14 @@
 "use strict";
 
 const api = window.overlay;
+
+// The theme picked in Settings (General): colours and fonts are variables in style.css, set per
+// theme on <html data-theme>. It comes in the address at start and as "theme" when it changes.
+const THEMES = ["classic", "neon", "light", "vice"];
+const applyTheme = (t) => (document.documentElement.dataset.theme = THEMES.includes(t) ? t : "classic");
+applyTheme(new URLSearchParams(location.search).get("theme"));
+api.onTheme(applyTheme);
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (tag, cls, html) => {
 	const e = document.createElement(tag);

@@ -132,7 +132,7 @@ Open **Settings** by clicking the tray icon. Its pages are down the left:
 - **Overlay:** which games Mercify shows over, and how it behaves with more than one monitor.
 - **Hotkeys:** press **Change** next to a shortcut, then press the new keys. Play/pause, next and previous can have shortcuts too.
 - **Setup:** what's installed, and **Redo** for any step if something stops working.
-- **General:** start Mercify with Windows (it then waits quietly in the tray instead of opening Settings), open Spotify with it, the theme (**Neon**, **Classic**, **Light** or **Vice**), and [updates](#updates).
+- **General:** start Mercify with Windows (it then waits quietly in the tray instead of opening Settings), open Spotify with it, the theme (**Classic**, **Neon**, **Light** or **Vice**, for Settings and the panels in your game), and [updates](#updates).
 
 </details>
 
