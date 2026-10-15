@@ -46,7 +46,7 @@ async function ytdlp() {
 	const found = await yt.search("meme edit");
 	check("search returns videos", found.length === 3 && found.every((f) => f.uri.startsWith("youtube:")), found.map((f) => f.uri).join(" "));
 	const progress = [];
-	const [a, b] = await Promise.all([yt.prepare("G5KxZ5Lc_YA", (p) => progress.push(p)), yt.prepare("G5KxZ5Lc_YA")]);
+	const [a, b] = await Promise.all([yt.prepare("G5KxZ5Lc_YA", { onProgress: (p) => progress.push(p) }), yt.prepare("G5KxZ5Lc_YA")]);
 	check("two requests share one download", a === b && fs.existsSync(a), path.basename(a));
 	check("download progress is reported", progress.includes(100), progress.join(","));
 	const t = Date.now();
@@ -60,6 +60,17 @@ async function ytdlp() {
 	err = null;
 	await yt.prepare("signinalway").catch((e) => (err = e.message));
 	check("one that still wants a sign-in says so plainly", err === "YouTube won't play this one without signing in. Try another upload of it", err);
+	const state = JSON.parse(fs.readFileSync(path.join(tmp, "bin", "state.json"), "utf8"));
+	check("after the other clients were needed, they go first for a while", state.othersFirstUntil > Date.now() + 5 * 3600 * 1000);
+	// fetching ahead waits its turn; playing a video that's still waiting starts it at once
+	const t0 = Date.now();
+	const ahead = yt.prepare("aheadvideo1", { background: true });
+	const waitingOne = yt.prepare("aheadvideo2", { background: true });
+	await sleep(50);
+	await yt.prepare("aheadvideo2"); // clicked
+	const clickedAfter = Date.now() - t0;
+	await Promise.all([ahead, waitingOne]);
+	check("a clicked video jumps the fetch-ahead queue", clickedAfter < 550, `${clickedAfter} ms (a turn takes ~300)`);
 	// old files go, the one playing stays
 	fs.writeFileSync(path.join(tmp, "cache", "oldvideo123.webm"), "x");
 	fs.utimesSync(path.join(tmp, "cache", "oldvideo123.webm"), new Date(Date.now() - 3 * 86400000), new Date(Date.now() - 3 * 86400000));

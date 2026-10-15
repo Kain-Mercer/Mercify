@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld("overlay", {
 	onLobby: on("lobby"),
 	ytLookup: (text) => ipcRenderer.invoke("yt:lookup", text),
 	ytSearch: (query) => ipcRenderer.invoke("yt:search", query),
+	ytPrefetch: (ids, front) => ipcRenderer.send("yt:prefetch", ids, !!front),
 	friendsGet: () => ipcRenderer.invoke("friends:get"),
 	friendsAdd: (memberId) => ipcRenderer.invoke("friends:add", memberId),
 	friendsRemove: (fid) => ipcRenderer.invoke("friends:remove", fid),

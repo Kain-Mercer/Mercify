@@ -1196,6 +1196,12 @@ function trackRow(t, { index = null, contextUri = null, showIndex = false } = {}
 		if (document.activeElement?.matches?.('input[type="text"]')) api.releaseFocus();
 	});
 	if (S.player?.uri === t.uri) r.classList.add("playing");
+	// a YouTube video the mouse rests on starts downloading, so a click usually finds it ready
+	if (t.uri?.startsWith("youtube:")) {
+		let hover = null;
+		r.addEventListener("mouseenter", () => !S.edit && (hover = setTimeout(() => api.ytPrefetch([t.uri.slice(8)], true), 300)));
+		r.addEventListener("mouseleave", () => clearTimeout(hover));
+	}
 	return r;
 }
 
@@ -1350,6 +1356,7 @@ function youTubeSearchRow() {
 		const frag = document.createDocumentFragment();
 		frag.append(el("div", "section-label", "YouTube"));
 		for (const t of r.items) frag.append(trackRow(t));
+		api.ytPrefetch(r.items.slice(0, 2).map((t) => t.uri.slice(8))); // the likely picks, ready before the click
 		if (!r.items.length) frag.append(el("div", "empty-note", "No videos found"));
 		row.replaceWith(frag);
 	});

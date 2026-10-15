@@ -1180,7 +1180,7 @@ function prefetchLobbyVideos() {
 		if (!isYouTubeUri(uri)) continue;
 		const id = uri.slice(8);
 		if (Date.now() - (ytFailed.get(id) || 0) < 600000 || youtube.cachedFile(id)) continue;
-		youtube.prepare(id).catch((err) => {
+		youtube.prepare(id, { background: true }).catch((err) => {
 			ytFailed.set(id, Date.now());
 			diag(`youtube: couldn't fetch ${id} ahead: ${err.message}`);
 		});
@@ -1197,6 +1197,14 @@ ipcMain.handle("yt:lookup", async (_e, text) => {
 		return { ok: true, item: await youtube.lookup(id) };
 	} catch (err) {
 		return { ok: false, error: err.message, item: youtube.item(id) };
+	}
+});
+// Fetching ahead from the overlay: the top search results (in turn), and a result the mouse
+// rests on (ahead of those), so a click usually finds the video ready.
+ipcMain.on("yt:prefetch", (_e, ids, front) => {
+	for (const id of (Array.isArray(ids) ? ids : []).slice(0, 3)) {
+		if (typeof id !== "string" || youtube.cachedFile(id) || Date.now() - (ytFailed.get(id) || 0) < 600000) continue;
+		youtube.prepare(id, { background: true, front: !!front }).catch((err) => ytFailed.set(id, Date.now()) && diag(`youtube: couldn't fetch ${id} ahead: ${err.message}`));
 	}
 });
 ipcMain.handle("yt:search", async (_e, query) => {

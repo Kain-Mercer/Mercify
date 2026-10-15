@@ -24,10 +24,12 @@ const CACHE_MAX_BYTES = 300 * 1024 * 1024;
 const CACHE_MAX_AGE_MS = 2 * 24 * 3600 * 1000;
 const UPDATE_EVERY_MS = 24 * 3600 * 1000;
 const RUN_TIMEOUT_MS = 120000; // a download or lookup with no end
-const MAX_DOWNLOADS = 2; // at once
 // YouTube sometimes refuses a video to yt-dlp's default clients ("Please sign in", often big
 // labels' music videos) but not to others that need no account either; tried once more with these.
+// Once they've been needed, they go first for a while (YouTube tends to treat a connection the
+// same way for a time), saving a failed attempt on every video.
 const FALLBACK_CLIENTS = "youtube:player_client=tv_simply,web_embedded,mweb,android_vr";
+const OTHERS_FIRST_MS = 6 * 3600 * 1000;
 const wantsSignIn = (e) => /sign in|login required|not a bot/i.test(`${e?.stderr || ""} ${e?.message || ""}`) && !/confirm your age/i.test(e?.stderr || "");
 
 // The video id in a YouTube link (watch, youtu.be, shorts, embed, music.youtube.com, live), or null.
@@ -93,8 +95,10 @@ function createYouTube({ dir, cacheDir, nodePath, fetch, log = () => {}, platfor
 	let updating = null;
 	let version = null;
 	let lastError = null;
-	let active = 0;
-	const waiting = [];
+	// Fetching ahead (search results, lobbies) waits its turn, one at a time; what you play (or
+	// paste, or point at) starts at once, and takes over a matching download still waiting.
+	const queue = []; // { id, go }
+	let behind = 0; // background downloads running
 
 	const readState = () => {
 		try {
@@ -157,20 +161,28 @@ function createYouTube({ dir, cacheDir, nodePath, fetch, log = () => {}, platfor
 		});
 	}
 
-	// A run that fetches a video's details: if YouTube wants a sign-in, ask again as other clients.
+	// A run that fetches a video: as yt-dlp's default clients, then the others if YouTube wants a
+	// sign-in (or the other way round, while the others are in favour).
 	async function runVideo(args, opts) {
-		try {
-			return await run(args, opts);
-		} catch (e) {
-			if (!wantsSignIn(e)) throw e;
-			log(`youtube: asked to sign in; trying other clients (${FALLBACK_CLIENTS})`);
+		const othersFirst = Date.now() < (readState().othersFirstUntil || 0);
+		const order = othersFirst ? [FALLBACK_CLIENTS, null] : [null, FALLBACK_CLIENTS];
+		for (let i = 0; i < 2; i++) {
+			const clients = order[i];
 			try {
-				const r = await run(["--extractor-args", FALLBACK_CLIENTS, ...args], opts);
-				log("youtube: the other clients got it");
+				const r = await run(clients ? ["--extractor-args", clients, ...args] : args, opts);
+				if (i === 1) {
+					writeState({ othersFirstUntil: clients ? Date.now() + OTHERS_FIRST_MS : 0 });
+					log(`youtube: ${clients ? "the other clients" : "the default clients"} got it; they go first ${clients ? "for the next 6 hours" : "again"}`);
+				}
 				return r;
-			} catch (e2) {
-				log(`youtube: still refused: ${String(e2.stderr || e2.message).trim().split(/\r?\n/).pop()}`);
-				throw e2;
+			} catch (e) {
+				const last = String(e.stderr || e.message).trim().split(/\r?\n/).pop();
+				// a real error from the default clients (removed, private, offline) isn't retried
+				if (i === 1 || (!clients && !wantsSignIn(e))) {
+					if (i === 1) log(`youtube: refused both ways: ${last}`);
+					throw e;
+				}
+				log(`youtube: ${clients ? "the other clients" : "asked to sign in;"} ${clients ? "failed" : "trying the other clients"} (${last})`);
 			}
 		}
 	}
@@ -305,29 +317,42 @@ function createYouTube({ dir, cacheDir, nodePath, fetch, log = () => {}, platfor
 		}
 	}
 
-	async function slot() {
-		if (active < MAX_DOWNLOADS) return active++;
-		await new Promise((r) => waiting.push(r));
-		active++;
+	// A turn for a background download: resolves true when it may start (taking the one place).
+	function turn(id, front) {
+		return new Promise((go) => {
+			const e = { id, go };
+			front ? queue.unshift(e) : queue.push(e);
+			pump();
+		});
 	}
-	function release() {
-		active--;
-		const next = waiting.shift();
-		if (next) next();
+	function pump() {
+		while (behind < 1 && queue.length) {
+			behind++;
+			queue.shift().go(true);
+		}
+	}
+	// Wanted now: a background download of it still waiting starts at once, outside the queue.
+	function promote(id) {
+		const i = queue.findIndex((e) => e.id === id);
+		if (i >= 0) queue.splice(i, 1)[0].go(false);
 	}
 
-	// The video's audio as a local file (downloaded once, then from the cache).
-	function prepare(id, onProgress) {
+	// The video's audio as a local file (downloaded once, then from the cache). background: fetching
+	// ahead, one at a time (front: ahead of the others waiting).
+	function prepare(id, { onProgress = null, background = false, front = false } = {}) {
 		if (!ID_RE.test(id)) return Promise.reject(new Error("That isn't a YouTube video"));
 		const have = cachedFile(id);
 		if (have) {
 			touch(have);
 			return Promise.resolve(have);
 		}
-		if (downloads.has(id)) return downloads.get(id);
+		if (downloads.has(id)) {
+			if (!background) promote(id);
+			return downloads.get(id);
+		}
 		const p = (async () => {
 			await ready();
-			await slot();
+			const counted = background ? await turn(id, front) : false;
 			try {
 				fs.mkdirSync(cacheDir, { recursive: true });
 				let file = null;
@@ -362,7 +387,10 @@ function createYouTube({ dir, cacheDir, nodePath, fetch, log = () => {}, platfor
 				cleanup();
 				return file;
 			} finally {
-				release();
+				if (counted) {
+					behind--;
+					pump();
+				}
 			}
 		})();
 		downloads.set(id, p);
