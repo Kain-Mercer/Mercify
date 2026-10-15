@@ -191,7 +191,7 @@ static void activate(HWND h) {
 // a left press inside the zone is kept from the game and reported, with the drag and release
 // that follow, as {"zone":"down"|"move"|"up","x":..,"y":..} (physical screen pixels); a wheel
 // notch there as {"zone":"wheel","x":..,"y":..,"d":120}. Right clicks in the zone are kept from
-// the game too. While the cursor is hidden (the game is steering the camera) or another button
+// the game too, and reported on release as {"zone":"context",...} (Mercify's right-click menus). While the cursor is hidden (the game is steering the camera) or another button
 // is held, everything passes through untouched. The hook only exists while a zone is set.
 
 static CRITICAL_SECTION zone_lock;
@@ -280,7 +280,11 @@ static LRESULT CALLBACK mouse_hook(int code, WPARAM wp, LPARAM lp) {
 		if (inside && !capturing && !(GetAsyncKeyState(VK_LBUTTON) & 0x8000) && cursor_showing()) right_eaten = eat = 1;
 		break;
 	case WM_RBUTTONUP:
-		if (right_eaten) right_eaten = 0, eat = 1;
+		if (right_eaten) {
+			right_eaten = 0;
+			eat = 1;
+			zone_report("context", pt, 0);
+		}
 		break;
 	case WM_MOUSEWHEEL:
 		if (inside && !capturing && cursor_showing()) {

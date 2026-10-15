@@ -54,7 +54,7 @@ const step = async (label, want, setup) => { setup(); await sleep(500); gate(); 
 	fg.setClickZone(rects);
 	fg.setClickZone(rects.map((r) => ({ ...r }))); // unchanged: not sent again
 	await sleep(400);
-	const okZone = got.length === 2 && got[0].type === "down" && got[1].type === "up" && got[1].x === 120 && got[1].y === 210;
+	const okZone = got.length === 3 && got[0].type === "down" && got[1].type === "up" && got[1].x === 120 && got[1].y === 210 && got[2].type === "context";
 	console.log(`${okZone ? "PASS" : "FAIL"}  click zone reports clicks: ${JSON.stringify(got)}`);
 	if (!okZone) fails++;
 	fg.setClickZone(null);

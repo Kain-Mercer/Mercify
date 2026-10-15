@@ -55,6 +55,8 @@ const ICON = {
 	top: I("M3 2.5h10V4H3zM8 5.5l4.5 4.5-1.1 1.1-2.65-2.65V14h-1.5V8.45L4.6 11.1 3.5 10z"),
 	collapse: I("M2 9h5v5H5.5v-2.4L2.9 14.2 1.8 13.1l2.6-2.6H2zM14 7H9V2h1.5v2.4l2.6-2.6 1.1 1.1-2.6 2.6H14z"),
 	expand: I("M1.5 9.5H3v2.4l2.6-2.6 1.1 1.1-2.6 2.6h2.4v1.5h-5zM14.5 6.5H13V4.1l-2.6 2.6-1.1-1.1 2.6-2.6H9.5V1.5h5z"),
+	person: I("M8 1.8a3.1 3.1 0 1 1 0 6.2 3.1 3.1 0 0 1 0-6.2zM8 9.2c3.2 0 5.8 1.7 5.8 3.8v1.2H2.2V13c0-2.1 2.6-3.8 5.8-3.8z"),
+	join: I("M9 2.5h3.5A1.5 1.5 0 0 1 14 4v8a1.5 1.5 0 0 1-1.5 1.5H9V12h3.5V4H9zM6.6 4.4l3.6 3.6-3.6 3.6-1.06-1.06 1.79-1.79H1.5v-1.5h5.83L5.54 5.46z"),
 };
 
 // ------------------------------------------------------------------ app state
@@ -78,6 +80,7 @@ const S = {
 	layout: null,
 	selected: null,
 	lobby: null, // listening lobby state from the main process
+	friends: null, // friends list and requests from the main process
 };
 
 // ------------------------------------------------------------------ panel registry + default layout
@@ -121,6 +124,11 @@ const PANELS = {
 		title: "Lobby",
 		min: [240, 180],
 		def: (W, H) => ({ x: W - 24 - 300, y: H - 24 - 300, w: 300, h: 300, shownAlpha: 1, hiddenAlpha: 0 }),
+	},
+	friends: {
+		title: "Friends",
+		min: [220, 140],
+		def: (W, H) => ({ x: W - 24 - 300, y: Math.max(24, H - 24 - 300 - 12 - 280), w: 300, h: 280, shownAlpha: 1, hiddenAlpha: 0 }),
 	},
 };
 
@@ -266,8 +274,9 @@ function hoverAt(target) {
 	if (S.zone) return zoneHover(target);
 	if (S.dragging) return setInteractive(true);
 	const over = target?.closest?.(".panel:not(.off)");
-	// While hidden, only the Now Playing widget takes clicks (others have pointer-events: none).
-	const usable = !!over && over.style.visibility !== "hidden" && (S.shown || over.classList.contains("live-hidden"));
+	// While hidden, only the Now Playing widget takes clicks (others have pointer-events: none),
+	// and notifications with buttons (a friend asking to join).
+	const usable = !!over && over.style.visibility !== "hidden" && (S.shown || over.classList.contains("live-hidden") || !!target.closest(".notice.actionable"));
 	setInteractive(usable);
 }
 
@@ -285,10 +294,15 @@ function clickablePanels() {
 	if (!S.layout || S.edit) return [];
 	return Object.keys(PANELS).filter((id) => {
 		const p = panelEls[id];
-		if (!p || PANELS[id].passive || p.classList.contains("off") || p.style.visibility === "hidden") return false;
+		if (!p || p.classList.contains("off") || p.style.visibility === "hidden") return false;
+		// Notifications never take clicks, except ones with buttons (shown or hidden)
+		if (id === "notices") return hasActionNotices();
+		if (PANELS[id].passive) return false;
 		return S.shown || isLiveHidden(id);
 	});
 }
+
+const hasActionNotices = () => !!nt.stack?.querySelector(".notice.actionable:not(.leaving)");
 
 // The panels that stay visible while the overlay is hidden, in display coordinates: main.js
 // sizes the window to just these then.
@@ -312,8 +326,12 @@ let zoneSent = "";
 function sendClickZone() {
 	const rects = [];
 	for (const id of clickablePanels()) {
-		const r = panelEls[id].getBoundingClientRect();
-		if (r.width > 0 && r.height > 0) rects.push({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) });
+		// the Notifications panel only takes clicks on the cards with buttons
+		const els = id === "notices" ? [...nt.stack.querySelectorAll(".notice.actionable:not(.leaving)")] : [panelEls[id]];
+		for (const e of els) {
+			const r = e.getBoundingClientRect();
+			if (r.width > 0 && r.height > 0) rects.push({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) });
+		}
 	}
 	const key = JSON.stringify(rects);
 	if (key === zoneSent) return;
@@ -375,6 +393,9 @@ function zoneMouse({ type, x, y, d }) {
 		// a click: pressed and released on the same button or row (or the same spot)
 		const target = (el) => el.closest?.("button, [data-act], .row, .sp-row, .np-artist") || el;
 		if (target(down.el) === target(at)) at.dispatchEvent(new MouseEvent("click", opts));
+	} else if (type === "context" && at && zonePanel(at)) {
+		// a right click (the helper reports it on release)
+		at.dispatchEvent(new MouseEvent("contextmenu", { ...opts, button: 2, buttons: 0 }));
 	} else if (type === "wheel" && at && zonePanel(at)) {
 		// replayed wheel events don't scroll by themselves
 		const ev = new WheelEvent("wheel", { ...opts, deltaY: -d, deltaMode: 0 });
@@ -679,7 +700,7 @@ function toast(html, kind = "", ms = 4000) {
 	const fromBottom = noticesFromBottom();
 	if (fromBottom) stack.append(card);
 	else stack.prepend(card);
-	const live = stack.querySelectorAll(".notice:not(.sample):not(.leaving)");
+	const live = stack.querySelectorAll(".notice:not(.sample):not(.leaving):not(.actionable)");
 	if (live.length > MAX_NOTICES) dismiss(fromBottom ? live[0] : live[live.length - 1]);
 	requestAnimationFrame(() => card.classList.add("show"));
 	setTimeout(() => dismiss(card), ms);
@@ -689,7 +710,43 @@ function dismiss(card) {
 	if (!card || card.classList.contains("leaving")) return;
 	card.classList.add("leaving");
 	card.classList.remove("show");
-	setTimeout(() => card.remove(), 250);
+	setTimeout(() => {
+		card.remove();
+		if (card.classList.contains("actionable")) sendClickZone();
+	}, 250);
+	if (card.classList.contains("actionable")) sendClickZone();
+}
+
+// A notification with buttons (a friend asking to join, a friend request). It stays until it's
+// answered, or until main says the request is gone (answered elsewhere, timed out).
+// actions: [{ label, primary, run }]
+function actionToast(key, html, actions) {
+	const stack = nt.stack;
+	if (!stack || !S.layout?.panels?.notices?.enabled) return false;
+	if (stack.querySelector(`.notice.actionable[data-key="${CSS.escape(key)}"]:not(.leaving)`)) return true;
+	const card = el("div", "notice actionable", `<div class="nt-text">${html}</div><div class="nt-actions"></div>`);
+	card.dataset.key = key;
+	const row = $(".nt-actions", card);
+	for (const a of actions) {
+		const b = el("button", "nt-btn" + (a.primary ? " primary" : ""), esc(a.label));
+		b.addEventListener("click", () => {
+			if (S.edit) return;
+			dismiss(card);
+			a.run();
+		});
+		row.append(b);
+	}
+	if (noticesFromBottom()) stack.append(card);
+	else stack.prepend(card);
+	requestAnimationFrame(() => {
+		card.classList.add("show");
+		sendClickZone();
+	});
+	return true;
+}
+
+function dismissActionToasts(keep) {
+	nt.stack?.querySelectorAll(".notice.actionable:not(.leaving)").forEach((c) => keep.has(c.dataset.key) || dismiss(c));
 }
 
 // New notifications appear nearest the screen edge the panel sits at.
@@ -1733,11 +1790,14 @@ function renderLobby() {
 			st.role === "host"
 				? `<b>You're hosting.</b> Share the code so friends can join.`
 				: `Listening with <b>${esc(st.hostName || "the host")}</b>. Click a song to add it to the playlist.`;
+		const fr = S.friends;
+		const friendIds = new Set((fr?.friends || []).map((f) => f.fid));
+		const pending = new Set(fr?.pendingAdds || []);
 		lb.members.innerHTML = st.members
-			.map(
-				(m) =>
-					`<div class="lb-member${m.role === "host" ? " host" : ""}">${m.role === "host" ? `<span class="lb-crown" title="Host">${ICON.crown}</span>` : `<span class="lb-dot"></span>`}<span class="lb-mname">${esc(m.name)}</span>${m.you ? '<span class="lb-you">you</span>' : ""}</div>`
-			)
+			.map((m) => {
+				const tag = m.you ? '<span class="lb-you">you</span>' : friendIds.has(m.fid) ? `<span class="lb-friend" title="Your friend">${ICON.person}friend</span>` : pending.has(m.fid) ? '<span class="lb-you">request sent</span>' : "";
+				return `<div class="lb-member${m.role === "host" ? " host" : ""}${m.you ? " you" : ""}" data-mid="${esc(m.id)}"${m.you ? "" : ' title="Right-click to add as a friend"'}>${m.role === "host" ? `<span class="lb-crown" title="Host">${ICON.crown}</span>` : `<span class="lb-dot"></span>`}<span class="lb-mname">${esc(m.name)}</span>${tag}</div>`;
+			})
 			.join("");
 		lb.activity.innerHTML = (st.activity || [])
 			.slice(-2)
@@ -1760,6 +1820,224 @@ api.onLobby((st) => {
 	renderLobby();
 	renderSession();
 });
+
+// ------------------------------------------------------------------ right-click menu
+// A small menu inside the panel that was right-clicked (it has to stay inside the panel: that's
+// where Mercify takes clicks). items: [{ label, run, danger, disabled }]
+
+let menuEl = null;
+function closeMenu() {
+	menuEl?.remove();
+	menuEl = null;
+}
+
+function openMenu(panelId, x, y, items) {
+	closeMenu();
+	const panel = panelEls[panelId];
+	if (!panel || !items.length) return;
+	const m = el("div", "ctx-menu");
+	for (const it of items) {
+		const b = el("button", "ctx-item" + (it.danger ? " danger" : ""), esc(it.label));
+		b.disabled = !!it.disabled;
+		b.addEventListener("click", (e) => {
+			e.stopPropagation();
+			closeMenu();
+			if (!it.disabled) it.run();
+		});
+		m.append(b);
+	}
+	panel.append(m);
+	menuEl = m;
+	const pr = panel.getBoundingClientRect();
+	const scale = S.layout.panels[panelId].scale ?? 1;
+	m.style.zoom = scale;
+	const w = m.offsetWidth * scale;
+	const h = m.offsetHeight * scale;
+	m.style.left = clamp(x - pr.left, 4, Math.max(4, pr.width - w - 4)) / scale + "px";
+	m.style.top = clamp(y - pr.top, 4, Math.max(4, pr.height - h - 4)) / scale + "px";
+}
+
+document.addEventListener("click", (e) => {
+	if (menuEl && !e.target.closest?.(".ctx-menu")) closeMenu();
+});
+document.addEventListener("keydown", (e) => e.key === "Escape" && closeMenu());
+
+document.addEventListener("contextmenu", (e) => {
+	e.preventDefault();
+	if (S.edit) return;
+	const member = e.target.closest?.(".lb-member[data-mid]:not(.you)");
+	const friend = e.target.closest?.(".fr-row[data-fid]");
+	if (member) openMenu("lobby", e.clientX, e.clientY, memberMenu(member.dataset.mid));
+	else if (friend) openMenu("friends", e.clientX, e.clientY, friendMenu(friend.dataset.fid));
+	else closeMenu();
+	// a right click without the click zone activated the overlay: hand the keyboard back
+	clearTimeout(giveBackTimer);
+	giveBackTimer = setTimeout(() => !document.activeElement?.matches?.('input[type="text"]') && api.giveBackFocus(), 120);
+});
+
+function memberMenu(mid) {
+	const m = S.lobby?.members?.find((x) => x.id === mid);
+	if (!m) return [];
+	const f = S.friends?.friends?.find((x) => x.fid === m.fid);
+	if (f) return [{ label: `${m.name} is your friend`, disabled: true }, { label: "Remove friend", danger: true, run: () => removeFriend(f) }];
+	if (!m.fid) return [{ label: `${m.name} needs a newer Mercify to add friends`, disabled: true }];
+	if ((S.friends?.pendingAdds || []).includes(m.fid)) return [{ label: "Friend request sent", disabled: true }];
+	return [
+		{
+			label: "Add friend",
+			run: async () => {
+				const r = await api.friendsAdd(m.id);
+				if (!r.ok) return toast(esc(r.error), "error");
+				toast(r.data === "accepted" ? `You and <b>${esc(m.name)}</b> are now friends` : `Friend request sent to <b>${esc(m.name)}</b>`);
+			},
+		},
+	];
+}
+
+function friendMenu(fid) {
+	const f = S.friends?.friends?.find((x) => x.fid === fid);
+	if (!f) return [];
+	const items = [];
+	if (f.requested) items.push({ label: "Cancel request to join", run: () => api.friendsCancelJoin(fid) });
+	else if (f.joinable) items.push({ label: "Request to join", run: () => requestJoin(f) });
+	items.push({ label: "Remove friend", danger: true, run: () => removeFriend(f) });
+	return items;
+}
+
+async function removeFriend(f) {
+	const r = await api.friendsRemove(f.fid);
+	if (!r.ok) toast(esc(r.error), "error");
+}
+
+async function requestJoin(f) {
+	const r = await api.friendsRequestJoin(f.fid);
+	if (!r.ok) return toast(esc(r.error), "error");
+	toast(`Asked to join <b>${esc(f.name)}</b>. Waiting for them to answer…`);
+}
+
+// ------------------------------------------------------------------ Friends panel
+
+const fp = {};
+const AVATAR_HUES = [145, 200, 265, 320, 25, 50, 175, 230];
+
+function buildFriends() {
+	const body = buildPanel("friends");
+	body.innerHTML = `
+		<div class="list-head"><span class="title">Friends</span><span class="meta fr-count"></span></div>
+		<div class="fr-requests"></div>
+		<div class="scroll fr-list"></div>`;
+	fp.count = $(".fr-count", body);
+	fp.requests = $(".fr-requests", body);
+	fp.list = $(".fr-list", body);
+	body.addEventListener("click", (e) => {
+		if (S.edit) return;
+		const b = e.target.closest("[data-op]");
+		if (!b) return;
+		const fid = b.closest("[data-fid]")?.dataset.fid;
+		const f = S.friends?.friends?.find((x) => x.fid === fid);
+		const op = b.dataset.op;
+		if (op === "join" && f) requestJoin(f);
+		else if (op === "cancel" && f) api.friendsCancelJoin(fid);
+		else if (op === "accept-join" || op === "decline-join") answerJoin(fid, op === "accept-join");
+		else if (op === "accept-add" || op === "decline-add") api.friendsAnswerAdd(fid, op === "accept-add");
+	});
+}
+
+function avatar(f) {
+	const hue = AVATAR_HUES[parseInt(f.fid.slice(0, 2), 16) % AVATAR_HUES.length];
+	return `<span class="fr-avatar" style="--hue:${hue}">${esc((f.name || "?").trim().charAt(0).toUpperCase())}<span class="fr-status"></span></span>`;
+}
+
+function ago(t) {
+	const m = Math.round((Date.now() - t) / 60000);
+	return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
+}
+
+// The line under a friend's name: the song they're on, or what they're up to.
+function friendLine(f) {
+	if (!f.online) return f.lastSeen ? `Offline · seen ${ago(f.lastSeen)}` : "Offline";
+	if (f.track) {
+		const song = `${esc(f.track.name)}${f.track.artists?.length ? ` · ${esc(f.track.artists.join(", "))}` : ""}`;
+		return `<span class="fr-note${f.playing ? " on" : ""}">${ICON.note}</span>${f.playing ? "" : "Paused: "}${song}`;
+	}
+	if (f.inLobby) return f.host ? "Hosting a listening lobby" : "In a listening lobby";
+	return f.shared === false ? "Online" : "Online, nothing playing";
+}
+
+function friendButton(f) {
+	if (!f.online) return "";
+	if (f.requested) return `<button class="pill-btn fr-btn waiting" data-op="cancel" title="Cancel your request">Requested…</button>`;
+	if (!f.joinable) return "";
+	return `<button class="pill-btn fr-btn" data-op="join" title="${f.cooldown ? "Wait a moment before asking again" : `Ask ${esc(f.name)} to listen together`}"${f.cooldown ? " disabled" : ""}>${ICON.join}<span>Request to join</span></button>`;
+}
+
+function renderFriends() {
+	const st = S.friends;
+	if (!fp.list || !st) return;
+	const list = st.friends || [];
+	const online = list.filter((f) => f.online).length;
+	fp.count.textContent = list.length ? `${online} online` : "";
+	fp.requests.innerHTML = (st.requests || [])
+		.map(
+			(r) => `<div class="fr-req" data-fid="${esc(r.fid)}">
+				<span class="fr-req-text"><b>${esc(r.name)}</b> ${r.kind === "join" ? "wants to listen with you" : "sent a friend request"}</span>
+				<button class="pill-btn" data-op="accept-${r.kind}">Accept</button>
+				<button class="pill-btn ghost" data-op="decline-${r.kind}">Decline</button>
+			</div>`
+		)
+		.join("");
+	fp.list.innerHTML = list.length
+		? list
+				.map(
+					(f) => `<div class="row fr-row${f.online ? " online" : ""}${f.inLobby ? " in-lobby" : ""}" data-fid="${esc(f.fid)}">
+						${avatar(f)}
+						<div class="row-text">
+							<div class="row-title">${esc(f.name)}</div>
+							<div class="row-sub">${friendLine(f)}</div>
+						</div>
+						${friendButton(f)}
+					</div>`
+				)
+				.join("")
+		: `<div class="empty-note">No friends yet.<br />In a listening lobby, right-click someone and choose <b>Add friend</b>.</div>`;
+	updateRequestNotices();
+}
+
+async function answerJoin(fid, accept) {
+	const f = S.friends?.friends?.find((x) => x.fid === fid);
+	if (accept && !inLobby()) toast(`Starting a lobby for you and <b>${esc(f?.name || "your friend")}</b>…`);
+	const r = await api.friendsAnswerJoin(fid, accept);
+	if (r.ok && accept && inLobby()) toast(`<b>${esc(f?.name || "Your friend")}</b> is joining your lobby`);
+}
+
+// Requests also pop up in the Notifications panel, with the same buttons.
+function updateRequestNotices() {
+	const keep = new Set();
+	for (const r of S.friends?.requests || []) {
+		const key = `${r.kind}:${r.fid}`;
+		keep.add(key);
+		if (r.kind === "join")
+			actionToast(key, `<b>${esc(r.name)}</b> wants to listen with you${inLobby() ? "" : ". Accepting starts a lobby."}`, [
+				{ label: "Accept", primary: true, run: () => answerJoin(r.fid, true) },
+				{ label: "Decline", run: () => answerJoin(r.fid, false) },
+			]);
+		else
+			actionToast(key, `<b>${esc(r.name)}</b> sent you a friend request`, [
+				{ label: "Accept", primary: true, run: () => api.friendsAnswerAdd(r.fid, true) },
+				{ label: "Decline", run: () => api.friendsAnswerAdd(r.fid, false) },
+			]);
+	}
+	dismissActionToasts(keep);
+}
+
+api.onFriends((st) => {
+	S.friends = st;
+	renderFriends();
+	renderLobby(); // "friend" tags on lobby members
+});
+
+// "Offline · seen 5 min ago" ages by itself
+setInterval(() => S.friends?.friends?.some((f) => !f.online && f.lastSeen) && renderFriends(), 60000);
 
 // ------------------------------------------------------------------ bridge events
 
@@ -1817,6 +2095,7 @@ api.onOverlay(({ shown, edit }) => {
 	if (!shown) {
 		document.activeElement?.blur?.();
 		pl.picker.hidden = true;
+		closeMenu();
 	}
 	showPopover();
 	applyAll();
@@ -1878,8 +2157,11 @@ window.addEventListener("resize", () => {
 	buildNotices();
 	buildSession();
 	buildLobby();
+	buildFriends();
 	S.lobby = await api.lobbyGet();
+	S.friends = await api.friendsGet();
 	renderLobby();
+	renderFriends();
 	renderSession();
 	bindPopover();
 	applyAll();

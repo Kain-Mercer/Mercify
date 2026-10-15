@@ -376,6 +376,8 @@ function render(d) {
 	$("#launch-spotify").checked = d.launchSpotify;
 	$("#spotify-premium").checked = premiumNow;
 	$("#minimise-spotify").checked = d.minimiseSpotify;
+	$("#friends-share").checked = d.friendsShareListening !== false;
+	$("#friends-join").checked = d.friendsAllowJoin !== false;
 
 	const names = { toggle: "Show / hide", edit: "Edit Mode", search: "Search", playPause: "Play / pause", next: "Next track", prev: "Previous" };
 	$("#hotkeys").innerHTML = Object.entries(d.hotkeys)
@@ -411,6 +413,8 @@ $("#start-windows").addEventListener("change", async (e) => render(await S.set("
 $("#spotify-premium").addEventListener("change", async (e) => render(await S.set("spotifyPremium", e.target.checked)));
 $("#launch-spotify").addEventListener("change", async (e) => render(await S.set("launchSpotify", e.target.checked)));
 $("#minimise-spotify").addEventListener("change", async (e) => render(await S.set("minimiseSpotify", e.target.checked)));
+$("#friends-share").addEventListener("change", async (e) => render(await S.set("friendsShareListening", e.target.checked)));
+$("#friends-join").addEventListener("change", async (e) => render(await S.set("friendsAllowJoin", e.target.checked)));
 $("#open-config").addEventListener("click", () => S.openConfig());
 
 async function addApp() {

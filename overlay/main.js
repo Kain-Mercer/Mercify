@@ -13,6 +13,7 @@ const foreground = require("./foreground");
 const setup = require("./setup");
 const updater = require("./updater");
 const { createLobby, generateCode, formatCode, DEFAULT_RELAYS } = require("./lobby");
+const { createFriends } = require("./friends");
 
 // ------------------------------------------------------------------ uninstalling
 // The uninstaller asks whether to remove the Spotify add-ons too, then runs
@@ -61,6 +62,8 @@ const DEFAULT_CONFIG = {
 	launchSpotify: true, // start Spotify when the overlay starts
 	minimiseSpotify: true, // send Spotify's window to the tray when Mercify opens
 	lobbyName: "", // your name in listening lobbies
+	friendsShareListening: true, // friends see the song you're playing
+	friendsAllowJoin: true, // friends can ask to join you (accepting starts a lobby)
 	// Spotify Premium? true / false / null (not known yet). Set in Settings, or by the extension
 	// once Spotify says which plan the logged-in account is on. Premium gets SpotX's Premium mode.
 	spotifyPremium: null,
@@ -72,6 +75,7 @@ if (process.env.OVERLAY_DEBUG_USERDATA) app.setPath("userData", process.env.OVER
 const userDir = app.getPath("userData");
 const CONFIG_PATH = path.join(userDir, "config.json");
 const LAYOUT_PATH = path.join(userDir, "layout.json");
+const FRIENDS_PATH = path.join(userDir, "friends.json");
 
 function readJSON(p, fallback) {
 	try {
@@ -684,7 +688,7 @@ function startBridgeServer() {
 				heardFromSpotify();
 				if (msg.type === "state") spotifyPlaying = !!msg.state?.isPlaying;
 				sendToRenderer("bridge", msg);
-				if (msg.type === "state") lobby.onPlayerState(msg.state);
+				if (msg.type === "state") lobby.onPlayerState(msg.state), playerForFriends(msg.state);
 				else lobby.onPlayerProgress(msg.position, msg.at);
 			}
 		});
@@ -699,6 +703,7 @@ function startBridgeServer() {
 			}
 			pending.clear();
 			sendToRenderer("bridge-status", { connected: false });
+			playerForFriends(null);
 			updateTrayMenu();
 			pushSettings();
 		});
@@ -840,6 +845,7 @@ async function askSpotifyState(why) {
 		spotifyPlaying = !!st.isPlaying;
 		sendToRenderer("bridge", { type: "state", state: st });
 		lobby.onPlayerState(st);
+		playerForFriends(st);
 		if (st.isPlaying && Number.isFinite(st.position)) lobby.onPlayerProgress(st.position, st.at);
 		if (why === "quiet") quietAsks++;
 	} catch (_) {
@@ -883,11 +889,20 @@ const lobbyRelays = process.env.OVERLAY_DEBUG_LOBBY_RELAYS
 		? config.lobbyRelays
 		: DEFAULT_RELAYS;
 
+// Friends (friends.js): made first, so lobby heartbeats can carry our friends public key.
+const friends = createFriends({
+	store: { load: () => readJSON(FRIENDS_PATH, null), save: (d) => writeJSON(FRIENDS_PATH, d) },
+	relays: lobbyRelays,
+	lobbyCode: codeForFriend,
+	log: (m) => console.log("[friends]", m),
+});
+
 const lobby = createLobby({
 	command: (action, args) => bridgeCommand(action, args),
 	relays: lobbyRelays,
 	log: (m) => console.log("[lobby]", m),
 	trace: !!process.env.OVERLAY_DEBUG_LOBBY_TRACE,
+	friendPub: friends.pub,
 });
 lobby.setName(config.lobbyName);
 
@@ -897,6 +912,7 @@ lobby.on("change", () => {
 	sendToRenderer("lobby", lobbyView());
 	pushSettings();
 	updateTrayMenu();
+	updateFriendsPresence();
 });
 lobby.on("toast", (text) => sendToRenderer("toast", { text }));
 
@@ -904,7 +920,119 @@ function setLobbyName(name) {
 	config.lobbyName = String(name || "").trim().slice(0, 24);
 	saveConfig();
 	lobby.setName(config.lobbyName);
+	friends.setName(config.lobbyName);
 }
+
+// ------------------------------------------------------------------ friends
+
+const friendsView = () => ({ ...friends.state(), name: config.lobbyName });
+friends.setName(config.lobbyName);
+friends.setOptions({ share: config.friendsShareListening, allowJoin: config.friendsAllowJoin });
+
+// What friends see: the song playing (if you share it) and whether you're in a lobby.
+let friendsPlayer = null;
+function playerForFriends(st) {
+	friendsPlayer = st && !st.empty && st.uri ? { uri: st.uri, name: st.name, artists: st.artists, isPlaying: !!st.isPlaying } : null;
+	updateFriendsPresence();
+}
+function updateFriendsPresence() {
+	const st = lobby.state();
+	const p = friendsPlayer;
+	friends.setPresence({
+		track: p ? { uri: p.uri, name: p.name, artists: p.artists } : null,
+		playing: !!p?.isPlaying,
+		inLobby: st.status === "joined",
+		host: st.status === "joined" && st.role === "host",
+	});
+}
+
+// A friend's request to join was accepted: the code of the lobby we're in, or a new one.
+async function codeForFriend() {
+	if (!String(config.lobbyName || "").trim()) throw new Error("Set your name first (Listening lobby in Settings)");
+	let st = lobby.state();
+	for (let i = 0; st.status === "connecting" && i < 60; i++) {
+		await new Promise((r) => setTimeout(r, 250));
+		st = lobby.state();
+	}
+	if (st.status === "joined" && st.code) return st.code;
+	await lobby.join(formatCode(generateCode()));
+	st = lobby.state();
+	if (st.status !== "joined" || !st.code) throw new Error("Couldn't start a lobby");
+	return st.code;
+}
+
+let lastFriendRequests = "";
+friends.on("change", () => {
+	sendToRenderer("friends", friendsView());
+	const reqs = JSON.stringify(friends.state().requests.map((r) => r.kind + r.fid));
+	if (reqs !== lastFriendRequests) {
+		lastFriendRequests = reqs;
+		updateTrayMenu();
+	}
+});
+friends.on("toast", (text) => sendToRenderer("toast", { text }));
+
+// Requests show up in the overlay's Notifications panel with Accept / Decline (and in the tray
+// menu). While the overlay isn't up over the game, Windows shows a notification too.
+friends.on("join-request", ({ name }) => {
+	if (!gateOpen || !overlayShown) notify(`${name} wants to listen with you`, "Accept from the overlay over your game, or from Mercify's tray menu.");
+});
+friends.on("add-request", ({ name }) => {
+	if (!gateOpen || !overlayShown) notify(`${name} sent you a friend request`, "Accept from the overlay over your game, or from Mercify's tray menu.");
+});
+
+// Our request to join was accepted: join the lobby they sent.
+friends.on("join", async ({ name, code }) => {
+	sendToRenderer("toast", { text: `${name} accepted. Joining their lobby…` });
+	try {
+		await lobby.join(code);
+	} catch (err) {
+		sendToRenderer("toast", { text: `Couldn't join ${name}'s lobby: ${err.message}`, kind: "error" });
+	}
+});
+
+// Friend requests and answers between lobby members.
+lobby.on("friend", ({ ty, memberId, name, fpub }) => {
+	if (ty === "friend-add") friends.receiveAdd({ pub: fpub, name }, (type) => lobby.friendSend(memberId, type));
+	else friends.receiveAddReply({ pub: fpub, name }, ty === "friend-ok");
+});
+
+async function answerJoinRequest(fid, accept) {
+	try {
+		await friends.answerJoin(fid, accept);
+		return { ok: true };
+	} catch (err) {
+		sendToRenderer("toast", { text: `Couldn't start a lobby for your friend: ${err.message}`, kind: "error" });
+		return { ok: false, error: err.message };
+	}
+}
+
+const ipcResult = (fn) => async (_e, ...args) => {
+	try {
+		return { ok: true, data: await fn(...args) };
+	} catch (err) {
+		return { ok: false, error: err.message };
+	}
+};
+
+ipcMain.handle("friends:get", () => friendsView());
+// Right-click a lobby member -> Add friend.
+ipcMain.handle(
+	"friends:add",
+	ipcResult((memberId) => {
+		const m = lobby.member(String(memberId || ""));
+		if (!m) throw new Error("They've left the lobby");
+		if (!m.fpub) throw new Error(`${m.name} needs a newer Mercify to add friends`);
+		const r = friends.startAdd({ pub: m.fpub, name: m.name });
+		if (r !== "accepted") lobby.friendSend(m.id, "friend-add");
+		return r;
+	})
+);
+ipcMain.handle("friends:remove", ipcResult((fid) => friends.removeFriend(String(fid || ""))));
+ipcMain.handle("friends:request-join", ipcResult((fid) => friends.requestJoin(String(fid || ""))));
+ipcMain.handle("friends:cancel-join", ipcResult((fid) => friends.cancelJoin(String(fid || ""))));
+ipcMain.handle("friends:answer-join", (_e, fid, accept) => answerJoinRequest(String(fid || ""), !!accept));
+ipcMain.handle("friends:answer-add", ipcResult((fid, accept) => (accept ? friends.acceptAdd(String(fid || "")) : friends.declineAdd(String(fid || "")))));
 
 ipcMain.handle("lobby:get", () => lobbyView());
 ipcMain.handle("lobby:generate", () => formatCode(generateCode()));
@@ -1223,6 +1351,8 @@ async function settingsState() {
 		connectNote,
 		launchSpotify: config.launchSpotify,
 		minimiseSpotify: config.minimiseSpotify,
+		friendsShareListening: config.friendsShareListening,
+		friendsAllowJoin: config.friendsAllowJoin,
 		startWithWindows: getStartWithWindows(),
 		hotkeys: config.hotkeys,
 	};
@@ -1307,6 +1437,10 @@ ipcMain.handle("settings:set", async (_e, key, value) => {
 	else if (key === "lobbyName") setLobbyName(value);
 	else if (key === "spotifyPremium") config.spotifyPremium = !!value;
 	else if (key === "startWithWindows") setStartWithWindows(value);
+	else if (key === "friendsShareListening" || key === "friendsAllowJoin") {
+		config[key] = !!value;
+		friends.setOptions({ share: config.friendsShareListening, allowJoin: config.friendsAllowJoin });
+	}
 	saveConfig();
 	tickGate();
 	updateTrayMenu();
@@ -1394,6 +1528,7 @@ function updateTrayMenu() {
 					pushSettings();
 				},
 			},
+			...friendTrayItems(),
 			...lobbyTrayItems(),
 			{ label: "Reset layout", click: () => sendToRenderer("reset-layout") },
 			{ label: "Copy diagnostics", click: () => clipboard.writeText(diagnosticsText()) },
@@ -1423,6 +1558,32 @@ function lobbyTrayItems() {
 		{ label: "Copy lobby code", click: () => copyLobbyCode() },
 		{ label: "Leave lobby", click: () => lobby.leave() },
 		{ type: "separator" },
+	];
+}
+
+// Friend requests waiting for an answer, so they can be answered without the overlay.
+function friendTrayItems() {
+	const reqs = friends.state().requests;
+	if (!reqs.length) return [];
+	return [
+		{ type: "separator" },
+		...reqs.map((r) =>
+			r.kind === "join"
+				? {
+						label: `${r.name} wants to listen with you`,
+						submenu: [
+							{ label: "Accept (starts a lobby)", click: () => answerJoinRequest(r.fid, true) },
+							{ label: "Decline", click: () => answerJoinRequest(r.fid, false) },
+						],
+					}
+				: {
+						label: `${r.name} sent you a friend request`,
+						submenu: [
+							{ label: "Accept", click: () => friends.acceptAdd(r.fid) },
+							{ label: "Decline", click: () => friends.declineAdd(r.fid) },
+						],
+					}
+		),
 	];
 }
 
@@ -1607,6 +1768,7 @@ app.whenReady().then(async () => {
 	if (await launchUpdateGate()) return; // updating: the new version starts by itself
 	updater.start();
 	foreground.start();
+	friends.start();
 	startBridgeServer();
 	createWindow();
 	createTray();
@@ -1642,7 +1804,10 @@ app.whenReady().then(async () => {
 
 // Opened again while the splash is up: bring the splash forward, not a Settings window.
 app.on("second-instance", () => (splashWin ? splashWin.focus() : openSettings()));
-app.on("before-quit", () => lobby.leaveNow()); // say goodbye so the lobby doesn't wait for a timeout
+app.on("before-quit", () => {
+	lobby.leaveNow(); // say goodbye so the lobby doesn't wait for a timeout
+	friends.stop(); // and tell friends we've gone offline
+});
 app.on("will-quit", () => {
 	globalShortcut.unregisterAll();
 	foreground.stop();

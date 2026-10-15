@@ -71,7 +71,8 @@ These only work while you're in your game, so they don't get in the way of other
 - **Search:** type a song, artist, playlist or album. Click a song to play it, or open a playlist or album to see its songs.
 - **Playlist:** browse any of your playlists, your Liked Songs, or an album from search, and click a song to play it.
 - **Lobby** and **Session Playlist:** for [listening lobbies](#listening-lobbies).
-- **Notifications:** messages like "User added a song" in a lobby.
+- **Friends:** your [friends](#friends), who's online and what they're listening to.
+- **Notifications:** messages like "User added a song" in a lobby, and friends asking to join you (with **Accept** and **Decline**).
 
 </details>
 
@@ -192,6 +193,18 @@ Once at least half the lobby has voted, the song is skipped for everyone: 1 of 2
 - Songs that aren't available in a listener's country, and the host's own local files, can't be played along.
 
 </details>
+
+### Friends
+
+Met someone in a lobby you'd like to listen with again? **Right-click them** in the Lobby panel and choose **Add friend**. They get a request to accept, and from then on you're on each other's **Friends** panel (turn it on in Edit Mode if you can't see it).
+
+- Each friend shows whether they're online and, on the second line, the song they're listening to.
+- Hover over a friend and press **Request to join**. They get a notification with **Accept** and **Decline**. If they accept, their Mercify starts a lobby (or uses the one they're in) and yours joins it straight away.
+- Requests also show in the tray menu, and as a Windows notification while you're not in your game.
+- Right-click a friend to remove them. They're removed from both lists.
+- In Settings under **Listening lobby** you can stop showing friends what you're listening to, or stop friends from asking to join you.
+
+Friends are Mercify's own, not Spotify's: Spotify doesn't let apps read or change your Spotify friends. Your friends and your messages to them go through the same relays as lobbies, **encrypted so only the two of you can read them**. Your friends list is kept in `%APPDATA%\Mercify\friends.json`.
 
 ## Updates
 

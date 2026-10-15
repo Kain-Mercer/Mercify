@@ -16,11 +16,15 @@
 //   Mercify plays the next one from the list (so everyone follows). The host owns the list and
 //   broadcasts it; if the host leaves, the new host carries on with its copy.
 //
+// - Each member's heartbeat carries their friends public key (see friends.js), so you can send
+//   someone in the lobby a friend request; the request and its answer go through the lobby.
+//
 // This module has no Electron dependency so it can be tested on its own (tools/lobby-test.js).
 
 const crypto = require("crypto");
 const { EventEmitter } = require("events");
 const mqtt = require("mqtt");
+const { fidOf } = require("./friends");
 
 // Free public MQTT relays, all checked by the "Check lobby relays" workflow.
 // (mqtt.eclipseprojects.io on port 443 was tried and never connected.)
@@ -130,8 +134,10 @@ const senior = (a, b) => (a.joinedAt !== b.joinedAt ? a.joinedAt < b.joinedAt : 
  * @param {(action: string, args?: object) => Promise<any>} opts.command  run a Spotify command (via the bridge)
  * @param {string[]} [opts.relays]
  * @param {(msg: string) => void} [opts.log]
+ * @param {string} [opts.friendPub]  our friends public key (friends.js), told to the other members
+ * @param {Function} [opts.connect]  mqtt.connect, or a stand-in for tests
  */
-function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace = false, connectTimeoutMs = CONNECT_TIMEOUT_MS }) {
+function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace = false, connectTimeoutMs = CONNECT_TIMEOUT_MS, friendPub = null, connect = mqtt.connect }) {
 	const ev = new EventEmitter();
 
 	let name = "";
@@ -144,7 +150,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 	let me = null; // { id, name, joinedAt }
 	let role = null; // host | listener
 	let hostId = null;
-	const members = new Map(); // id -> { id, name, joinedAt, role, lastSeen }
+	const members = new Map(); // id -> { id, name, joinedAt, role, lastSeen, fpub, fid }
 	let seq = 0;
 	const seen = new Set();
 	const seenOrder = [];
@@ -180,8 +186,8 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 
 	function snapshot() {
 		const list = [];
-		if (me) list.push({ id: me.id, name: me.name, role, you: true });
-		for (const m of members.values()) list.push({ id: m.id, name: m.name, role: m.id === hostId ? "host" : "listener", you: false });
+		if (me) list.push({ id: me.id, name: me.name, role, you: true, fid: friendPub ? fidOf(friendPub) : null });
+		for (const m of members.values()) list.push({ id: m.id, name: m.name, role: m.id === hostId ? "host" : "listener", you: false, fid: m.fid || null });
 		list.sort((a, b) => (a.role === "host" ? -1 : b.role === "host" ? 1 : 0));
 		const host = list.find((m) => m.role === "host");
 		return {
@@ -220,6 +226,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 	function send(type, fields = {}) {
 		if (!key || !me) return;
 		const msg = { id: me.id, n: ++seq, ty: type, name: me.name, joinedAt: me.joinedAt, ...fields };
+		if (friendPub && (type === "hello" || type === "here")) msg.fpub = friendPub;
 		const buf = seal(key, msg);
 		if (trace) log(`send ${type} n=${msg.n} relays=${clients.filter((c) => c.connected).length}`);
 		for (const c of clients) if (c.connected) c.publish(topic, buf, { qos: 0, retain: false });
@@ -249,6 +256,9 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		m.joinedAt = Number(msg.joinedAt) || Date.now();
 		m.lastSeen = Date.now();
 		if (msg.role) m.role = msg.role;
+		// their friends public key (older versions don't send one)
+		const fid = typeof msg.fpub === "string" ? fidOf(msg.fpub) : null;
+		if (fid) Object.assign(m, { fpub: msg.fpub, fid });
 		members.set(msg.id, m);
 		return { m, isNew };
 	}
@@ -335,6 +345,17 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 				const item = queue.find((q) => q.qid === msg.qid);
 				// listeners may only take out songs they added themselves
 				if (msg.op === "remove" && item && item.byId === msg.id) hostRemove(msg.qid);
+				break;
+			}
+			case "friend-add":
+			case "friend-ok":
+			case "friend-no": {
+				// a friend request (or its answer) for us; friends.js decides what to do with it
+				const m = members.get(msg.id);
+				const fid = typeof msg.fpub === "string" ? fidOf(msg.fpub) : null;
+				if (!m || !fid) return;
+				Object.assign(m, { fpub: msg.fpub, fid });
+				ev.emit("friend", { ty: msg.ty, memberId: m.id, name: m.name, fpub: msg.fpub, fid });
 				break;
 			}
 			case "queue": {
@@ -747,7 +768,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 
 	function connectAll() {
 		clients = relays.map((url) => {
-			const c = mqtt.connect(url, {
+			const c = connect(url, {
 				clientId: "mercify_" + crypto.randomBytes(6).toString("hex"),
 				clean: true,
 				keepalive: 30,
@@ -936,9 +957,24 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		}
 	}
 
+	// Friend requests: "friend-add" to someone in the lobby, "friend-ok" / "friend-no" in answer.
+	function friendSend(memberId, type) {
+		if (!friendPub || status !== "joined" || !members.has(memberId)) return false;
+		if (!["friend-add", "friend-ok", "friend-no"].includes(type)) return false;
+		send(type, { to: memberId, fpub: friendPub });
+		return true;
+	}
+
+	function member(memberId) {
+		const m = members.get(memberId);
+		return m ? { id: m.id, name: m.name, fpub: m.fpub || null, fid: m.fid || null } : null;
+	}
+
 	return {
 		join,
 		leave,
+		friendSend,
+		member,
 		leaveNow,
 		setName,
 		queueAdd,

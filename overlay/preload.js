@@ -45,4 +45,12 @@ contextBridge.exposeInMainWorld("overlay", {
 	lobbyNext: () => ipcRenderer.invoke("lobby:next"),
 	lobbyCopy: () => ipcRenderer.invoke("lobby:copy"),
 	onLobby: on("lobby"),
+	friendsGet: () => ipcRenderer.invoke("friends:get"),
+	friendsAdd: (memberId) => ipcRenderer.invoke("friends:add", memberId),
+	friendsRemove: (fid) => ipcRenderer.invoke("friends:remove", fid),
+	friendsRequestJoin: (fid) => ipcRenderer.invoke("friends:request-join", fid),
+	friendsCancelJoin: (fid) => ipcRenderer.invoke("friends:cancel-join", fid),
+	friendsAnswerJoin: (fid, accept) => ipcRenderer.invoke("friends:answer-join", fid, accept),
+	friendsAnswerAdd: (fid, accept) => ipcRenderer.invoke("friends:answer-add", fid, accept),
+	onFriends: on("friends"),
 });

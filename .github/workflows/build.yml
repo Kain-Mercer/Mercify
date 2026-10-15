@@ -59,6 +59,10 @@ jobs:
       - name: Test foreground reporting
         run: node tools/fg-test.js
 
+      # Friends and friend requests through lobbies, against stand-in relays.
+      - name: Test friends
+        run: node tools/friends-test.js
+
       - name: Build installer and portable exe
         run: npm run dist
 
