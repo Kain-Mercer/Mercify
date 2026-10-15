@@ -55,6 +55,11 @@ async function ytdlp() {
 	let err = null;
 	await yt.prepare("unavailabl1").catch((e) => (err = e.message));
 	check("a removed video says so plainly", err === "This video isn't available", err);
+	const viaOthers = await yt.prepare("signinonly1").catch((e) => e.message);
+	check("a video YouTube wants a sign-in for plays through other clients", typeof viaOthers === "string" && viaOthers.endsWith("signinonly1.wav"), viaOthers);
+	err = null;
+	await yt.prepare("signinalway").catch((e) => (err = e.message));
+	check("one that still wants a sign-in says so plainly", err === "YouTube won't play this one without signing in. Try another upload of it", err);
 	// old files go, the one playing stays
 	fs.writeFileSync(path.join(tmp, "cache", "oldvideo123.webm"), "x");
 	fs.utimesSync(path.join(tmp, "cache", "oldvideo123.webm"), new Date(Date.now() - 3 * 86400000), new Date(Date.now() - 3 * 86400000));

@@ -25,6 +25,10 @@ const CACHE_MAX_AGE_MS = 2 * 24 * 3600 * 1000;
 const UPDATE_EVERY_MS = 24 * 3600 * 1000;
 const RUN_TIMEOUT_MS = 120000; // a download or lookup with no end
 const MAX_DOWNLOADS = 2; // at once
+// YouTube sometimes refuses a video to yt-dlp's default clients ("Please sign in", often big
+// labels' music videos) but not to others that need no account either; tried once more with these.
+const FALLBACK_CLIENTS = "youtube:player_client=tv_simply,web_embedded,mweb,android_vr";
+const wantsSignIn = (e) => /sign in|login required|not a bot/i.test(`${e?.stderr || ""} ${e?.message || ""}`) && !/confirm your age/i.test(e?.stderr || "");
 
 // The video id in a YouTube link (watch, youtu.be, shorts, embed, music.youtube.com, live), or null.
 function parseId(text) {
@@ -69,7 +73,8 @@ function friendlyError(stderr) {
 	const err = lines.find((l) => /^ERROR:/.test(l)) || lines.filter(Boolean).pop() || "";
 	if (/confirm your age|age.restricted|inappropriate for some users/i.test(err)) return "This video is age-restricted, so it can't be played here";
 	if (/private video/i.test(err)) return "This video is private";
-	if (/not a bot|sign in to confirm/i.test(err)) return "YouTube wants to check you're not a bot. Try again in a while";
+	if (/not a bot/i.test(err)) return "YouTube wants to check you're not a bot. Try again in a while";
+	if (/sign in|login required/i.test(err)) return "YouTube won't play this one without signing in. Try another upload of it";
 	if (/members.only|join this channel/i.test(err)) return "This video is for channel members only";
 	if (/video unavailable|not available|has been removed|does not exist/i.test(err)) return "This video isn't available";
 	if (/premiere|live event will begin|is upcoming/i.test(err)) return "This video hasn't started yet";
@@ -150,6 +155,24 @@ function createYouTube({ dir, cacheDir, nodePath, fetch, log = () => {}, platfor
 				}
 			});
 		});
+	}
+
+	// A run that fetches a video's details: if YouTube wants a sign-in, ask again as other clients.
+	async function runVideo(args, opts) {
+		try {
+			return await run(args, opts);
+		} catch (e) {
+			if (!wantsSignIn(e)) throw e;
+			log(`youtube: asked to sign in; trying other clients (${FALLBACK_CLIENTS})`);
+			try {
+				const r = await run(["--extractor-args", FALLBACK_CLIENTS, ...args], opts);
+				log("youtube: the other clients got it");
+				return r;
+			} catch (e2) {
+				log(`youtube: still refused: ${String(e2.stderr || e2.message).trim().split(/\r?\n/).pop()}`);
+				throw e2;
+			}
+		}
 	}
 
 	function installed() {
@@ -251,7 +274,7 @@ function createYouTube({ dir, cacheDir, nodePath, fetch, log = () => {}, platfor
 			} catch (_) {}
 		}
 		await ready();
-		const { out } = await run(["-J", "--no-playlist", "--no-warnings", ...runtimeArgs(), watchUrl(id)], { timeoutMs: 60000 });
+		const { out } = await runVideo(["-J", "--no-playlist", "--no-warnings", ...runtimeArgs(), watchUrl(id)], { timeoutMs: 60000 });
 		const j = JSON.parse(out);
 		const it = item(id, { title: j.title, channel: j.channel || j.uploader, duration: j.duration });
 		infos.set(id, it);
@@ -308,7 +331,7 @@ function createYouTube({ dir, cacheDir, nodePath, fetch, log = () => {}, platfor
 			try {
 				fs.mkdirSync(cacheDir, { recursive: true });
 				let file = null;
-				const { out } = await run(
+				const { out } = await runVideo(
 					[
 						"-f",
 						"bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best",

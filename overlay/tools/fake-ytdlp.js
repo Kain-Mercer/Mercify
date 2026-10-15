@@ -3,7 +3,9 @@
 //   --version, -U, -J <url>, -J --flat-playlist ytsearchN:<query>, and downloads
 //   (-o <template> ... --print after_move:filepath <url>), which write a short tone as a WAV file.
 // FAKE_YT_SECONDS: length of the tone (default 30). FAKE_YT_DELAY_MS: how long a download takes
-// (default 1500). A video whose id starts with "unavailabl" fails like a removed video.
+// (default 1500). A video whose id starts with "unavailabl" fails like a removed video; "signinonly"
+// asks to sign in unless other player clients are asked for (--extractor-args youtube:player_client=…),
+// like YouTube does with some music videos; "signinalway" always asks.
 
 "use strict";
 
@@ -54,6 +56,11 @@ function wav(file, secs, hz) {
 	}
 	if (id.startsWith("unavailabl")) {
 		console.error(`ERROR: [youtube] ${id}: Video unavailable. This video has been removed by the uploader`);
+		process.exit(1);
+	}
+	const otherClients = args.some((a) => /player_client=/.test(a));
+	if (id.startsWith("signinalway") || (id.startsWith("signinonly") && !otherClients)) {
+		console.error(`ERROR: [youtube] ${id}: Please sign in. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies`);
 		process.exit(1);
 	}
 	if (has("-J")) return console.log(JSON.stringify(info(id)));
