@@ -3,3 +3,4 @@
 *.ps1 text eol=crlf
 *.png binary
 *.exe binary
+*.woff2 binary

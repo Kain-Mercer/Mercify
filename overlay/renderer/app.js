@@ -2235,7 +2235,7 @@ window.addEventListener("resize", () => {
 	const info = await api.getInfo();
 	const k = (a) => (a ? `<kbd>${esc(a.replace("Control", "Ctrl"))}</kbd>` : "");
 	if (info.failedHotkeys?.length) {
-		toast(`Couldn't register hotkeys: ${esc(info.failedHotkeys.join(", "))}. Another app may be using them; change them in the settings file.`, "error", 8000);
+		toast(`Couldn't register hotkeys: ${esc(info.failedHotkeys.join(", "))}. Another app may be using them; change them in Settings, under Hotkeys.`, "error", 8000);
 	} else {
 		toast(`Mercify is running · ${k(info.hotkeys.toggle)} show/hide · ${k(info.hotkeys.edit)} Edit Mode · ${k(info.hotkeys.search)} search`, "", 6000);
 	}

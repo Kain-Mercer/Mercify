@@ -1,153 +1,273 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="neon">
 	<head>
 		<meta charset="utf-8" />
-		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
 		<title>Mercify</title>
 		<link rel="stylesheet" href="settings.css" />
 	</head>
 	<body>
-		<header>
-			<img class="logo" src="../assets/logo.png" alt="Mercify" />
-			<h1 class="sr-only">Mercify</h1>
-			<div id="setup-progress" hidden>
-				<div class="prog-track"><div class="prog-fill"></div><span class="prog-pct"></span></div>
-				<div class="prog-desc"></div>
-			</div>
-			<div id="update-banner" hidden>
-				<span id="update-banner-text"></span>
-				<button class="btn" id="update-banner-btn"></button>
-			</div>
-			<span id="conn" class="pill">Checking…</span>
-		</header>
+		<!-- ============================================================ first run (the installer phase) -->
+		<div id="firstrun" hidden>
+			<section class="fr-intro">
+				<img class="fr-logo logo-img" src="../assets/logo.png" alt="Mercify" />
+				<span class="logo-mark fr-mark" aria-hidden="true"><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="6" stroke="currentColor" stroke-width="2"></rect><path d="M8 15v-3M12 15V8M16 15v-4" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path></svg>Mercify</span>
+				<h1>Let's get your music into the game.</h1>
+				<p class="fr-lead">Mercify sets up Spotify and the two add-ons it needs. It takes a few minutes, and you can do something else meanwhile.</p>
+				<label class="fr-premium">
+					<input type="checkbox" id="spotify-premium" />
+					<span><b>I have Spotify Premium</b><span class="sub">Sets up SpotX in Premium mode.</span></span>
+				</label>
+				<div class="flex"></div>
+				<p class="fr-req">Windows 10 or 11. The Microsoft Store version of Spotify isn't supported; setup replaces it.</p>
+			</section>
+			<section class="fr-steps" aria-label="Setup steps">
+				<span class="lbl" id="fr-count">4 steps</span>
+				<ol class="fr-list" id="fr-list"></ol>
+				<div class="prog" hidden>
+					<div class="prog-track"><div class="prog-fill"></div></div>
+					<div class="prog-line"><span class="prog-desc"></span><span class="prog-pct"></span></div>
+				</div>
+				<div class="flex"></div>
+				<div class="fr-foot">
+					<div class="fr-foot-left">
+						<button class="link" id="fr-skip">Not now</button>
+						<button class="link" id="fr-copy" hidden>Copy details</button>
+					</div>
+					<div class="fr-foot-right">
+						<button class="btn big" id="fr-go">Set up everything</button>
+					</div>
+				</div>
+			</section>
+		</div>
 
-		<main>
-			<div class="col">
-				<section class="card" id="setup-section">
-					<div class="section-head">
-						<h2>Setup</h2>
-						<span class="hint" id="setup-hint">Green means done.</span>
+		<!-- ============================================================ the app -->
+		<div id="shell">
+			<nav class="side" aria-label="Sections">
+				<img class="side-palm" src="vice-palm.svg" alt="" aria-hidden="true" />
+				<div class="brand">
+					<img class="logo-img" src="../assets/logo.png" alt="Mercify" />
+					<span class="logo-mark" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="6" stroke="currentColor" stroke-width="2"></rect><path d="M8 15v-3M12 15V8M16 15v-4" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path></svg>Mercify</span>
+				</div>
+				<button class="nav" data-page="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"></path><path d="M5 10v10h14V10"></path></svg>Home</button>
+				<button class="nav" data-page="lobby"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"></path><path d="M16 4.7a3.5 3.5 0 0 1 0 6.6"></path><path d="M18.5 14.8c1.6.8 2.6 2.6 3 5.2"></path></svg>Lobby<span class="nav-dot" id="nav-lobby-dot" hidden></span></button>
+				<button class="nav" data-page="overlay"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"></rect><rect x="12" y="8" width="6" height="5" rx="1"></rect><path d="M8 21h8"></path></svg>Overlay</button>
+				<button class="nav" data-page="hotkeys"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"></rect><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"></path></svg>Hotkeys<span class="nav-dot warn" id="nav-hotkeys-dot" hidden></span></button>
+				<button class="nav" data-page="setup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"></path></svg>Setup<span class="nav-dot warn" id="nav-setup-dot" hidden></span></button>
+				<button class="nav" data-page="general"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg>General<span class="nav-dot" id="nav-general-dot" hidden></span></button>
+				<div class="flex"></div>
+				<button class="side-status" id="side-status" data-page="general"><span class="dot" id="side-dot"></span><span id="side-text">Mercify</span></button>
+			</nav>
+
+			<main id="pages">
+				<!-- ======================================================== Home -->
+				<section class="page" data-page="home" aria-label="Home">
+					<header class="page-head">
+						<h1>Home</h1>
+						<span class="pill" id="conn"><span class="dot"></span><span class="pill-text">Checking…</span></span>
+					</header>
+					<div class="banner" id="update-banner" hidden>
+						<span id="update-banner-text"></span>
+						<button class="btn" id="update-banner-btn"></button>
 					</div>
-					<div class="setup-go" id="setup-go">
-						<button class="btn big" id="setup-all">Set up everything</button>
-						<p class="hint">Installs Spotify if you don't have it, plus the two add-ons Mercify needs. One click, a few minutes, no questions.</p>
+					<section class="card np" aria-label="Now playing">
+						<div class="np-art"><img id="np-art" alt="" hidden /><svg class="np-art-ph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle><path d="M11 18V5l10-2v13"></path></svg></div>
+						<div class="np-main">
+							<div class="np-text"><b id="np-title">Waiting for Spotify</b><span id="np-artist"></span></div>
+							<div class="np-time" id="np-time-row"><span id="np-pos">0:00</span><div class="np-bar"><div class="np-fill" id="np-fill"></div></div><span id="np-dur">0:00</span></div>
+						</div>
+						<div class="np-btns">
+							<button class="ib" id="np-prev" aria-label="Previous"><svg viewBox="0 0 24 24" class="fillicon" aria-hidden="true"><path d="M6 5h2v14H6zM20 5v14L9 12z"></path></svg></button>
+							<button class="ib np-play" id="np-play" aria-label="Play"><svg viewBox="0 0 24 24" class="fillicon" aria-hidden="true"><path id="np-play-icon" d="M7 4v16l13-8z"></path></svg></button>
+							<button class="ib" id="np-next" aria-label="Next"><svg viewBox="0 0 24 24" class="fillicon" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l11-7z"></path></svg></button>
+						</div>
+					</section>
+					<div class="tiles">
+						<button class="tile" data-goto="setup"><span class="lbl">Spotify</span><b id="tile-spotify">–</b></button>
+						<button class="tile" data-goto="setup"><span class="lbl">Setup</span><b id="tile-setup">–</b></button>
+						<button class="tile" data-goto="overlay"><span class="lbl">Shows over</span><b id="tile-over">–</b></button>
+						<button class="tile" data-goto="lobby"><span class="lbl">Lobby</span><b id="tile-lobby">None</b></button>
 					</div>
-					<div class="setup-fail" id="setup-fail" hidden>
-						<b id="setup-fail-text"></b>
-						<div class="setup-fail-btns">
-							<button class="btn" id="setup-retry">Try again</button>
-							<button class="btn ghost" id="setup-copy">Copy details</button>
-						</div>
+					<div class="grid2 grow">
+						<section class="card" aria-label="Hotkeys">
+							<div class="card-head"><h2>Hotkeys</h2><button class="link" data-goto="hotkeys">Edit</button></div>
+							<div class="keylist" id="home-keys"></div>
+						</section>
+						<section class="card" aria-label="Quick settings">
+							<h2>Quick settings</h2>
+							<label class="toggle"><span>Start with Windows</span><input type="checkbox" class="sw" data-bind="startWithWindows" /></label>
+							<label class="toggle"><span>Stay up on other monitors</span><input type="checkbox" class="sw" data-bind="onlyShowOver.stayOnOtherMonitor" /></label>
+							<label class="toggle"><span>Share what I'm playing</span><input type="checkbox" class="sw" data-bind="friendsShareListening" /></label>
+						</section>
 					</div>
-					<label class="check premium-check"><input type="checkbox" id="spotify-premium" /> I have Spotify Premium <span class="muted">(Mercify also notices by itself once you're logged in)</span></label>
-					<div class="rows">
-						<div class="row" data-step="spotify">
-							<span class="dot"></span>
-							<div class="text"><b>Spotify, with SpotX</b><span class="sub"></span></div>
-							<button class="btn ghost small" data-act="spotx" title="Run SpotX again (reinstalls Spotify if needed)">Redo</button>
-						</div>
-						<div class="row" data-step="spicetify">
-							<span class="dot"></span>
-							<div class="text"><b>Spicetify</b><span class="sub"></span></div>
-							<button class="btn ghost small" data-act="spicetify" title="Download and install Spicetify again">Redo</button>
-						</div>
-						<div class="row" data-step="extension">
-							<span class="dot"></span>
-							<div class="text"><b>Mercify extension in Spotify</b><span class="sub"></span></div>
-							<button class="btn ghost small" data-act="apply">Redo</button>
-						</div>
-						<div class="row" data-step="connect">
-							<span class="dot neutral"></span>
-							<div class="text"><b>Connected to Spotify</b><span class="sub"></span></div>
-							<button class="btn small" data-open="spotify">Open Spotify</button>
-						</div>
-					</div>
-					<button class="link remove-addons" id="remove-addons" hidden>Remove Spicetify and SpotX…</button>
 				</section>
 
-				<section class="card">
-					<div class="section-head">
-						<h2>Updates</h2>
-						<span class="muted" id="update-version"></span>
-					</div>
-					<div class="update-row">
-						<span class="dot neutral" id="update-dot"></span>
-						<span id="update-status">Checking…</span>
-						<button class="btn ghost" id="update-check">Check now</button>
+				<!-- ======================================================== Lobby -->
+				<section class="page" data-page="lobby" aria-label="Lobby" hidden>
+					<header class="page-head"><h1>Lobby</h1></header>
+					<div class="lobby-grid">
+						<div class="col">
+							<section class="card lobby-card" id="lobby-card" aria-label="Listening lobby">
+								<div id="lobby-out">
+									<h2>Listen together</h2>
+									<p class="hint">Start a lobby and share the code, or join a friend's.</p>
+									<div class="row-btns">
+										<button class="btn" id="lobby-start">Start a lobby</button>
+										<label class="sr-only" for="lobby-code">Friend's lobby code</label>
+										<input type="text" class="field" id="lobby-code" maxlength="19" placeholder="Friend's code" spellcheck="false" />
+										<button class="btn ghost" id="lobby-join">Join</button>
+									</div>
+								</div>
+								<div id="lobby-in" hidden>
+									<div class="lobby-top"><span class="live" id="lobby-role"><span class="dot"></span><span>Hosting</span></span><span class="dim" id="lobby-count"></span></div>
+									<div class="lobby-code-row">
+										<div class="lobby-code-box"><span class="lbl">Code</span><span class="lobby-codeval" id="lobby-codeval"></span></div>
+										<div class="row-btns">
+											<button class="btn" id="lobby-copy">Copy code</button>
+											<button class="btn ghost" id="lobby-leave">Leave</button>
+										</div>
+									</div>
+									<div class="members" id="lobby-members"></div>
+								</div>
+								<p class="error" id="lobby-error" hidden></p>
+								<p class="hint" id="lobby-hint" hidden></p>
+							</section>
+							<section class="card profile" aria-label="Profile">
+								<button class="avatar-pick" id="avatar-pick" aria-label="Choose a profile picture"><span class="avatar-preview" id="avatar-preview"></span><span class="avatar-edit">Edit</span></button>
+								<div class="profile-fields">
+									<label class="lbl" for="lobby-name">Display name</label>
+									<input type="text" class="field" id="lobby-name" maxlength="24" placeholder="Your name, as friends will see it" spellcheck="false" />
+									<div class="profile-links">
+										<button class="link" id="avatar-choose">Choose a profile picture</button>
+										<button class="link muted-link" id="avatar-clear" hidden>Remove picture</button>
+									</div>
+									<p class="error" id="avatar-error" hidden></p>
+								</div>
+							</section>
+						</div>
+						<section class="card friends" aria-label="Friends">
+							<h2>Friends</h2>
+							<div class="friend-list" id="friend-list"></div>
+							<div class="toggles">
+								<label class="toggle"><span>Share what I'm playing</span><input type="checkbox" class="sw" data-bind="friendsShareListening" /></label>
+								<label class="toggle"><span>Allow join requests</span><input type="checkbox" class="sw" data-bind="friendsAllowJoin" /></label>
+							</div>
+						</section>
 					</div>
 				</section>
 
-				<section class="card" id="lobby-card">
-					<div class="section-head">
-						<h2>Listening lobby</h2>
-						<span class="muted" id="lobby-status">Not in a lobby</span>
-					</div>
-					<div class="add-row profile-row">
-						<button class="avatar-pick" id="avatar-pick" title="Choose a profile picture"><span class="avatar-preview" id="avatar-preview"></span><span class="avatar-edit">Edit</span></button>
-						<div class="profile-fields">
-							<input type="text" id="lobby-name" maxlength="24" placeholder="Your name, as friends will see it" spellcheck="false" />
-							<div class="profile-links">
-								<button class="link" id="avatar-choose">Choose a profile picture</button>
-								<button class="link muted-link" id="avatar-clear" hidden>Remove picture</button>
+				<!-- ======================================================== Overlay -->
+				<section class="page" data-page="overlay" aria-label="Overlay" hidden>
+					<header class="page-head"><h1>Overlay</h1></header>
+					<section class="card" aria-label="Show over">
+						<label class="toggle big">
+							<span class="t-text"><b>Only show over these apps</b><span class="sub" id="only-hint">Hidden when anything else is in front. Edit Mode always shows.</span></span>
+							<input type="checkbox" class="sw" id="only-enabled" />
+						</label>
+						<p class="gate-now" id="gate-now" hidden></p>
+						<div class="apps" id="apps"></div>
+						<div class="row-btns">
+							<label class="sr-only" for="app-input">Program or window title</label>
+							<input type="text" class="field grow" id="app-input" placeholder="Program.exe or exact window title" spellcheck="false" />
+							<button class="btn ghost" id="app-add">Add</button>
+							<button class="btn" id="app-pick">Pick the app in front</button>
+						</div>
+						<p class="hint" id="pick-msg" hidden></p>
+					</section>
+					<section class="card" aria-label="Behaviour">
+						<label class="toggle">
+							<span class="t-text"><b>Stay up on other monitors</b><span class="sub">Keep the panels over your game while you use another screen.</span></span>
+							<input type="checkbox" class="sw" data-bind="onlyShowOver.stayOnOtherMonitor" id="other-monitor" />
+						</label>
+						<label class="toggle sep">
+							<span class="t-text"><b>Hotkeys only over these apps</b><span class="sub">Frees the hotkeys in other programs.</span></span>
+							<input type="checkbox" class="sw" data-bind="hotkeysOnlyOverApps" />
+						</label>
+					</section>
+				</section>
+
+				<!-- ======================================================== Hotkeys -->
+				<section class="page" data-page="hotkeys" aria-label="Hotkeys" hidden>
+					<header class="page-head">
+						<div class="head-stack"><h1>Hotkeys</h1><p class="lead" id="hk-lead">Active while your game is in front. Edit Mode works everywhere.</p></div>
+					</header>
+					<p class="error" id="hk-error" hidden></p>
+					<section class="card hk-card" aria-label="Hotkeys"><div id="hk-list"></div></section>
+					<div class="end-row"><button class="link dim-link" id="hk-reset">Reset to defaults</button></div>
+				</section>
+
+				<!-- ======================================================== Setup -->
+				<section class="page" data-page="setup" aria-label="Setup" hidden>
+					<header class="page-head"><h1>Setup</h1><span class="summary" id="setup-summary"></span></header>
+					<section class="card" id="setup-section" aria-label="Setup steps">
+						<div class="prog" hidden>
+							<div class="prog-track"><div class="prog-fill"></div></div>
+							<div class="prog-line"><span class="prog-desc"></span><span class="prog-pct"></span></div>
+						</div>
+						<div class="steps" id="setup-steps"></div>
+						<div class="setup-fail" id="setup-fail" hidden>
+							<b id="setup-fail-text"></b>
+							<div class="row-btns">
+								<button class="btn" id="setup-retry">Try again</button>
+								<button class="btn ghost" id="setup-copy">Copy details</button>
 							</div>
 						</div>
-					</div>
-					<p class="lobby-error" id="avatar-error" hidden></p>
-					<div class="add-row" id="lobby-out">
-						<button class="btn" id="lobby-start">Start a lobby</button>
-						<input type="text" id="lobby-code" maxlength="19" placeholder="Or enter a friend's code" spellcheck="false" />
-						<button class="btn ghost" id="lobby-join">Join</button>
-					</div>
-					<div class="add-row lobby-in" id="lobby-in" hidden>
-						<span class="lobby-codeval" id="lobby-codeval"></span>
-						<button class="btn ghost" id="lobby-copy">Copy code</button>
-						<button class="btn ghost" id="lobby-leave">Leave lobby</button>
-					</div>
-					<p class="lobby-error" id="lobby-error" hidden></p>
-					<p class="hint" id="lobby-hint">Start a lobby here and share the code, or join a friend's. The Lobby panel in the overlay does the same.</p>
-					<h3 class="sub-head">Friends</h3>
-					<label class="check"><input type="checkbox" id="friends-share" /> Show friends what I'm listening to</label>
-					<label class="check"><input type="checkbox" id="friends-join" /> Let friends ask to join me <span class="muted">(accepting starts a lobby)</span></label>
-					<p class="hint">Add friends by right-clicking someone in a lobby. They show up in the overlay's Friends panel.</p>
-				</section>
-			</div>
-
-			<div class="col">
-				<section class="card">
-					<div class="section-head">
-						<h2>Only show over these apps</h2>
-						<label class="switch" title="On: Mercify hides when anything else is in front"><input type="checkbox" id="only-enabled" /><span></span></label>
-					</div>
-					<p class="hint" id="only-hint">Mercify hides when anything else is in front, like your browser. Edit Mode always shows it.</p>
-					<div id="apps" class="chips"></div>
-					<p class="hint gate-now" id="gate-now" hidden></p>
-					<div class="add-row">
-						<input type="text" id="app-input" placeholder="Wow.exe or exact window title" spellcheck="false" />
-						<button class="btn ghost" id="app-add">Add</button>
-						<button class="btn ghost" id="app-pick">Pick the app in front</button>
-					</div>
-					<label class="check" title="The game stays open on its own screen while you use something on another monitor"><input type="checkbox" id="other-monitor" /> Stay up while I use another monitor</label>
-					<label class="check"><input type="checkbox" id="hotkeys-only" /> Hotkeys only work over these apps <span class="muted">(frees Ctrl+` elsewhere)</span></label>
-				</section>
-
-				<div class="pair">
-					<section class="card">
-						<h2>Startup</h2>
-						<label class="check"><input type="checkbox" id="start-windows" /> Start with Windows</label>
-						<label class="check"><input type="checkbox" id="launch-spotify" /> Open Spotify with Mercify</label>
-						<label class="check"><input type="checkbox" id="minimise-spotify" /> Minimise Spotify to the tray</label>
+						<div class="row-btns" id="setup-go" hidden><button class="btn" id="setup-all">Finish setup</button></div>
 					</section>
+					<section class="card trouble" aria-label="Troubleshooting">
+						<span class="t-text"><b>Troubleshooting</b><span class="sub">Copy the setup log to share in an issue.</span></span>
+						<button class="btn ghost" id="trouble-copy">Copy details</button>
+						<button class="btn" id="setup-again">Run setup again</button>
+					</section>
+					<div class="flex"></div>
+					<div><button class="link danger-link" id="remove-addons" hidden>Remove Spicetify and SpotX…</button></div>
+				</section>
 
-					<section class="card">
-						<div class="section-head">
-							<h2>Hotkeys</h2>
-							<button class="link" id="open-config">Change</button>
+				<!-- ======================================================== General -->
+				<section class="page" data-page="general" aria-label="General" hidden>
+					<header class="page-head"><h1>General</h1></header>
+					<section class="card" aria-label="Theme">
+						<h2>Theme</h2>
+						<div class="themes" role="radiogroup" aria-label="Theme">
+							<label class="theme-opt">
+								<input type="radio" name="theme" value="neon" />
+								<span class="tp tp-neon" aria-hidden="true"><span class="tp-side"><i class="a"></i><i></i><i></i></span><span class="tp-main"><i class="big"></i><span class="tp-row"><i></i><i></i><i></i></span></span></span>
+								<span class="theme-name">Neon</span>
+							</label>
+							<label class="theme-opt">
+								<input type="radio" name="theme" value="classic" />
+								<span class="tp tp-classic" aria-hidden="true"><span class="tp-side"><i class="a"></i><i></i><i></i></span><span class="tp-main"><i class="big"></i><span class="tp-row"><i></i><i></i><i></i></span></span></span>
+								<span class="theme-name">Classic</span>
+							</label>
+							<label class="theme-opt">
+								<input type="radio" name="theme" value="light" />
+								<span class="tp tp-light" aria-hidden="true"><span class="tp-side"><i class="a"></i><i></i><i></i></span><span class="tp-main"><i class="big"></i><span class="tp-row"><i></i><i></i><i></i></span></span></span>
+								<span class="theme-name">Light</span>
+							</label>
+							<label class="theme-opt">
+								<input type="radio" name="theme" value="vice" />
+								<span class="tp tp-vice" aria-hidden="true"><span class="tp-side"><i class="a"></i><i></i><img src="vice-palm.svg" alt="" /></span><span class="tp-main"><i class="big"></i><span class="tp-row"><i></i><i></i><i></i></span></span></span>
+								<span class="theme-name">Vice</span>
+							</label>
 						</div>
-						<div id="hotkeys" class="keys"></div>
 					</section>
-				</div>
-			</div>
-		</main>
+					<div class="grid2">
+						<section class="card" aria-label="Startup">
+							<h2>Startup</h2>
+							<label class="toggle"><span>Start with Windows</span><input type="checkbox" class="sw" data-bind="startWithWindows" /></label>
+							<label class="toggle"><span>Open Spotify with Mercify</span><input type="checkbox" class="sw" data-bind="launchSpotify" /></label>
+							<label class="toggle"><span>Minimise Spotify to the tray</span><input type="checkbox" class="sw" data-bind="minimiseSpotify" /></label>
+						</section>
+						<section class="card" aria-label="Updates">
+							<h2>Updates</h2>
+							<div class="ver"><b id="update-version"></b><span class="ver-status" id="update-status-pill"><span class="dot" id="update-dot"></span><span id="update-short"></span></span></div>
+							<p class="hint" id="update-status"></p>
+							<div><button class="btn ghost" id="update-check">Check now</button></div>
+						</section>
+					</div>
+				</section>
+			</main>
+		</div>
 
 		<script src="settings.js"></script>
 	</body>

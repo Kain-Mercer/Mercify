@@ -67,8 +67,12 @@ const DEFAULT_CONFIG = {
 	// Spotify Premium? true / false / null (not known yet). Set in Settings, or by the extension
 	// once Spotify says which plan the logged-in account is on. Premium gets SpotX's Premium mode.
 	spotifyPremium: null,
+	theme: "neon", // the Settings window's look: "neon", "classic", "light" or "vice"
 	// lobbyRelays: ["wss://..."], // optional: use your own MQTT-over-WebSocket relays instead of the public ones
 };
+
+// Settings window themes and their background (the window's colour before the page paints).
+const THEME_BG = { neon: "#070908", classic: "#0d0f13", light: "#f6f5f1", vice: "#140826" };
 
 // Testing: run a second copy side by side with its own settings.
 if (process.env.OVERLAY_DEBUG_USERDATA) app.setPath("userData", process.env.OVERLAY_DEBUG_USERDATA);
@@ -690,6 +694,7 @@ function startBridgeServer() {
 				heardFromSpotify();
 				if (msg.type === "state") spotifyPlaying = !!msg.state?.isPlaying;
 				sendToRenderer("bridge", msg);
+				playerToSettings(msg);
 				if (msg.type === "state") lobby.onPlayerState(msg.state), playerForFriends(msg.state);
 				else lobby.onPlayerProgress(msg.position, msg.at);
 			}
@@ -705,6 +710,7 @@ function startBridgeServer() {
 			}
 			pending.clear();
 			sendToRenderer("bridge-status", { connected: false });
+			playerToSettings({ type: "state", state: null });
 			playerForFriends(null);
 			updateTrayMenu();
 			pushSettings();
@@ -846,6 +852,7 @@ async function askSpotifyState(why) {
 		heardFromSpotify();
 		spotifyPlaying = !!st.isPlaying;
 		sendToRenderer("bridge", { type: "state", state: st });
+		playerToSettings({ type: "state", state: st });
 		lobby.onPlayerState(st);
 		playerForFriends(st);
 		if (st.isPlaying && Number.isFinite(st.position)) lobby.onPlayerProgress(st.position, st.at);
@@ -1084,7 +1091,7 @@ function updateFriendsPresence() {
 
 // A friend's request to join was accepted: the code of the lobby we're in, or a new one.
 async function codeForFriend() {
-	if (!String(config.lobbyName || "").trim()) throw new Error("Set your name first (Listening lobby in Settings)");
+	if (!String(config.lobbyName || "").trim()) throw new Error("Set your name first (on Settings' Lobby page)");
 	let st = lobby.state();
 	for (let i = 0; st.status === "connecting" && i < 60; i++) {
 		await new Promise((r) => setTimeout(r, 250));
@@ -1100,6 +1107,7 @@ async function codeForFriend() {
 let lastFriendRequests = "";
 friends.on("change", () => {
 	sendToRenderer("friends", friendsView());
+	toSettings("settings:friends", friendsView());
 	const reqs = JSON.stringify(friends.state().requests.map((r) => r.kind + r.fid));
 	if (reqs !== lastFriendRequests) {
 		lastFriendRequests = reqs;
@@ -1378,7 +1386,7 @@ function registerOne(name) {
 }
 
 function setHotkeysActive(on) {
-	if (on === gatedActive) return;
+	if (hotkeysSuspended || on === gatedActive) return;
 	gatedActive = on;
 	for (const name of Object.keys(config.hotkeys)) {
 		if (ALWAYS_ON.has(name)) continue;
@@ -1393,6 +1401,65 @@ function registerHotkeys() {
 	for (const name of ALWAYS_ON) registerOne(name);
 	gatedActive = false;
 	setHotkeysActive(true); // the first gate tick turns them off again if needed
+}
+
+// Settings' Hotkeys page changes a hotkey by pressing the new keys. While it listens, every
+// hotkey is released: a registered one goes straight to its action and never reaches the window.
+// Closing Settings (or it losing focus, in the page) brings them back.
+let hotkeysSuspended = false;
+function suspendHotkeys(on) {
+	if (on === hotkeysSuspended) return;
+	if (on) {
+		globalShortcut.unregisterAll();
+		gatedActive = false;
+		hotkeysSuspended = true;
+	} else {
+		hotkeysSuspended = false;
+		failedHotkeys.clear();
+		registerHotkeys();
+	}
+}
+
+const HOTKEY_NAMES = { toggle: "Show / hide panels", edit: "Edit Mode", search: "Search", playPause: "Play / pause", next: "Next track", prev: "Previous track" };
+const HOTKEY_REQUIRED = new Set(["toggle", "edit", "search"]);
+
+function setHotkey(name, accel) {
+	if (!Object.hasOwn(DEFAULT_CONFIG.hotkeys, name)) throw new Error("Unknown hotkey");
+	accel = String(accel || "").trim();
+	if (!accel && HOTKEY_REQUIRED.has(name)) throw new Error(`${HOTKEY_NAMES[name]} always needs a hotkey`);
+	const old = config.hotkeys[name] || "";
+	if (accel && accel.toLowerCase() !== old.toLowerCase()) {
+		const clash = Object.entries(config.hotkeys).find(([k, v]) => k !== name && v && v.toLowerCase() === accel.toLowerCase());
+		if (clash) throw new Error(`Already used for ${HOTKEY_NAMES[clash[0]] || clash[0]}`);
+		// Try it: Windows refuses a combination another program has taken.
+		let ok = false;
+		try {
+			ok = globalShortcut.register(accel, () => {});
+		} catch (_) {
+			throw new Error("That combination can't be used as a hotkey");
+		}
+		if (!ok) throw new Error("Another program already uses that combination");
+		globalShortcut.unregister(accel);
+	}
+	if (old && globalShortcut.isRegistered(old)) globalShortcut.unregister(old);
+	for (const f of [...failedHotkeys]) if (f.startsWith(name + " (")) failedHotkeys.delete(f);
+	config.hotkeys[name] = accel;
+	saveConfig();
+	if (!hotkeysSuspended && accel && (ALWAYS_ON.has(name) || gatedActive)) registerOne(name);
+	updateTrayMenu();
+}
+
+function resetHotkeys() {
+	for (const v of Object.values(config.hotkeys)) if (v && globalShortcut.isRegistered(v)) globalShortcut.unregister(v);
+	failedHotkeys.clear();
+	Object.assign(config.hotkeys, DEFAULT_CONFIG.hotkeys);
+	saveConfig();
+	if (!hotkeysSuspended) {
+		const active = gatedActive;
+		for (const name of ALWAYS_ON) registerOne(name);
+		if (active) for (const name of Object.keys(config.hotkeys)) if (!ALWAYS_ON.has(name)) registerOne(name);
+	}
+	updateTrayMenu();
 }
 
 // ------------------------------------------------------------------ start with Windows
@@ -1425,11 +1492,14 @@ function setStartWithWindows(on) {
 
 // ------------------------------------------------------------------ Settings window
 
-function openSettings() {
+// page: which of Settings' pages to show ("lobby", "hotkeys", ...); none keeps the one it's on.
+function openSettings(page) {
+	if (typeof page !== "string") page = null; // also used as a click handler, which passes an event
 	if (settingsWin && !settingsWin.isDestroyed()) {
 		if (settingsWin.isMinimized()) settingsWin.restore();
 		settingsWin.show();
 		settingsWin.focus();
+		if (page) settingsWin.webContents.send("settings:page", page);
 		return;
 	}
 	settingsWin = new BrowserWindow({
@@ -1440,7 +1510,7 @@ function openSettings() {
 		useContentSize: true,
 		center: true,
 		title: "Mercify",
-		backgroundColor: "#0f1115",
+		backgroundColor: THEME_BG[config.theme] || THEME_BG.neon,
 		autoHideMenuBar: true,
 		icon: path.join(__dirname, "assets", "icon.png"),
 		show: false,
@@ -1452,9 +1522,13 @@ function openSettings() {
 		},
 	});
 	settingsWin.setMenu(null);
-	settingsWin.loadFile(path.join(__dirname, "settings", "settings.html"));
+	// the theme goes in the address too, so the page is drawn in it from the first frame
+	settingsWin.loadFile(path.join(__dirname, "settings", "settings.html"), { query: { theme: THEME_BG[config.theme] ? config.theme : "neon", page: page || "home" } });
 	settingsWin.once("ready-to-show", () => settingsWin.show());
-	settingsWin.on("closed", () => (settingsWin = null));
+	settingsWin.on("closed", () => {
+		settingsWin = null;
+		suspendHotkeys(false); // closed while waiting for new hotkey keys
+	});
 	if (process.env.OVERLAY_DEBUG_SETTINGS_CAPTURE) {
 		settingsWin.webContents.once("did-finish-load", () =>
 			setTimeout(async () => {
@@ -1492,8 +1566,69 @@ async function settingsState() {
 		friendsAllowJoin: config.friendsAllowJoin,
 		startWithWindows: getStartWithWindows(),
 		hotkeys: config.hotkeys,
+		hotkeyDefaults: DEFAULT_CONFIG.hotkeys,
+		failedHotkeys: [...failedHotkeys],
+		theme: THEME_BG[config.theme] ? config.theme : "neon",
+		player: settingsPlayer,
+		friends: friendsView(),
+		version: app.getVersion(),
 	};
 }
+
+function toSettings(channel, payload) {
+	if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send(channel, payload);
+}
+
+// Settings' Home shows what's playing, with play/pause and skip buttons.
+let settingsPlayer = null;
+function playerToSettings(msg) {
+	if (msg.type === "state") settingsPlayer = msg.state || null;
+	else if (msg.type === "progress" && settingsPlayer) settingsPlayer = { ...settingsPlayer, position: msg.position, at: msg.at || Date.now() };
+	toSettings("settings:player", settingsPlayer);
+}
+
+// The same as the overlay's buttons: in a lobby, a listener's Next votes to skip and the
+// host's plays the next session song; songs picked here count as picked on purpose.
+const SETTINGS_PLAYER = {
+	playPause: () => bridgeCommand("togglePlay"),
+	prev: () => {
+		lobby.markManual();
+		return bridgeCommand("prev");
+	},
+	next: () => {
+		const st = lobby.state();
+		if (st.status === "joined" && st.role === "listener") return lobby.voteSkip(!st.skip?.mine);
+		if (lobby.isHostWithQueue()) return lobby.playNext();
+		lobby.markManual();
+		return bridgeCommand("next");
+	},
+};
+ipcMain.handle("settings:player", async (_e, action) => {
+	const run = SETTINGS_PLAYER[action];
+	if (!run) return { ok: false, error: "Unknown action" };
+	try {
+		await run();
+		return { ok: true };
+	} catch (err) {
+		return { ok: false, error: err.message };
+	}
+});
+
+ipcMain.handle("settings:friend-join", ipcResult((fid, cancel) => (cancel ? friends.cancelJoin(String(fid || "")) : friends.requestJoin(String(fid || "")))));
+
+ipcMain.handle("settings:hotkey-capture", (_e, on) => suspendHotkeys(!!on));
+ipcMain.handle("settings:set-hotkey", async (_e, name, accel) => {
+	try {
+		setHotkey(String(name || ""), accel);
+		return { ok: true, state: await settingsState() };
+	} catch (err) {
+		return { ok: false, error: err.message, state: await settingsState() };
+	}
+});
+ipcMain.handle("settings:reset-hotkeys", async () => {
+	resetHotkeys();
+	return settingsState();
+});
 
 async function pushSettings() {
 	if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send("settings:changed", await settingsState());
@@ -1574,6 +1709,10 @@ ipcMain.handle("settings:set", async (_e, key, value) => {
 	else if (key === "lobbyName") setLobbyName(value);
 	else if (key === "spotifyPremium") config.spotifyPremium = !!value;
 	else if (key === "startWithWindows") setStartWithWindows(value);
+	else if (key === "theme" && THEME_BG[value]) {
+		config.theme = value;
+		if (settingsWin && !settingsWin.isDestroyed()) settingsWin.setBackgroundColor(THEME_BG[value]);
+	}
 	else if (key === "friendsShareListening" || key === "friendsAllowJoin") {
 		config[key] = !!value;
 		friends.setOptions({ share: config.friendsShareListening, allowJoin: config.friendsAllowJoin });
@@ -1727,8 +1866,8 @@ function friendTrayItems() {
 // Tray's "Start a listening lobby": needs a name, which lives in Settings.
 async function startLobbyFromTray() {
 	if (!String(config.lobbyName || "").trim()) {
-		openSettings();
-		notify("Set your lobby name first", "Enter the name friends will see under Listening lobby in Settings, then press Start a lobby.");
+		openSettings("lobby");
+		notify("Set your lobby name first", "Enter the name friends will see on Settings' Lobby page, then press Start a lobby.");
 		return;
 	}
 	try {

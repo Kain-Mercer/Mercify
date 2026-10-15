@@ -106,7 +106,7 @@ When you hide the overlay with `Ctrl` + `` ` ``, Now Playing (full size or compa
 Mercify shows up over World of Warcraft out of the box. To add another game:
 
 1. Click the Mercify icon in the system tray (bottom right of the taskbar) to open **Settings**.
-2. Under **Only show over these apps**, press **Pick the app in front**.
+2. Go to **Overlay** and press **Pick the app in front**.
 3. Within 5 seconds, click into your game. It's added to the list.
 
 To have Mercify always visible, wherever you are, switch **Only show over these apps** off.
@@ -118,21 +118,21 @@ To have Mercify always visible, wherever you are, switch **Only show over these 
 
 When you click over to something on another monitor (a browser, Discord), Mercify stays up over your game, as long as the game is still showing on its own screen. It hides if you minimise or close the game, or put another window in front of it on the same screen. Your shortcuts go back to normal in the other program until you click back into the game.
 
-Untick **Stay up while I use another monitor** in Settings if you'd rather it hid. Settings also shows a line saying why Mercify is showing or hidden right now, handy if it isn't doing what you expect.
+Switch off **Stay up on other monitors** (Settings → **Overlay**) if you'd rather it hid. The Overlay page also shows a line saying why Mercify is showing or hidden right now, handy if it isn't doing what you expect.
 
 </details>
 
 <details>
 <summary><b>Settings</b></summary>
 
-Open **Settings** by clicking the tray icon. You can:
+Open **Settings** by clicking the tray icon. Its pages are down the left:
 
-- start Mercify with Windows (it then waits quietly in the tray instead of opening Settings),
-- open Spotify automatically when Mercify starts, and choose whether its window is tucked into the tray,
-- choose which games Mercify shows over,
-- start or join a [listening lobby](#listening-lobbies),
-- see which version you have and check for [updates](#updates),
-- re-run any setup step if something stops working.
+- **Home:** what's playing, with play/pause and skip, plus how everything's doing at a glance.
+- **Lobby:** start or join a [listening lobby](#listening-lobbies), your name and picture, and your friends.
+- **Overlay:** which games Mercify shows over, and how it behaves with more than one monitor.
+- **Hotkeys:** press **Change** next to a shortcut, then press the new keys. Play/pause, next and previous can have shortcuts too.
+- **Setup:** what's installed, and **Redo** for any step if something stops working.
+- **General:** start Mercify with Windows (it then waits quietly in the tray instead of opening Settings), open Spotify with it, the theme (**Neon**, **Classic**, **Light** or **Vice**), and [updates](#updates).
 
 </details>
 
@@ -140,12 +140,12 @@ Open **Settings** by clicking the tray icon. You can:
 
 Everyone hears the same song at the same moment, each through their own Spotify. Free accounts work, and everyone needs Mercify.
 
-**Quick start:** open Settings from the tray icon, enter your name under **Listening lobby**, and press **Start a lobby**. Mercify copies a code for you: send it to your friends, and they type it in and press **Join**.
+**Quick start:** open Settings from the tray icon, go to **Lobby**, enter your name, and press **Start a lobby**. Mercify copies a code for you: send it to your friends, and they type it in and press **Join**.
 
 <details>
 <summary><b>All the ways to start or join</b></summary>
 
-- **Mercify's window** (you don't need to be in your game): in Settings under **Listening lobby**, enter your name, then **Start a lobby** (you're the **host**, and the code is copied for you), or type a friend's code and press **Join**.
+- **Mercify's window** (you don't need to be in your game): on Settings' **Lobby** page, enter your name, then **Start a lobby** (you're the **host**, and the code is copied for you), or type a friend's code and press **Join**.
 - **The tray:** once you've set your name, right-click the tray icon and choose **Start a listening lobby**. The code is copied for you.
 - **The overlay:** open the **Lobby** panel (turn it on in Edit Mode if you can't see it), enter your name and a code (or press the dice for a random one), and press **Join lobby**.
 
@@ -202,8 +202,8 @@ Met someone in a lobby you'd like to listen with again? **Right-click them** in 
 - Hover over a friend and press **Request to join**. They get a notification with **Accept** and **Decline**. If they accept, their Mercify starts a lobby (or uses the one they're in) and yours joins it straight away.
 - Requests also show in the tray menu, and as a Windows notification while you're not in your game.
 - Right-click a friend to remove them. They're removed from both lists.
-- In Settings under **Listening lobby**, click the circle next to your name to choose a **profile picture**. Friends and people in your lobbies see it, with the green "online" dot (or the host's crown) in its corner. A PNG with a transparent background keeps it: the picture is shown as a cut-out, whole, rather than cropped to a circle.
-- There you can also stop showing friends what you're listening to, or stop friends from asking to join you.
+- On Settings' **Lobby** page, click the circle next to your name to choose a **profile picture**. Friends and people in your lobbies see it, with the green "online" dot (or the host's crown) in its corner. A PNG with a transparent background keeps it: the picture is shown as a cut-out, whole, rather than cropped to a circle.
+- There you can also see your friends, ask to join them, stop showing them what you're listening to, or stop them from asking to join you.
 
 Friends are Mercify's own, not Spotify's: Spotify doesn't let apps read or change your Spotify friends. Your friends and your messages to them go through the same relays as lobbies, **encrypted so only the two of you can read them**. Your friends list is kept in `%APPDATA%\Mercify\friends.json`.
 
@@ -216,7 +216,7 @@ Mercify keeps itself up to date; you don't need to do anything. When you open it
 
 - **When you open it:** if you're offline or GitHub is slow, Mercify just opens as usual. When Mercify starts with Windows, the logo only appears if there's an update to install.
 - **While it's running**, it checks a few times a day, downloads any new version quietly, and installs it the next time Mercify closes. You'll get a Windows notification when an update is ready. To update straight away, choose **Restart and update** in Settings or **Restart to update** from the tray icon.
-- The **Updates** section in Settings shows which version you have and lets you check for a new one.
+- **Updates** on Settings' **General** page shows which version you have and lets you check for a new one.
 - **Upgrading from version 1.2.0 or earlier?** Those versions can't update themselves, so [download and run the newest `Mercify-Setup`](https://github.com/Kain-Mercer/Mercify/releases/latest/download/Mercify-Setup.exe) one last time. Your layout and settings are kept.
 - **Portable version?** It can't replace itself while running. Settings tells you when a new version is out and gives you a **Download** button; replace your old file with the new one.
 
@@ -238,14 +238,14 @@ First thing to try for almost anything: make sure Mercify is up to date (it upda
 <details>
 <summary><b>I can't see the panels in my game</b></summary>
 
-Set your game to **Windowed (Fullscreen)** or **Borderless**, not Fullscreen. Check the game is listed under **Only show over these apps** in Settings (see *Using it with other games* above). And press `Ctrl` + `` ` ``, in case they're just hidden.
+Set your game to **Windowed (Fullscreen)** or **Borderless**, not Fullscreen. Check the game is listed on Settings' **Overlay** page (see *Using it with other games* above). And press `Ctrl` + `` ` ``, in case they're just hidden.
 
 </details>
 
 <details>
 <summary><b>The panels say "Waiting for Spotify"</b></summary>
 
-Click the message to open Settings. If anything there isn't green, press the big button. If everything is green, make sure Spotify is open; if it is, press **Redo** next to *Mercify extension*. This is most often needed after Spotify updates itself.
+Click the message to open Settings. If **Setup** has a dot next to it, open it and press **Finish setup**. If everything is green, make sure Spotify is open; if it is, press **Redo** next to *Mercify extension*. This is most often needed after Spotify updates itself.
 
 </details>
 
