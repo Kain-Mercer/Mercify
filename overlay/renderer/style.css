@@ -217,8 +217,13 @@ body.edit .panel.off .panel-body {
 	opacity: 0.25;
 }
 
+/* Scale: the panel's content is laid out at panel size / scale and shrunk (or grown) to fit.
+   A transform, not "zoom": since Chromium standardised zoom, percentage sizes on a zoomed
+   element aren't zoomed, so at 70% the content came out wider than the panel and the songs'
+   + button was cut off at the right. */
 .panel-body {
-	zoom: var(--scale, 1);
+	transform: scale(var(--scale, 1));
+	transform-origin: 0 0;
 	width: calc(100% / var(--scale, 1));
 	height: calc(100% / var(--scale, 1));
 	display: flex;
@@ -1295,6 +1300,10 @@ body.edit .rh {
 }
 body:not(.edit) .panel.passive {
 	pointer-events: none;
+}
+/* the Lobby panel, grown to fit its members, stays on top of a panel it now overlaps */
+.panel.grown {
+	z-index: 3;
 }
 /* notifications pop up over the other panels (they never take clicks, except ones with buttons) */
 body:not(.edit) .panel[data-id="notices"] {

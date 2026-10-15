@@ -123,12 +123,12 @@ const PANELS = {
 	lobby: {
 		title: "Lobby",
 		min: [240, 180],
-		def: (W, H) => ({ x: W - 24 - 300, y: H - 24 - 300, w: 300, h: 300, shownAlpha: 1, hiddenAlpha: 0 }),
+		def: (W, H) => ({ x: W - 24 - 300, y: H - 24 - 340, w: 300, h: 340, shownAlpha: 1, hiddenAlpha: 0 }),
 	},
 	friends: {
 		title: "Friends",
 		min: [220, 140],
-		def: (W, H) => ({ x: W - 24 - 300, y: Math.max(24, H - 24 - 300 - 12 - 280), w: 300, h: 280, shownAlpha: 1, hiddenAlpha: 0 }),
+		def: (W, H) => ({ x: W - 24 - 300, y: Math.max(24, H - 24 - 340 - 12 - 260), w: 300, h: 260, shownAlpha: 1, hiddenAlpha: 0 }),
 	},
 };
 
@@ -237,6 +237,7 @@ function applyPanel(id) {
 
 	const label = p.querySelector(".edit-label");
 	label.innerHTML = esc(PANELS[id].title) + (compact ? '<span class="muted">compact</span>' : "") + (c.enabled ? "" : '<span class="muted">hidden</span>');
+	if (id === "lobby") fitLobby();
 	sendClickZone();
 	sendHiddenArea();
 }
@@ -1767,6 +1768,42 @@ function buildLobby() {
 	lb.showError = showError;
 }
 
+// The Lobby panel grows (never shrinks) so up to 4 members fit without scrolling; with 5 or more
+// the member list scrolls. It grows away from the screen edge it's nearest, like compact Now
+// Playing, and only for as long as it needs to: the saved layout keeps your own size.
+const LOBBY_ROWS = 4;
+function fitLobby() {
+	const p = panelEls.lobby;
+	const st = S.lobby;
+	if (!p || !lb.members || !S.layout) return;
+	const r = rectOf("lobby");
+	const reset = () => {
+		lb.members.style.minHeight = "";
+		p.style.top = r.y + "px";
+		p.style.height = r.h + "px";
+		p.classList.remove("grown");
+	};
+	if (S.edit || st?.status !== "joined" || !st.members?.length) return reset();
+	const scale = S.layout.panels.lobby.scale ?? 1;
+	const body = p.querySelector(".panel-body");
+	const rowH = lb.members.querySelector(".lb-member")?.offsetHeight || 30;
+	const want = Math.min(st.members.length, LOBBY_ROWS) * rowH + 4;
+	lb.members.style.minHeight = want + "px";
+	// how tall the content is with the members area at that size
+	const flex = lb.members.style.flex;
+	lb.members.style.flex = "none";
+	lb.members.style.height = want + "px";
+	p.style.height = r.h + "px";
+	const need = Math.ceil(body.scrollHeight * scale);
+	lb.members.style.flex = flex;
+	lb.members.style.height = "";
+	const h = Math.min(dispH, Math.max(r.h, need));
+	const bottom = r.y + r.h / 2 > dispH / 2;
+	p.style.height = h + "px";
+	p.style.top = clamp(bottom ? r.y + r.h - h : r.y, 0, Math.max(0, dispH - h)) + "px";
+	p.classList.toggle("grown", h > r.h); // grown over a neighbour: stay on top of it
+}
+
 function renderLobby() {
 	updateAddAll();
 	const st = S.lobby;
@@ -1805,6 +1842,9 @@ function renderLobby() {
 			.map((a) => `<div>${esc(a.text)}</div>`)
 			.join("");
 	}
+	fitLobby();
+	sendClickZone();
+	sendHiddenArea();
 
 	// badge on Now Playing + listener styling
 	const p = panelEls.nowplaying;
@@ -1851,11 +1891,12 @@ function openMenu(panelId, x, y, items) {
 	menuEl = m;
 	const pr = panel.getBoundingClientRect();
 	const scale = S.layout.panels[panelId].scale ?? 1;
-	m.style.zoom = scale;
+	m.style.transform = `scale(${scale})`; // the same size as the panel's text
+	m.style.transformOrigin = "0 0";
 	const w = m.offsetWidth * scale;
 	const h = m.offsetHeight * scale;
-	m.style.left = clamp(x - pr.left, 4, Math.max(4, pr.width - w - 4)) / scale + "px";
-	m.style.top = clamp(y - pr.top, 4, Math.max(4, pr.height - h - 4)) / scale + "px";
+	m.style.left = clamp(x - pr.left, 4, Math.max(4, pr.width - w - 4)) + "px";
+	m.style.top = clamp(y - pr.top, 4, Math.max(4, pr.height - h - 4)) + "px";
 }
 
 document.addEventListener("click", (e) => {
