@@ -1699,10 +1699,11 @@ function buildLobby() {
 			}
 		});
 	}
-	$(".lb-copy", body).addEventListener("click", () => {
+	$(".lb-copy", body).addEventListener("click", async () => {
 		if (S.edit) return;
-		api.lobbyCopy();
-		toast(`Lobby code <b>${esc(S.lobby?.displayCode || "")}</b> copied`);
+		const r = await api.lobbyCopy();
+		if (!r) return;
+		toast(r.forChat ? `Copied <b>${esc(r.text)}</b>. Paste it in WoW chat: with K-UI: Forever it's a link that copies the code.` : `Lobby code <b>${esc(r.text)}</b> copied`);
 	});
 	$(".lb-leave", body).addEventListener("click", () => !S.edit && api.lobbyLeave());
 	$(".lb-cancel", body).addEventListener("click", () => !S.edit && api.lobbyLeave());

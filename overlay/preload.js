@@ -43,6 +43,6 @@ contextBridge.exposeInMainWorld("overlay", {
 	lobbyQueueTop: (qid) => ipcRenderer.send("lobby:queue-top", qid),
 	lobbyQueuePlay: (qid) => ipcRenderer.send("lobby:queue-play", qid),
 	lobbyNext: () => ipcRenderer.invoke("lobby:next"),
-	lobbyCopy: () => ipcRenderer.send("lobby:copy"),
+	lobbyCopy: () => ipcRenderer.invoke("lobby:copy"),
 	onLobby: on("lobby"),
 });

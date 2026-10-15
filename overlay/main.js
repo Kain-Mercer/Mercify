@@ -949,10 +949,25 @@ ipcMain.handle("lobby:next", async () => {
 	await lobby.playNext();
 	return true;
 });
-ipcMain.on("lobby:copy", () => {
-	const st = lobby.state();
-	if (st.displayCode) clipboard.writeText(st.displayCode);
-});
+// The lobby code for the clipboard. Copied while WoW is in front (or the overlay is, over it):
+// "[Mercify:BA78-1XDC]", which K-UI: Forever's chat shows as a click-to-copy link holding just
+// the code. Anywhere else (Settings, the tray, another app): the plain code.
+function wowInFront() {
+	const fg = foreground.supported() ? foreground.getForeground() : null;
+	if (!fg) return false;
+	if (fg.pid === process.pid) return gameInFront && !!win && !win.isDestroyed() && win.isFocused();
+	return matchesApp(fg);
+}
+function copyLobbyCode() {
+	const code = lobby.state().displayCode;
+	if (!code) return null;
+	const forChat = wowInFront();
+	const text = forChat ? `[Mercify:${code}]` : code;
+	clipboard.writeText(text);
+	return { text, forChat };
+}
+
+ipcMain.handle("lobby:copy", () => copyLobbyCode());
 
 // Starting a lobby from outside the overlay (Settings, tray): a fresh random code,
 // joined straight away. Nobody else has that code, so you're the host; the code is
@@ -961,7 +976,7 @@ async function startLobby() {
 	await lobby.join(formatCode(generateCode()));
 	const st = lobby.state();
 	if (st.status !== "joined") return false; // left again while connecting
-	clipboard.writeText(st.displayCode);
+	copyLobbyCode();
 	return true;
 }
 ipcMain.handle("settings:lobby-start", async () => {
@@ -980,10 +995,7 @@ ipcMain.handle("settings:lobby-join", async (_e, code) => {
 		return { ok: false, error: err.message, state: await settingsState() };
 	}
 });
-ipcMain.on("settings:lobby-copy", () => {
-	const st = lobby.state();
-	if (st.displayCode) clipboard.writeText(st.displayCode);
-});
+ipcMain.on("settings:lobby-copy", () => copyLobbyCode());
 
 // ------------------------------------------------------------------ overlay IPC
 
@@ -1408,7 +1420,7 @@ function lobbyTrayItems() {
 	return [
 		{ type: "separator" },
 		{ label: `Lobby ${st.displayCode} (${who}, ${st.members.length} here)`, enabled: false },
-		{ label: "Copy lobby code", click: () => clipboard.writeText(st.displayCode) },
+		{ label: "Copy lobby code", click: () => copyLobbyCode() },
 		{ label: "Leave lobby", click: () => lobby.leave() },
 		{ type: "separator" },
 	];

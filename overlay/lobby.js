@@ -69,6 +69,9 @@ function generateCode() {
 }
 
 function normalizeCode(s) {
+	// "[Mercify:BA78-1XDC]", copied for WoW chat, pasted back in whole
+	const tagged = /mercify\s*:\s*([A-Za-z0-9-]+)/i.exec(String(s || ""));
+	if (tagged) s = tagged[1];
 	return String(s || "")
 		.toUpperCase()
 		.replace(/[^A-Z0-9]/g, "")
