@@ -219,7 +219,6 @@ function applyPanel(id) {
 
 	let visible = c.enabled;
 	if (id === "results" && c.autoHide && !S.edit && !S.query) visible = false;
-	if (id === "session" && !S.edit && S.lobby?.status !== "joined") visible = false;
 	p.classList.toggle("off", !visible);
 
 	let alpha;
@@ -1471,6 +1470,31 @@ function setPickerArt(p) {
 
 const sp = { tab: "next" };
 
+// Not in a lobby, the panel shows Spotify's own Up next (from the extension) and the songs
+// played since Mercify started. Joining a lobby swaps in the lobby's session playlist.
+const solo = { next: [], played: [], seq: 0 };
+function notePlayed(prev, cur) {
+	if (!prev || prev.empty || !prev.uri || prev.uri === cur?.uri) return;
+	if (solo.played[0]?.uri === prev.uri) return;
+	solo.played.unshift({ qid: "p" + ++solo.seq, uri: prev.uri, name: prev.name, artists: prev.artists, image: prev.imageSmall || prev.image, duration: prev.duration });
+	if (solo.played.length > 50) solo.played.pop();
+	if (!inLobby() && sp.tab === "played") renderSession();
+}
+
+function renderSoloSession() {
+	const next = solo.next;
+	sp.now.hidden = true;
+	sp.count.textContent = next.length ? `· ${next.length}` : "";
+	if (sp.tab === "next") {
+		sp.list.innerHTML = next.length
+			? next.map((t, i) => sessionRow({ ...t, qid: "s" + i, by: t.queued ? "You" : null }, { index: i, host: false, mine: t.queued })).join("")
+			: `<div class="empty-note">Nothing up next in Spotify.<br />Click <b>+</b> on any song to queue it.</div>`;
+	} else {
+		sp.list.innerHTML = solo.played.length ? solo.played.map((h) => sessionRow(h, { played: true })).join("") : `<div class="empty-note">Songs you play show up here.</div>`;
+	}
+	markPlayingRows();
+}
+
 function buildSession() {
 	const body = buildPanel("session");
 	body.innerHTML = `
@@ -1497,6 +1521,16 @@ function buildSession() {
 		if (!btn) return;
 		const qid = btn.closest("[data-qid]")?.dataset.qid;
 		if (!qid) return;
+		if (!inLobby()) {
+			if (btn.dataset.op === "remove") {
+				const t = solo.next[Number(qid.slice(1))];
+				if (t) cmd("removeFromQueue", { uri: t.uri, uid: t.uid }).catch(() => {});
+			} else if (btn.dataset.op === "readd") {
+				const h = solo.played.find((x) => x.qid === qid);
+				if (h) cmd("addToQueue", { uri: h.uri }).then(() => toast(`Queued <b>${esc(h.name)}</b>`)).catch(() => {});
+			}
+			return;
+		}
 		if (btn.dataset.op === "play") api.lobbyQueuePlay(qid);
 		else if (btn.dataset.op === "top") api.lobbyQueueTop(qid);
 		else if (btn.dataset.op === "remove") api.lobbyQueueRemove(qid);
@@ -1526,8 +1560,9 @@ function sessionRow(item, { index, host, mine, played }) {
 function renderSession() {
 	updateNextButtons();
 	const st = S.lobby;
-	if (!sp.list || !st) return;
+	if (!sp.list) return;
 	applyPanel("session");
+	if (!inLobby() || !st) return renderSoloSession();
 	const host = st.role === "host";
 	const queue = st.queue || [];
 	const history = st.history || [];
@@ -1756,8 +1791,12 @@ api.onBridgeStatus(({ connected }) => {
 
 api.onBridge((msg) => {
 	if (msg.type === "state") {
+		notePlayed(S.player, msg.state);
 		S.player = msg.state;
 		renderPlayer();
+	} else if (msg.type === "queue") {
+		solo.next = Array.isArray(msg.next) ? msg.next : [];
+		if (!inLobby()) renderSession();
 	} else if (msg.type === "progress" && S.player) {
 		S.player.position = msg.position;
 		S.player.at = msg.at || Date.now();

@@ -13,7 +13,7 @@
 (function OverlayBridge() {
 	"use strict";
 
-	const VERSION = "1.3.0";
+	const VERSION = "1.4.0";
 	const DEFAULT_PORT = 7317;
 	const LOG = (...a) => console.log("[overlay-bridge]", ...a);
 
@@ -359,7 +359,49 @@
 		},
 		playContext: async ({ uri }) => P().playUri(uri === "liked" ? likedContextUri() : uri),
 		addToQueue: async ({ uri }) => Spicetify.addToQueue([{ uri }]),
+		removeFromQueue: async ({ uri, uid }) => {
+			if (typeof Spicetify.removeFromQueue !== "function") throw new Error("This Spotify can't remove songs from the queue");
+			await Spicetify.removeFromQueue([uid ? { uri, uid } : { uri }]);
+			setTimeout(() => pushQueue(true), 300);
+		},
 	};
+
+	// ---------------------------------------------------------------- Spotify's queue
+	// What plays next in Spotify itself, for the Session Playlist panel when you're not in a
+	// lobby: songs you queued ("queued") first, then the rest of the playlist or album. Not
+	// Spotify's autoplay suggestions. Spicetify keeps Spicetify.Queue up to date; it's looked at
+	// on every song change and every 2 s, and only sent when it changed.
+	let queueSent = "";
+	function queueItem(t) {
+		const c = t.contextTrack || t;
+		const m = c.metadata || {};
+		return {
+			uri: c.uri,
+			uid: c.uid || null,
+			name: m.title || "",
+			artists: m.artist_name ? [m.artist_name] : [],
+			image: imageUrl(m.image_small_url ?? m.image_url),
+			duration: Number(m.duration) || null,
+			queued: t.provider === "queue",
+		};
+	}
+	function pushQueue(force) {
+		let next = [];
+		try {
+			next = (Spicetify.Queue?.nextTracks || [])
+				.filter((t) => t.provider !== "autoplay")
+				.map(queueItem)
+				.filter((t) => t.uri && t.name && !t.uri.startsWith("spotify:delimiter"))
+				.slice(0, 50);
+		} catch (e) {
+			LOG("couldn't read Spotify's queue", e);
+		}
+		const key = JSON.stringify(next);
+		if (!force && key === queueSent) return;
+		queueSent = key;
+		send({ type: "queue", next });
+	}
+	setInterval(() => pushQueue(false), 2000);
 
 	// ---------------------------------------------------------------- socket
 
@@ -396,6 +438,7 @@
 			LOG("connected to overlay");
 			send({ type: "hello", version: VERSION, spotify: Spicetify.Platform.version ?? null });
 			sendAccount();
+			pushQueue(true);
 			pushState();
 			clearInterval(progressTimer);
 			progressTimer = setInterval(() => {
@@ -435,6 +478,7 @@
 	}
 
 	Spicetify.Player.addEventListener("songchange", pushState);
+	Spicetify.Player.addEventListener("songchange", () => setTimeout(() => pushQueue(false), 300));
 	Spicetify.Player.addEventListener("onplaypause", pushState);
 	// Volume / shuffle / repeat / like have no reliable events, so poll cheaply for those.
 	let lastSig = "";

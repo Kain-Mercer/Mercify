@@ -94,6 +94,17 @@ function state() {
 // Like real Spotify, move on at the end of a song on time, whether or not anyone is asking.
 setInterval(state, 250);
 
+// Spotify's Up next, like the extension's "queue" message: songs you queued, then the rest of
+// the playlist the current song is in.
+const queued = [];
+function queueMsg() {
+	const ctx = TRACKS[player.context] || ALL;
+	const at = ctx.indexOf(ALL[player.trackIdx]);
+	const rest = (at >= 0 ? ctx.slice(at + 1) : ctx).slice(0, 50 - queued.length);
+	const item = (t, q) => ({ uri: t.uri, uid: t.uid, name: t.name, artists: t.artists, image: t.image, duration: t.duration, queued: q });
+	return { type: "queue", next: [...queued.map((t) => item(t, true)), ...rest.map((t) => item(t, false))] };
+}
+
 function setTrack(i) {
 	player.trackIdx = i;
 	if (process.env.MOCK_LOG_CMDS) console.log(`[mock] ${Date.now()} now ${ALL[i].name}`);
@@ -112,7 +123,10 @@ const actions = {
 		player.at = Date.now();
 		player.isPlaying = !player.isPlaying;
 	},
-	next: () => setTrack((player.trackIdx + 1) % ALL.length),
+	next: () => {
+		const q = queued.shift();
+		setTrack(q ? ALL.indexOf(q) : (player.trackIdx + 1) % ALL.length);
+	},
 	prev: () => setTrack((player.trackIdx - 1 + ALL.length) % ALL.length),
 	seek: ({ ms }) => {
 		player.position = ms;
@@ -154,7 +168,14 @@ const actions = {
 		setTrack((TRACKS[uri] || ALL)[0] ? ALL.indexOf((TRACKS[uri] || ALL)[0]) : 0);
 		player.context = uri;
 	},
-	addToQueue: () => null,
+	addToQueue: ({ uri }) => {
+		const t = ALL.find((x) => x.uri === uri);
+		if (t) queued.push(t);
+	},
+	removeFromQueue: ({ uri }) => {
+		const i = queued.findIndex((x) => x.uri === uri);
+		if (i >= 0) queued.splice(i, 1);
+	},
 };
 
 function connect() {
@@ -165,6 +186,7 @@ function connect() {
 		ws.send(JSON.stringify({ type: "hello", version: "mock", spotify: "mock" }));
 		ws.send(JSON.stringify({ type: "state", state: state() }));
 		let last = "";
+		let lastQueue = "";
 		// MOCK_THROTTLE: like Spotify's page after a few minutes hidden (Chromium runs its timers about
 		// once a minute): the extension's own reports nearly stop. Commands still get answered.
 		const every = process.env.MOCK_THROTTLE ? 60000 : 1000;
@@ -175,6 +197,8 @@ function connect() {
 				last = sig;
 				ws.send(JSON.stringify({ type: "state", state: s }));
 			} else if (s.isPlaying) ws.send(JSON.stringify({ type: "progress", position: s.position, at: Date.now() }));
+			const q = JSON.stringify(queueMsg());
+			if (q !== lastQueue) ws.send((lastQueue = q));
 		}, every);
 	});
 	ws.on("message", async (raw) => {

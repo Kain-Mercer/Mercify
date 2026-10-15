@@ -671,6 +671,8 @@ function startBridgeServer() {
 					saveConfig();
 					pushSettings(); // the Spotify row says if SpotX needs setting up again for it
 				}
+			} else if (msg.type === "queue") {
+				sendToRenderer("bridge", msg); // Spotify's own Up next, for the Session Playlist when solo
 			} else if (msg.type === "hello") {
 				heardFromSpotify();
 				bridgeInfo = msg;
