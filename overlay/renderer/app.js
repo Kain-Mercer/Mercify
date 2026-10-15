@@ -170,18 +170,29 @@ function setRect(id, r) {
 
 const minOf = (id) => (isCompact(id) ? COMPACT_MIN : PANELS[id].min);
 
+// Within this many px of the screen's centre line, a panel counts as centred on that axis
+// (the same distance Edit Mode snaps to the centre line from).
+const CENTRE_TOL = 10;
+
+// Where a panel edge goes when its size on one axis changes from `size` to `next`:
+// centred panels keep their centre, others keep the edge nearest the screen edge.
+function keepAnchor(start, size, next, disp) {
+	const mid = start + size / 2;
+	if (Math.abs(mid - disp / 2) <= CENTRE_TOL) return start + (size - next) / 2;
+	return mid > disp / 2 ? start + size - next : start;
+}
+
 // Switch Now Playing between full and compact. It shrinks/grows in place towards the
-// nearest screen corner, so a widget in the bottom-left stays in the bottom-left.
+// nearest screen corner, so a widget in the bottom-left stays in the bottom-left, and a
+// centred widget stays centred.
 function setCompact(on) {
 	const c = S.layout.panels.nowplaying;
 	if (!!c.compact === on) return;
 	const from = rectOf("nowplaying");
-	const right = from.x + from.w / 2 > dispW / 2;
-	const bottom = from.y + from.h / 2 > dispH / 2;
 	c.compact = on;
 	const w = on ? c.cw : c.w;
 	const h = on ? c.ch : c.h;
-	setRect("nowplaying", { x: right ? from.x + from.w - w : from.x, y: bottom ? from.y + from.h - h : from.y, w, h });
+	setRect("nowplaying", { x: keepAnchor(from.x, from.w, w, dispW), y: keepAnchor(from.y, from.h, h, dispH), w, h });
 	clampPanel("nowplaying");
 	applyPanel("nowplaying");
 	setTimeout(marqueeTitles, 300);

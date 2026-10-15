@@ -917,6 +917,21 @@ lobby.on("change", () => {
 });
 lobby.on("toast", (text) => sendToRenderer("toast", { text }));
 
+// Leaving a lobby you were in pauses Spotify, so the lobby's music doesn't carry on by itself.
+// Asks for the state first (the cached one can be stale while Spotify is throttled) and only
+// toggles when it's actually playing, so works with any version of the extension.
+async function leaveLobby() {
+	const wasIn = lobby.state().status === "joined";
+	const r = await lobby.leave();
+	if (wasIn) pauseSpotify().catch(() => {});
+	return r;
+}
+
+async function pauseSpotify() {
+	const st = await bridgeCommand("state", {}, 4000);
+	if (st?.isPlaying) await bridgeCommand("togglePlay");
+}
+
 function setLobbyName(name) {
 	config.lobbyName = String(name || "").trim().slice(0, 24);
 	saveConfig();
@@ -1117,7 +1132,7 @@ ipcMain.handle("lobby:join", async (_e, code) => {
 	}
 });
 ipcMain.handle("lobby:leave", async () => {
-	await lobby.leave();
+	await leaveLobby();
 	return lobbyView();
 });
 ipcMain.handle("lobby:queue-add", async (_e, track) => {
@@ -1492,7 +1507,7 @@ ipcMain.handle("settings:action", async (_e, name) => {
 	else if (name === "apply") await setup.applyExtension(settingsLog);
 	else if (name === "startSpotify") await setup.startSpotify();
 	else if (name === "checkUpdate") updater.check();
-	else if (name === "leaveLobby") await lobby.leave();
+	else if (name === "leaveLobby") await leaveLobby();
 	else if (name === "installUpdate") updater.installNow();
 	return settingsState();
 });
@@ -1625,7 +1640,7 @@ function lobbyTrayItems() {
 		{ type: "separator" },
 		{ label: `Lobby ${st.displayCode} (${who}, ${st.members.length} here)`, enabled: false },
 		{ label: "Copy lobby code", click: () => copyLobbyCode() },
-		{ label: "Leave lobby", click: () => lobby.leave() },
+		{ label: "Leave lobby", click: () => leaveLobby() },
 		{ type: "separator" },
 	];
 }

@@ -94,7 +94,7 @@ Notifications still pop up while the overlay is hidden. Set the Notifications pa
 <details>
 <summary><b>The small Now Playing bar</b></summary>
 
-Hover over Now Playing and click the small arrows in its top-right corner to shrink it to a compact bar with the song and previous, play/pause and next. Click them again to make it full size. It shrinks and grows in place, towards the nearest corner of your screen. You can also switch it with **Compact view** in Edit Mode, and move and resize it there like any other panel.
+Hover over Now Playing and click the small arrows in its top-right corner to shrink it to a compact bar with the song and previous, play/pause and next. Click them again to make it full size. It shrinks and grows in place, towards the nearest corner of your screen; if you've centred it, it stays centred. You can also switch it with **Compact view** in Edit Mode, and move and resize it there like any other panel.
 
 When you hide the overlay with `Ctrl` + `` ` ``, Now Playing (full size or compact) stays on screen faintly and **still works**: pause, skip or change the volume without bringing everything back. It brightens while your mouse is over it. Clicking it doesn't take the keyboard from your game, so you can keep running with WASD while you skip a song (the same goes for every panel while the overlay is shown, except while you type in a text box). To make it ignore clicks while hidden, untick **Clickable while hidden** in Edit Mode; to hide it completely, set its *Opacity when hidden* to 0%.
 
@@ -149,7 +149,7 @@ Everyone hears the same song at the same moment, each through their own Spotify.
 - **The tray:** once you've set your name, right-click the tray icon and choose **Start a listening lobby**. The code is copied for you.
 - **The overlay:** open the **Lobby** panel (turn it on in Edit Mode if you can't see it), enter your name and a code (or press the dice for a random one), and press **Join lobby**.
 
-Everyone who enters the same code ends up in the same lobby. If nobody's there yet, you've started it and you're the host. Now Playing shows a small badge while you're in a lobby. Leave from the Lobby panel, Settings or the tray icon.
+Everyone who enters the same code ends up in the same lobby. If nobody's there yet, you've started it and you're the host. Now Playing shows a small badge while you're in a lobby. Leave from the Lobby panel, Settings or the tray icon. Leaving pauses Spotify, so the lobby's music doesn't keep playing on its own.
 
 </details>
 
