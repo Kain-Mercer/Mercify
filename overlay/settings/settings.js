@@ -394,6 +394,28 @@ $("#remove-addons").addEventListener("click", async () => {
 	if (sure) await runSetupAction("removeAddons");
 });
 
+// ---------------------------------------------------------------- YouTube (yt-dlp)
+
+function renderYouTube(y) {
+	if (!y) return;
+	const btn = $("#yt-update");
+	btn.hidden = !y.installed;
+	btn.disabled = !!y.updating || !!y.installing;
+	btn.textContent = y.updating ? "Updating…" : "Update yt-dlp";
+	$("#yt-status").textContent = y.installing
+		? "Downloading yt-dlp…"
+		: y.error
+			? `Couldn't get yt-dlp ready: ${y.error}`
+			: y.installed
+				? `Ready${y.version ? ` (yt-dlp ${y.version})` : ""}. It updates itself once a day.`
+				: "Paste a YouTube link in the overlay's search bar to play a video. The first one downloads yt-dlp (about 18 MB).";
+}
+$("#yt-update").addEventListener("click", async () => {
+	$("#yt-update").disabled = true;
+	$("#yt-update").textContent = "Updating…";
+	render(await S.action("ytUpdate"));
+});
+
 // ---------------------------------------------------------------- updates
 
 function renderUpdate(u, version) {
@@ -1008,6 +1030,7 @@ function render(d) {
 	const s = d.setup;
 	const ready = !s?.supported || setupDone(s);
 	renderUpdate(d.update, d.version);
+	renderYouTube(d.youtube);
 	renderLobby(d.lobby, ready);
 	renderFriends(d.friends, d.lobby);
 	renderAvatar(d.avatar, d.lobby?.name);

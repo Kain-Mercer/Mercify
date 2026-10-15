@@ -49,7 +49,8 @@ const HISTORY_MAX = 50;
 const QUEUE_RESEND_MS = 15000; // host repeats the list now and then, in case a message was lost
 const ADVANCE_EARLY_MS = 350; // start the next queued song this long before the current one ends
 
-const URI_RE = /^spotify:(track|episode):[A-Za-z0-9]{1,64}$/;
+// Spotify songs and episodes, and YouTube videos (played by Mercify itself, see youtube.js)
+const URI_RE = /^(spotify:(track|episode):[A-Za-z0-9]{1,64}|youtube:[A-Za-z0-9_-]{11})$/;
 
 // A queue/history entry, built from untrusted input: keep only what we show, in safe shapes.
 function makeItem(t, by, byId) {

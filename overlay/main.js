@@ -5,7 +5,7 @@
 // - shows only while a chosen app (e.g. WoW) is in front
 // - global hotkeys, tray menu, Settings window with built-in setup, config + layout persistence
 
-const { app, BrowserWindow, globalShortcut, ipcMain, screen, Tray, Menu, nativeImage, shell, Notification, clipboard, dialog } = require("electron");
+const { app, BrowserWindow, globalShortcut, ipcMain, screen, Tray, Menu, nativeImage, shell, Notification, clipboard, dialog, net } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { WebSocketServer } = require("ws");
@@ -14,6 +14,8 @@ const setup = require("./setup");
 const updater = require("./updater");
 const { createLobby, generateCode, formatCode, DEFAULT_RELAYS } = require("./lobby");
 const { createFriends } = require("./friends");
+const { createYouTube, parseId: parseYouTubeId } = require("./youtube");
+const { pathToFileURL } = require("url");
 
 // ------------------------------------------------------------------ uninstalling
 // The uninstaller asks whether to remove the Spotify add-ons too, then runs
@@ -695,10 +697,7 @@ function startBridgeServer() {
 			} else if (msg.type === "state" || msg.type === "progress") {
 				heardFromSpotify();
 				if (msg.type === "state") spotifyPlaying = !!msg.state?.isPlaying;
-				sendToRenderer("bridge", msg);
-				playerToSettings(msg);
-				if (msg.type === "state") lobby.onPlayerState(msg.state), playerForFriends(msg.state);
-				else lobby.onPlayerProgress(msg.position, msg.at);
+				if (spotifyInCharge(msg.type === "state" ? msg.state : null)) emitPlayer(msg);
 			}
 		});
 
@@ -853,10 +852,8 @@ async function askSpotifyState(why) {
 		if (!st) return;
 		heardFromSpotify();
 		spotifyPlaying = !!st.isPlaying;
-		sendToRenderer("bridge", { type: "state", state: st });
-		playerToSettings({ type: "state", state: st });
-		lobby.onPlayerState(st);
-		playerForFriends(st);
+		if (!spotifyInCharge(st)) return;
+		emitPlayer({ type: "state", state: st });
 		if (st.isPlaying && Number.isFinite(st.position)) lobby.onPlayerProgress(st.position, st.at);
 		if (why === "quiet") quietAsks++;
 	} catch (_) {
@@ -866,7 +863,7 @@ async function askSpotifyState(why) {
 }
 
 setInterval(() => {
-	if (!bridge) return;
+	if (!bridge || yt.active) return;
 	const silent = Date.now() - lastHeard > QUIET_MS;
 	if (silent !== quiet && (spotifyPlaying || !silent)) {
 		quiet = silent;
@@ -892,6 +889,324 @@ function bridgeCommand(action, args, timeoutMs = 15000) {
 	});
 }
 
+// What's playing goes to the overlay, Settings, the lobby and friends, from Spotify or YouTube alike.
+function emitPlayer(msg) {
+	sendToRenderer("bridge", msg);
+	playerToSettings(msg);
+	if (msg.type === "state") lobby.onPlayerState(msg.state), playerForFriends(msg.state);
+	else lobby.onPlayerProgress(msg.position, msg.at);
+}
+
+// ------------------------------------------------------------------ YouTube (yt-dlp)
+//
+// A YouTube video is played by Mercify itself (youtube.js fetches it, player/ plays it in a hidden
+// window), as "youtube:<id>". While one is the current song, Spotify is paused and its reports
+// are held back, so everything shows the video; Spotify takes over again when the video ends (or
+// is stopped by picking a Spotify song, or you press play in Spotify). Every playback command
+// goes through playerCommand(), which sends it to whichever of the two is in charge.
+
+const youtube = createYouTube({
+	dir: path.join(userDir, "yt-dlp"),
+	cacheDir: path.join(app.getPath("temp"), "Mercify YouTube"),
+	nodePath: process.execPath, // run with ELECTRON_RUN_AS_NODE=1, Mercify is the Node yt-dlp needs
+	fetch: (url, opts) => net.fetch(url, opts),
+	log: (m) => diag(m),
+	debugCommand: process.env.OVERLAY_DEBUG_YTDLP || null, // tests: tools/fake-ytdlp.js
+});
+
+const isYouTubeUri = (u) => typeof u === "string" && /^youtube:[A-Za-z0-9_-]{11}$/.test(u);
+const yt = {
+	active: false, // a YouTube video is the current song (playing, paused or still loading)
+	id: null,
+	loading: false,
+	playing: false,
+	wantPlaying: true, // what to do once it's loaded (a lobby may pause it meanwhile)
+	position: 0,
+	at: 0,
+	duration: 0,
+	volume: Number.isFinite(config.youtubeVolume) ? config.youtubeVolume : 0.8,
+	seq: 0, // which load the player's reports belong to
+	graceUntil: 0, // Spotify reporting "playing" before this is our own pause catching up
+	resumeSpotify: false, // Spotify was playing when the video took over, so it carries on after
+};
+const ytWaiters = new Map(); // seq -> { resolve, reject, timer }
+
+let playerWin = null;
+let playerLoaded = null;
+function playerWindow() {
+	if (playerWin && !playerWin.isDestroyed()) return playerLoaded;
+	playerWin = new BrowserWindow({
+		show: false,
+		width: 240,
+		height: 120,
+		skipTaskbar: true,
+		webPreferences: {
+			preload: path.join(__dirname, "preload-player.js"),
+			contextIsolation: true,
+			nodeIntegration: false,
+			sandbox: true,
+			backgroundThrottling: false,
+			autoplayPolicy: "no-user-gesture-required",
+		},
+	});
+	playerLoaded = new Promise((resolve) => playerWin.webContents.once("did-finish-load", resolve));
+	playerWin.loadFile(path.join(__dirname, "player", "player.html"));
+	playerWin.on("closed", () => {
+		playerWin = null;
+		if (yt.active) stopYouTube(false);
+	});
+	return playerLoaded;
+}
+const toPlayer = (channel, payload) => playerWin && !playerWin.isDestroyed() && playerWin.webContents.send(channel, payload);
+
+const ytPosition = () => (yt.playing ? Math.min(yt.duration || Infinity, yt.position + (Date.now() - yt.at)) : yt.position);
+
+function ytState() {
+	const info = youtube.known(yt.id) || youtube.item(yt.id);
+	return {
+		uri: `youtube:${yt.id}`,
+		name: info.name,
+		artists: info.artists,
+		image: info.image,
+		duration: yt.duration || info.duration || 0,
+		position: Math.round(ytPosition()),
+		at: Date.now(),
+		isPlaying: yt.playing,
+		volume: yt.volume,
+		shuffle: false,
+		repeat: 0,
+		liked: false,
+		empty: false,
+		source: "youtube",
+		loading: yt.loading,
+	};
+}
+const emitYouTube = () => yt.active && emitPlayer({ type: "state", state: ytState() });
+
+// Spotify's report: shown, unless a YouTube video is the current song. Spotify starting to play
+// anyway (you pressed play in Spotify) ends the video.
+function spotifyInCharge(st) {
+	if (!yt.active) return true;
+	if (st?.isPlaying && Date.now() > yt.graceUntil) {
+		diag("youtube: Spotify started playing, so the video stops");
+		stopYouTube(false);
+		return true;
+	}
+	return false;
+}
+
+async function playYouTube(id, { position = 0 } = {}) {
+	const seq = ++yt.seq;
+	const wasActive = yt.active;
+	if (yt.id && yt.id !== id) youtube.protect(yt.id, false);
+	Object.assign(yt, { active: true, id, loading: true, playing: false, wantPlaying: true, position: Math.max(0, position || 0), at: Date.now(), duration: youtube.known(id)?.duration || 0 });
+	youtube.protect(id, true);
+	yt.graceUntil = Date.now() + 5000;
+	if (!wasActive) yt.resumeSpotify = spotifyPlaying;
+	if (spotifyPlaying) pauseSpotifyOnly();
+	toPlayer("player:stop");
+	emitYouTube();
+	if (!youtube.installed()) sendToRenderer("toast", { text: "Getting YouTube ready: a one-time download of yt-dlp (about 18 MB)…" });
+	youtube
+		.lookup(id)
+		.then(() => seq === yt.seq && emitYouTube())
+		.catch(() => {});
+	let file;
+	try {
+		file = await youtube.prepare(id);
+		if (seq !== yt.seq) return false; // something else was picked meanwhile
+		await playerWindow();
+		const ready = new Promise((resolve, reject) => {
+			const timer = setTimeout(() => {
+				ytWaiters.delete(seq);
+				reject(new Error("the video didn't start"));
+			}, 20000);
+			ytWaiters.set(seq, { resolve, reject, timer });
+		});
+		toPlayer("player:load", { seq, src: pathToFileURL(file).href, position: yt.position, playing: yt.wantPlaying, volume: yt.volume });
+		await ready;
+		return true;
+	} catch (err) {
+		if (seq === yt.seq) {
+			diag(`youtube: ${id}: ${err.message}`);
+			sendToRenderer("toast", { text: `Couldn't play that YouTube video: ${err.message}`, kind: "error" });
+			err.shown = true; // the overlay doesn't need to say it again
+			stopYouTube(yt.resumeSpotify); // Spotify carries on if the video interrupted it
+		}
+		throw err;
+	}
+}
+
+// Pause Spotify without touching the YouTube player (pauseSpotify() pauses whatever's current).
+function pauseSpotifyOnly() {
+	bridgeCommand("state", {}, 4000)
+		.then((st) => st?.isPlaying && bridgeCommand("togglePlay"))
+		.catch(() => {});
+}
+
+function stopYouTube(resumeSpotify) {
+	if (!yt.active) return;
+	diag(`youtube: stop ${yt.id}${resumeSpotify ? ", back to Spotify" : ""}`);
+	yt.active = false;
+	yt.seq++;
+	yt.loading = yt.playing = false;
+	if (yt.id) youtube.protect(yt.id, false);
+	toPlayer("player:stop");
+	if (!bridge) return emitPlayer({ type: "state", state: { empty: true } });
+	if (resumeSpotify)
+		bridgeCommand("state", {}, 4000)
+			.then((st) => (st && !st.empty && !st.isPlaying ? bridgeCommand("togglePlay") : askSpotifyState("youtube stopped")))
+			.catch(() => {});
+	else askSpotifyState("youtube stopped"); // show Spotify's song again
+}
+
+function ytSetPlaying(on) {
+	if (!yt.active) return;
+	if (yt.loading) {
+		yt.wantPlaying = on; // applied once it's loaded
+		return emitYouTube();
+	}
+	yt.position = ytPosition();
+	yt.at = Date.now();
+	yt.playing = on; // straight away; the player confirms
+	if (on) yt.graceUntil = Date.now() + 3000;
+	toPlayer(on ? "player:play" : "player:pause");
+	emitYouTube();
+}
+
+function ytSeek(ms) {
+	yt.position = Math.max(0, Math.min(Number(ms) || 0, yt.duration || Infinity));
+	yt.at = Date.now();
+	if (!yt.loading) toPlayer("player:seek", yt.position);
+	emitYouTube();
+}
+
+let ytVolumeSave = null;
+function ytVolume(level) {
+	yt.volume = Math.max(0, Math.min(1, Number(level) || 0));
+	toPlayer("player:volume", yt.volume);
+	clearTimeout(ytVolumeSave);
+	ytVolumeSave = setTimeout(() => {
+		config.youtubeVolume = yt.volume;
+		saveConfig();
+	}, 800);
+	emitYouTube();
+}
+
+// The video finished. In a lobby the host's session playlist starts its next song by itself
+// (just before the end), and listeners follow the host. Otherwise Spotify carries on.
+function youTubeEnded() {
+	const seq = yt.seq;
+	setTimeout(() => {
+		if (!yt.active || yt.seq !== seq || yt.playing) return;
+		const st = lobby.state();
+		if (st.status === "joined" && st.role === "listener") return;
+		if (st.status === "joined" && lobby.isHostWithQueue()) return lobby.playNext().catch(() => {});
+		stopYouTube(yt.resumeSpotify);
+	}, 1200);
+}
+
+ipcMain.on("player:event", (_e, ev) => {
+	if (!ev || !yt.active || ev.seq !== yt.seq) return;
+	if (ev.duration > 0) yt.duration = ev.duration;
+	if (Number.isFinite(ev.position)) {
+		yt.position = ev.position;
+		yt.at = Date.now();
+	}
+	const waiter = ytWaiters.get(ev.seq);
+	switch (ev.type) {
+		case "ready":
+			yt.loading = false;
+			yt.playing = !!ev.playing;
+			youtube.remember(yt.id, { duration: yt.duration });
+			if (waiter) clearTimeout(waiter.timer), ytWaiters.delete(ev.seq), waiter.resolve();
+			emitYouTube();
+			break;
+		case "play":
+		case "pause":
+			yt.playing = ev.type === "play";
+			emitYouTube();
+			break;
+		case "time":
+			emitPlayer({ type: "progress", position: ev.position, at: Date.now() });
+			break;
+		case "ended":
+			yt.playing = false;
+			yt.position = yt.duration;
+			emitYouTube();
+			youTubeEnded();
+			break;
+		case "error":
+			if (waiter) clearTimeout(waiter.timer), ytWaiters.delete(ev.seq), waiter.reject(new Error(ev.message || "the audio wouldn't play"));
+			else {
+				sendToRenderer("toast", { text: `The YouTube video stopped: ${ev.message || "the audio wouldn't play"}`, kind: "error" });
+				stopYouTube(false);
+			}
+			break;
+	}
+});
+
+const SPOTIFY_ONLY = new Set(["toggleShuffle", "toggleRepeat", "toggleLike"]);
+
+// Every playback command, from the overlay, Settings, hotkeys and the lobby.
+async function playerCommand(action, args = {}, timeoutMs) {
+	if (action === "playTrack" && isYouTubeUri(args.uri)) return playYouTube(args.uri.slice(8), { position: args.position || 0 });
+	if (action === "addToQueue" && isYouTubeUri(args.uri)) throw new Error("YouTube videos queue up in a listening lobby's session playlist. Outside a lobby, click the video to play it");
+	if (yt.active) {
+		if (action === "state") return ytState();
+		if (action === "togglePlay") return ytSetPlaying(yt.loading ? !yt.wantPlaying : !yt.playing);
+		if (action === "seek") return ytSeek(args.ms);
+		if (action === "setVolume") return ytVolume(args.level);
+		if (action === "prev") return ytSeek(0);
+		if (action === "next") {
+			stopYouTube(false);
+			return bridgeCommand("next", {}, timeoutMs);
+		}
+		if (SPOTIFY_ONLY.has(action)) throw new Error("That's for Spotify songs, not YouTube videos");
+		if (action === "playTrack" || action === "playContext") stopYouTube(false);
+	}
+	return bridgeCommand(action, args, timeoutMs);
+}
+
+// Lobby members fetch the session playlist's videos ahead, so they play from a local file
+// in step with everyone. A video that failed isn't tried again for 10 minutes.
+const ytFailed = new Map(); // id -> when
+function prefetchLobbyVideos() {
+	const st = lobby.state();
+	if (st.status !== "joined") return;
+	const uris = [st.current?.uri, ...(st.queue || []).slice(0, 4).map((q) => q.uri)];
+	for (const it of st.queue || []) if (isYouTubeUri(it.uri)) youtube.remember(it.uri.slice(8), { name: it.name, artists: it.artists, duration: it.duration || undefined });
+	for (const uri of uris) {
+		if (!isYouTubeUri(uri)) continue;
+		const id = uri.slice(8);
+		if (Date.now() - (ytFailed.get(id) || 0) < 600000 || youtube.cachedFile(id)) continue;
+		youtube.prepare(id).catch((err) => {
+			ytFailed.set(id, Date.now());
+			diag(`youtube: couldn't fetch ${id} ahead: ${err.message}`);
+		});
+	}
+}
+
+// Search bar: a pasted YouTube link (its audio is fetched straight away, ready to play), or a
+// YouTube search.
+ipcMain.handle("yt:lookup", async (_e, text) => {
+	const id = parseYouTubeId(text);
+	if (!id) return { ok: false, notLink: true };
+	youtube.prepare(id).catch(() => {});
+	try {
+		return { ok: true, item: await youtube.lookup(id) };
+	} catch (err) {
+		return { ok: false, error: err.message, item: youtube.item(id) };
+	}
+});
+ipcMain.handle("yt:search", async (_e, query) => {
+	try {
+		return { ok: true, items: await youtube.search(query) };
+	} catch (err) {
+		return { ok: false, error: err.message };
+	}
+});
+
 // ------------------------------------------------------------------ listening lobbies
 
 const lobbyRelays = process.env.OVERLAY_DEBUG_LOBBY_RELAYS
@@ -909,7 +1224,7 @@ const friends = createFriends({
 });
 
 const lobby = createLobby({
-	command: (action, args) => bridgeCommand(action, args),
+	command: (action, args) => playerCommand(action, args),
 	relays: lobbyRelays,
 	log: (m) => console.log("[lobby]", m),
 	trace: !!process.env.OVERLAY_DEBUG_LOBBY_TRACE,
@@ -924,6 +1239,7 @@ lobby.on("change", () => {
 	pushSettings();
 	updateTrayMenu();
 	updateFriendsPresence();
+	prefetchLobbyVideos();
 });
 lobby.on("toast", (text) => sendToRenderer("toast", { text }));
 
@@ -938,6 +1254,7 @@ async function leaveLobby() {
 }
 
 async function pauseSpotify() {
+	if (yt.active) return ytSetPlaying(false); // a YouTube video is the current song
 	const st = await bridgeCommand("state", {}, 4000);
 	if (st?.isPlaying) await bridgeCommand("togglePlay");
 }
@@ -1279,9 +1596,9 @@ const MANUAL_PLAY = new Set(["playTrack", "playContext", "prev", "next"]);
 ipcMain.handle("cmd", async (_e, { action, args }) => {
 	if (MANUAL_PLAY.has(action)) lobby.markManual();
 	try {
-		return { ok: true, data: await bridgeCommand(action, args) };
+		return { ok: true, data: await playerCommand(action, args) };
 	} catch (err) {
-		return { ok: false, error: err.message };
+		return { ok: false, error: err.message, shown: !!err.shown };
 	}
 });
 
@@ -1366,15 +1683,15 @@ const hotkeyActions = {
 		takeFocus();
 		sendToRenderer("focus-search");
 	},
-	playPause: () => bridgeCommand("togglePlay").catch(() => {}),
+	playPause: () => playerCommand("togglePlay").catch(() => {}),
 	// In a lobby: a listener's Next votes to skip; the host's plays the next session song.
 	next: () => {
 		const st = lobby.state();
 		if (st.status === "joined" && st.role === "listener") return lobby.voteSkip(!st.skip?.mine);
 		if (lobby.isHostWithQueue()) return lobby.playNext().catch(() => {});
-		bridgeCommand("next").catch(() => {});
+		playerCommand("next").catch(() => {});
 	},
-	prev: () => bridgeCommand("prev").catch(() => {}),
+	prev: () => playerCommand("prev").catch(() => {}),
 };
 
 function registerOne(name) {
@@ -1574,8 +1891,13 @@ async function settingsState() {
 		player: settingsPlayer,
 		friends: friendsView(),
 		version: app.getVersion(),
+		youtube: { ...youtube.status(), version: youtubeVersion },
 	};
 }
+
+// yt-dlp's version for Settings (asking it takes a moment, so it's remembered)
+let youtubeVersion = null;
+if (youtube.installed()) youtube.getVersion().then((v) => (youtubeVersion = v));
 
 function toSettings(channel, payload) {
 	if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send(channel, payload);
@@ -1592,17 +1914,17 @@ function playerToSettings(msg) {
 // The same as the overlay's buttons: in a lobby, a listener's Next votes to skip and the
 // host's plays the next session song; songs picked here count as picked on purpose.
 const SETTINGS_PLAYER = {
-	playPause: () => bridgeCommand("togglePlay"),
+	playPause: () => playerCommand("togglePlay"),
 	prev: () => {
 		lobby.markManual();
-		return bridgeCommand("prev");
+		return playerCommand("prev");
 	},
 	next: () => {
 		const st = lobby.state();
 		if (st.status === "joined" && st.role === "listener") return lobby.voteSkip(!st.skip?.mine);
 		if (lobby.isHostWithQueue()) return lobby.playNext();
 		lobby.markManual();
-		return bridgeCommand("next");
+		return playerCommand("next");
 	},
 };
 ipcMain.handle("settings:player", async (_e, action) => {
@@ -1699,6 +2021,15 @@ ipcMain.handle("settings:action", async (_e, name) => {
 	else if (name === "checkUpdate") updater.check();
 	else if (name === "leaveLobby") await leaveLobby();
 	else if (name === "installUpdate") updater.installNow();
+	else if (name === "ytUpdate") {
+		try {
+			await youtube.ready();
+			await youtube.update();
+			youtubeVersion = await youtube.getVersion();
+		} catch (err) {
+			diag(`youtube: ${err.message}`);
+		}
+	}
 	return settingsState();
 });
 
@@ -2050,6 +2381,7 @@ app.whenReady().then(async () => {
 	lobby.setAvatar(avatar);
 	friends.setAvatar(avatar);
 	friends.start();
+	youtube.cleanup(); // the cache of played videos
 	startBridgeServer();
 	createWindow();
 	createTray();

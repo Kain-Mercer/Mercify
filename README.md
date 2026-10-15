@@ -68,7 +68,7 @@ These only work while you're in your game, so they don't get in the way of other
 <summary><b>The panels</b></summary>
 
 - **Now Playing:** album art, the song, a seek bar, a volume slider, and play/pause, skip, shuffle, repeat and like buttons. Drag the seek bar or volume, or scroll your mouse wheel over the volume. Long song names scroll by when a new song starts, and when you hover over them.
-- **Search:** type a song, artist, playlist or album. Click a song to play it, or open a playlist or album to see its songs.
+- **Search:** type a song, artist, playlist or album. Click a song to play it, or open a playlist or album to see its songs. Paste a YouTube link to play a [YouTube video](#youtube-videos), or press **Search YouTube** at the end of the results.
 - **Playlist:** browse any of your playlists, your Liked Songs, or an album from search, and click a song to play it.
 - **Lobby** and **Session Playlist:** for [listening lobbies](#listening-lobbies).
 - **Friends:** your [friends](#friends), who's online and what they're listening to.
@@ -133,6 +133,20 @@ Open **Settings** by clicking the tray icon. Its pages are down the left:
 - **Hotkeys:** press **Change** next to a shortcut, then press the new keys. Play/pause, next and previous can have shortcuts too.
 - **Setup:** what's installed, and **Redo** for any step if something stops working.
 - **General:** start Mercify with Windows (it then waits quietly in the tray instead of opening Settings), open Spotify with it, the theme (**Classic**, **Neon**, **Light** or **Vice**, for Settings and the panels in your game), and [updates](#updates).
+
+</details>
+
+<details>
+<summary><b>YouTube videos</b></summary>
+
+Meme edits, remixes and anything else that isn't on Spotify can play through Mercify too.
+
+- **Paste a YouTube link** into the search bar and click the video (or press `Enter`). Or search as usual and press **Search YouTube for "…"** at the end of the results.
+- The video's thumbnail shows in place of the album art. Play/pause, skip, the seek bar and the volume work as usual; shuffle, repeat and like are for Spotify songs.
+- Spotify pauses while a video plays, and carries on when it ends.
+- **In a listening lobby,** add videos to the session playlist like songs. Everyone's Mercify fetches each video ahead of time, so it plays in step for everyone even on a slow connection. Everyone in the lobby needs Mercify 1.30 or newer.
+- The first video downloads [yt-dlp](https://github.com/yt-dlp/yt-dlp) (about 18 MB), the tool that fetches YouTube's audio. It updates itself once a day, since YouTube changes often; if videos stop working, give it a day, or press **Update yt-dlp** on Settings' Setup page.
+- Videos are downloaded to a temporary folder to play, and deleted after a couple of days.
 
 </details>
 
@@ -300,6 +314,8 @@ Mercify is provided **for evaluation purposes only**. It is test software, offer
 Mercify is an independent project. It is **not affiliated with, endorsed by or supported by** Spotify, Blizzard Entertainment, the SpotX project or the Spicetify project. All trademarks belong to their respective owners.
 
 Listening lobbies send messages, encrypted with your lobby code, through free public relay servers run by third parties (EMQX, HiveMQ and the Eclipse Mosquitto project). Mercify isn't affiliated with them and can't guarantee they're available.
+
+YouTube videos are fetched with yt-dlp, an independent open-source tool. Downloading from YouTube may go against YouTube's Terms of Service; Mercify keeps videos only in a temporary cache to play them. Please decide for yourself whether to use it.
 
 Mercify relies on third-party tools (SpotX and Spicetify) that modify the Spotify desktop app. Modifying Spotify may go against Spotify's Terms of Use. Please review them and decide for yourself before installing. Mercify doesn't modify, read or inject anything into your games. It simply draws a window on top of them.
 

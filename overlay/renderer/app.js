@@ -30,6 +30,8 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 const I = (d, vb = "0 0 16 16") => `<svg viewBox="${vb}" aria-hidden="true"><path d="${d}"/></svg>`;
 const ICON = {
+	// YouTube's own mark isn't used: a plain play button in a rounded screen
+	youtube: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="3" width="14" height="10" rx="3" style="fill:none;stroke:currentColor;stroke-width:1.5"/><path d="M6.5 5.8v4.4L10.3 8z" style="fill:currentColor"/></svg>',
 	// ISO 7010 P001 "general prohibition": a ring with a bar from top left to bottom right
 	noEntry: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.1" style="fill:none;stroke:currentColor;stroke-width:1.9"/><path d="M3.7 3.7l8.6 8.6" style="fill:none;stroke:currentColor;stroke-width:1.9"/></svg>',
 	play: I("M4.5 2.6v10.8a.6.6 0 0 0 .9.5l8.6-5.4a.6.6 0 0 0 0-1L5.4 2.1a.6.6 0 0 0-.9.5z"),
@@ -791,7 +793,7 @@ function applyNoticesDirection() {
 async function cmd(action, args) {
 	const r = await api.cmd(action, args);
 	if (!r.ok) {
-		if (action !== "state") toast(esc(r.error), "error");
+		if (action !== "state" && !r.shown) toast(esc(r.error), "error");
 		throw new Error(r.error);
 	}
 	return r.data;
@@ -1118,7 +1120,8 @@ document.addEventListener("click", (e) => {
 
 function renderPlayer() {
 	const p = S.player;
-	if (!S.connected) {
+	const yt = p?.source === "youtube"; // played by Mercify itself, Spotify or not
+	if (!S.connected && !yt) {
 		setTrackInfo("Waiting for Spotify…", "Not set up yet? Click here to open Setup", "");
 		setPlayIcons(false);
 		return;
@@ -1128,8 +1131,14 @@ function renderPlayer() {
 		setPlayIcons(false);
 		return;
 	}
-	setTrackInfo(p.name, (p.artists || []).join(", "), p.image || "");
-	setPlayIcons(p.isPlaying);
+	setTrackInfo(p.name, p.loading ? "Getting it from YouTube…" : (p.artists || []).join(", "), p.image || "");
+	setPlayIcons(p.loading ? true : p.isPlaying);
+	// shuffle, repeat and Liked Songs are Spotify's
+	for (const b of [np.shuffle, np.repeat, np.like]) {
+		b.dataset.title ??= b.title;
+		b.disabled = yt;
+		b.title = yt ? "Not for YouTube videos" : b.dataset.title;
+	}
 	np.shuffle.classList.toggle("on", !!p.shuffle);
 	np.repeat.classList.toggle("on", p.repeat > 0);
 	np.repeat.innerHTML = p.repeat === 2 ? ICON.repeatOne : ICON.repeat;
@@ -1142,7 +1151,7 @@ function renderPlayer() {
 }
 
 function tick() {
-	if (S.player && !S.player.empty && S.connected) {
+	if (S.player && !S.player.empty && (S.connected || S.player.source === "youtube")) {
 		const pos = currentPosition();
 		const pct = (S.player.duration ? (pos / S.player.duration) * 100 : 0) + "%";
 		if (np.seekPreview == null) {
@@ -1164,7 +1173,7 @@ function trackRow(t, { index = null, contextUri = null, showIndex = false } = {}
 		<img src="${esc(t.image || "")}" alt="" loading="lazy" />
 		<div class="row-text">
 			<div class="row-title">${esc(t.name)}</div>
-			<div class="row-sub">${esc((t.artists || []).join(", "))}</div>
+			<div class="row-sub">${t.uri?.startsWith("youtube:") ? '<span class="yt-tag">YouTube</span>' : ""}${esc((t.artists || []).join(", "))}</div>
 		</div>
 		<button class="icon-btn" title="Add to queue">${ICON.plus}</button>
 		<span class="row-dur">${t.duration ? fmt(t.duration) : ""}</span>`;
@@ -1294,6 +1303,7 @@ async function runSearch(q) {
 	if (!q) return clearSearch();
 	const seq = ++searchSeq;
 	sr.spin.hidden = false;
+	if (/(youtube\.com|youtu\.be)\//i.test(q)) return youTubeLink(q, seq);
 	try {
 		const res = await cmd("search", { query: q, limit: 20 });
 		if (seq !== searchSeq) return;
@@ -1306,8 +1316,59 @@ async function runSearch(q) {
 	}
 }
 
+// A pasted YouTube link: the video, ready to play (Mercify starts fetching its audio straight away).
+async function youTubeLink(q, seq) {
+	try {
+		const r = await api.ytLookup(q);
+		if (seq !== searchSeq) return;
+		S.results = { youtube: true, tracks: r.item ? [r.item] : [], error: r.ok ? null : r.error || "That isn't a YouTube video link" };
+		renderResults();
+	} finally {
+		if (seq === searchSeq) sr.spin.hidden = true;
+	}
+}
+
+// "Search YouTube for …" at the end of the results: on click, the videos replace it.
+function youTubeSearchRow() {
+	const row = el(
+		"div",
+		"row yt-more",
+		`<span class="yt-icon">${ICON.youtube}</span><div class="row-text"><div class="row-title">Search YouTube for “${esc(S.query)}”</div><div class="row-sub">Or paste a YouTube link in the search bar</div></div>`
+	);
+	row.addEventListener("click", async () => {
+		if (S.edit || row.classList.contains("busy")) return;
+		row.classList.add("busy");
+		$(".row-sub", row).textContent = "Searching YouTube…";
+		const seq = searchSeq;
+		const r = await api.ytSearch(S.query);
+		if (seq !== searchSeq) return;
+		if (!r.ok) {
+			row.classList.remove("busy");
+			$(".row-sub", row).textContent = r.error;
+			return;
+		}
+		const frag = document.createDocumentFragment();
+		frag.append(el("div", "section-label", "YouTube"));
+		for (const t of r.items) frag.append(trackRow(t));
+		if (!r.items.length) frag.append(el("div", "empty-note", "No videos found"));
+		row.replaceWith(frag);
+	});
+	return row;
+}
+
 function renderResults() {
 	const r = S.results || {};
+	if (r.youtube) {
+		sr.head.textContent = "YouTube link";
+		sr.meta.textContent = "";
+		sr.list.innerHTML = "";
+		if (r.error) sr.list.append(el("div", "empty-note", esc(r.error)));
+		if (r.tracks.length) {
+			sr.list.append(el("div", "section-label", "YouTube"));
+			for (const t of r.tracks) sr.list.append(trackRow(t));
+		}
+		return;
+	}
 	sr.head.textContent = `Results for “${S.query}”`;
 	sr.meta.textContent = r.tracks?.length ? `${r.tracks.length} songs` : "";
 	sr.list.innerHTML = "";
@@ -1316,6 +1377,7 @@ function renderResults() {
 		// Show what the bridge tried, so a broken search says why rather than just "No results".
 		const tried = (r.tried || []).map((t) => `${esc(t.via)}: ${t.error ? esc(t.error) : t.results + " results"}`).join("<br>");
 		sr.list.innerHTML = `<div class="empty-note">No results${tried ? `<div class="tried">${tried}</div>` : ""}</div>`;
+		sr.list.append(youTubeSearchRow());
 		return;
 	}
 	if (r.tracks?.length) {
@@ -1359,6 +1421,7 @@ function renderResults() {
 			sr.list.append(row);
 		}
 	}
+	sr.list.append(youTubeSearchRow());
 }
 
 // ------------------------------------------------------------------ Playlist panel

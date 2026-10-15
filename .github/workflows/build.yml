@@ -68,6 +68,11 @@ jobs:
       - name: Test friends
         run: node tools/friends-test.js
 
+      # YouTube links, yt-dlp downloads and the cache (against a stand-in yt-dlp), and a YouTube
+      # video passing through a lobby's session playlist to the host and a listener.
+      - name: Test YouTube support
+        run: node tools/youtube-test.js
+
       - name: Build installer and portable exe
         run: npm run dist
 
