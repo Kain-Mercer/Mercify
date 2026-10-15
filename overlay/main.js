@@ -77,6 +77,7 @@ const CONFIG_PATH = path.join(userDir, "config.json");
 const LAYOUT_PATH = path.join(userDir, "layout.json");
 const FRIENDS_PATH = path.join(userDir, "friends.json");
 const AVATAR_PATH = path.join(userDir, "avatar.jpg"); // your profile picture, 96x96
+const AVATAR_PNG_PATH = path.join(userDir, "avatar.png"); // instead, for a picture with a transparent background
 
 function readJSON(p, fallback) {
 	try {
@@ -940,13 +941,17 @@ function setLobbyName(name) {
 }
 
 // ------------------------------------------------------------------ profile picture
-// Chosen in Settings, cropped to a square and shrunk to a 96x96 JPEG (a few KB), so it can go
-// to lobby members and friends with the rest of their messages.
+// Chosen in Settings and shrunk to 96x96 (a few KB), so it can go to lobby members and friends
+// with the rest of their messages. An opaque picture is cropped to a square and saved as a
+// JPEG. One with a transparent background keeps it: trimmed to what's visible, padded to a
+// square (so nothing is cut off) and saved as a PNG, since JPEG would turn the background black.
 
 const AVATAR_SIZE = 96;
+const AVATAR_PNG_MAX = 17500; // bytes; keeps the data URL under cleanAvatar()'s 24,000 characters
 let avatar = null; // data URL
 try {
-	if (fs.existsSync(AVATAR_PATH)) avatar = "data:image/jpeg;base64," + fs.readFileSync(AVATAR_PATH).toString("base64");
+	if (fs.existsSync(AVATAR_PNG_PATH)) avatar = "data:image/png;base64," + fs.readFileSync(AVATAR_PNG_PATH).toString("base64");
+	else if (fs.existsSync(AVATAR_PATH)) avatar = "data:image/jpeg;base64," + fs.readFileSync(AVATAR_PATH).toString("base64");
 } catch (_) {}
 
 function applyAvatar() {
@@ -956,18 +961,67 @@ function applyAvatar() {
 	sendToRenderer("friends", friendsView());
 }
 
+// The visible part of a picture with transparency, centred on a transparent square;
+// null when the picture is opaque. Works on the raw 4-bytes-per-pixel bitmap (alpha is
+// the 4th byte in both BGRA and RGBA).
+function transparentSquare(img) {
+	const { width, height } = img.getSize();
+	const px = img.toBitmap();
+	let x0 = width, y0 = height, x1 = -1, y1 = -1, see = false;
+	for (let y = 0; y < height; y++) {
+		for (let x = 0; x < width; x++) {
+			const a = px[(y * width + x) * 4 + 3];
+			if (a < 250) see = true;
+			if (a > 8) {
+				if (x < x0) x0 = x;
+				if (x > x1) x1 = x;
+				if (y < y0) y0 = y;
+				if (y > y1) y1 = y;
+			}
+		}
+	}
+	if (!see) return null;
+	if (x1 < 0) throw new Error("That picture is completely transparent.");
+	const w = x1 - x0 + 1, h = y1 - y0 + 1, side = Math.max(w, h);
+	const out = Buffer.alloc(side * side * 4); // all transparent
+	const ox = Math.floor((side - w) / 2), oy = Math.floor((side - h) / 2);
+	for (let y = 0; y < h; y++) {
+		const from = ((y0 + y) * width + x0) * 4;
+		px.copy(out, ((oy + y) * side + ox) * 4, from, from + w * 4);
+	}
+	return nativeImage.createFromBitmap(out, { width: side, height: side });
+}
+
+// -> { data: Buffer, type: "png" | "jpeg" }
 function makeAvatar(file) {
 	const img = nativeImage.createFromPath(file);
 	if (img.isEmpty()) throw new Error("That file isn't a picture Mercify can read (try a PNG or JPEG).");
+	const clear = transparentSquare(img);
+	if (clear) {
+		// smaller sizes only if the picture is too detailed to fit; it's shown at 52 px at most
+		for (const size of [AVATAR_SIZE, 80, 64, 52]) {
+			const png = clear.resize({ width: size, height: size, quality: "best" }).toPNG();
+			if (png.length <= AVATAR_PNG_MAX) return { data: png, type: "png" };
+		}
+		throw new Error("That picture is too detailed to send with its transparent background. Try a simpler one, or one without transparency.");
+	}
 	const { width, height } = img.getSize();
 	const side = Math.min(width, height);
 	const square = img.crop({ x: Math.floor((width - side) / 2), y: Math.floor((height - side) / 2), width: side, height: side });
 	const small = square.resize({ width: AVATAR_SIZE, height: AVATAR_SIZE, quality: "best" });
 	for (const q of [85, 70, 55, 40]) {
 		const jpg = small.toJPEG(q);
-		if (jpg.length <= 12000) return jpg;
+		if (jpg.length <= 12000) return { data: jpg, type: "jpeg" };
 	}
 	throw new Error("Couldn't make that picture small enough.");
+}
+
+function removeAvatarFiles() {
+	for (const p of [AVATAR_PATH, AVATAR_PNG_PATH]) {
+		try {
+			fs.unlinkSync(p);
+		} catch (_) {}
+	}
 }
 
 async function pickAvatar() {
@@ -977,18 +1031,17 @@ async function pickAvatar() {
 		filters: [{ name: "Pictures", extensions: ["png", "jpg", "jpeg", "bmp", "gif", "webp"] }],
 	});
 	if (r.canceled || !r.filePaths[0]) return null;
-	const jpg = makeAvatar(r.filePaths[0]);
+	const pic = makeAvatar(r.filePaths[0]);
 	fs.mkdirSync(userDir, { recursive: true });
-	fs.writeFileSync(AVATAR_PATH, jpg);
-	avatar = "data:image/jpeg;base64," + jpg.toString("base64");
+	removeAvatarFiles();
+	fs.writeFileSync(pic.type === "png" ? AVATAR_PNG_PATH : AVATAR_PATH, pic.data);
+	avatar = `data:image/${pic.type};base64,` + pic.data.toString("base64");
 	applyAvatar();
 	return avatar;
 }
 
 function clearAvatar() {
-	try {
-		fs.unlinkSync(AVATAR_PATH);
-	} catch (_) {}
+	removeAvatarFiles();
 	avatar = null;
 	applyAvatar();
 }

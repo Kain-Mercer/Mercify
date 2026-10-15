@@ -673,6 +673,17 @@ kbd {
 	object-fit: cover;
 	display: block;
 }
+/* a picture with a transparent background: no disc behind it and nothing cropped */
+.avatar-pick.clear {
+	border-radius: 8px;
+}
+.avatar-preview.clear {
+	background: none;
+	border-radius: 0;
+}
+.avatar-preview.clear img {
+	object-fit: contain;
+}
 .avatar-edit {
 	position: absolute;
 	inset: auto 0 0 0;

@@ -305,6 +305,8 @@ function renderUpdate(u) {
 
 function renderAvatar(av, name) {
 	const prev = $("#avatar-preview");
+	prev.classList.toggle("clear", !!av && av.startsWith("data:image/png;")); // transparent background
+	$("#avatar-pick").classList.toggle("clear", prev.classList.contains("clear"));
 	if (av) {
 		if (prev.dataset.src !== av) {
 			prev.innerHTML = "";

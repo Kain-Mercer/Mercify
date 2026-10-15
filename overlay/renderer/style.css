@@ -1597,6 +1597,15 @@ body.edit .notice.sample {
 	object-fit: cover;
 	display: block;
 }
+/* a picture with a transparent background: no disc behind it and nothing cropped */
+.av-face.clear {
+	background: none;
+	border-radius: 0;
+	overflow: visible;
+}
+.av-face.clear img {
+	object-fit: contain;
+}
 .av-badge {
 	position: absolute;
 	right: -2px;

@@ -1996,12 +1996,14 @@ function buildFriends() {
 	});
 }
 
-// A round profile picture (or the name's first letter on a colour), with a badge in the
-// lower-right corner: the online dot, or the host's crown.
+// A round profile picture (or the name's first letter on a colour; a transparent picture is
+// shown uncropped instead), with a badge in the lower-right corner: the online dot, or the host's crown.
 function avatarHtml(name, av, seed, badge = "", size = "") {
 	const hue = AVATAR_HUES[parseInt(String(seed || "00").slice(0, 2), 16) % AVATAR_HUES.length || 0];
 	const face = av && /^data:image\/(jpeg|png|webp);base64,/.test(av) ? `<img src="${esc(av)}" alt="" />` : esc((name || "?").trim().charAt(0).toUpperCase() || "?");
-	return `<span class="av${size ? " " + size : ""}" style="--hue:${hue}"><span class="av-face">${face}</span>${badge}</span>`;
+	// A PNG is a picture with a transparent background: shown as it is, without the disc behind it.
+	const clear = av && av.startsWith("data:image/png;") ? " clear" : "";
+	return `<span class="av${size ? " " + size : ""}" style="--hue:${hue}"><span class="av-face${clear}">${face}</span>${badge}</span>`;
 }
 
 function avatar(f) {
