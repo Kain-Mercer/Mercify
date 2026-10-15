@@ -11,6 +11,11 @@ on:
     branches: [main]
     paths-ignore: ["**.md", "docs/**"]
   workflow_dispatch:
+    inputs:
+      test_release:
+        description: "Test pre-release name, e.g. test.1 (publishes v<version>-test.1 from a non-main branch; installed copies never update to it)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -109,3 +114,23 @@ jobs:
             overlay/dist/*.blockmap
           fail_on_unmatched_files: true
           generate_release_notes: true
+
+      # A test build to share before releasing: Run workflow on a branch with "test_release" set.
+      # Pre-releases are ignored by installed copies' updater and by the README's "latest" links.
+      - name: Publish test pre-release
+        if: github.event_name == 'workflow_dispatch' && inputs.test_release != '' && github.ref != 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}-${{ inputs.test_release }}
+          target_commitish: ${{ github.sha }}
+          name: Mercify ${{ steps.version.outputs.version }} (${{ inputs.test_release }})
+          prerelease: true
+          make_latest: false
+          body: |
+            Test build from the `${{ github.ref_name }}` branch. Not a regular release: installed copies of Mercify won't update to it.
+
+            Download **Mercify-portable.exe** and run it (nothing to install).
+          files: |
+            overlay/dist/Mercify-portable.exe
+            overlay/dist/Mercify-Setup-${{ steps.version.outputs.version }}.exe
+          fail_on_unmatched_files: true
