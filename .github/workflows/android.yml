@@ -65,6 +65,20 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk "$name"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
+      - name: Check the APK
+        run: |
+          apk="${{ steps.apk.outputs.name }}"
+          fail() { echo "::error::$1"; exit 1; }
+          unzip -p "$apk" assets/index.android.bundle | grep -aq "mercify-lobby-v1" || fail "the JS bundle doesn't contain overlay/lobby.js"
+          unzip -p "$apk" 'classes*.dex' | grep -aq "MercifySpotifyState" || fail "SpotifyModule isn't in the app"
+          aapt=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          "$aapt" dump xmltree "$apk" --file AndroidManifest.xml > manifest.txt
+          grep -q "SpotifyListenerService" manifest.txt || fail "notification access service missing from the manifest"
+          grep -q "BIND_NOTIFICATION_LISTENER_SERVICE" manifest.txt || fail "notification listener permission missing"
+          grep -q "LobbyService" manifest.txt || fail "LobbyService missing from the manifest"
+          "$aapt" dump badging "$apk" | grep -E "^package|sdkVersion|native-code"
+          echo "APK size: $(du -h "$apk" | cut -f1)"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.apk.outputs.name }}
