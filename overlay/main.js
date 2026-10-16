@@ -1279,36 +1279,66 @@ lobby.on("toast", (text) => sendToRenderer("toast", { text }));
 // recommendations. Turn it on when you join (only if we turned it on, and only if it wasn't
 // already on), and put it back the way it was when you leave. The exact client API varies, so the
 // bridge finds the real toggle; if it can't, we just carry on without it.
-let privateSession = { ours: false, prev: null }; // ours: we enabled it; prev: its value before we did
+let privateSession = { ours: false, prev: null, key: null }; // ours: we enabled it; prev: value before us; key: the product-state key
+let privateSessionState = "off"; // for Settings + diagnostics: "off" | "on via <key>" | "couldn't find the toggle" | "error"
+let privateTimer = null; // re-asserts private session, since Spotify tends to drop it after a bit
+
+function setPrivateState(s) {
+	if (s === privateSessionState) return;
+	privateSessionState = s;
+	pushSettings();
+}
+
 async function enablePrivate() {
 	if (!bridge || privateSession.ours) return; // already on by us
+	// Always snapshot what the client exposes, so "Copy details" shows exactly what happened.
+	try {
+		const d = await bridgeCommand("detectPrivateSession", {}, 6000);
+		diag(`private session: client exposes ${JSON.stringify(d)}`);
+	} catch (_) {}
 	try {
 		const r = await bridgeCommand("privateSession", { on: true }, 6000);
 		if (r && r.ok) {
-			privateSession = { ours: true, prev: r.prev };
-			diag(`private session: on for the lobby (via ${r.via})`);
+			privateSession = { ours: true, prev: r.prev, key: r.via };
+			setPrivateState(`on (via ${r.via})`);
+			diag(`private session: on for the lobby (via ${r.via}; was ${JSON.stringify(r.prev)})`);
+			startReassert(); // keep it on — Spotify drops it otherwise
 		} else {
+			setPrivateState("couldn't find the toggle");
 			diag(`private session: couldn't turn on (${r && r.reason}); carrying on without it`);
-			// Log what this Spotify exposes, so the exact key can be pinned from "Copy details".
-			try {
-				const d = await bridgeCommand("detectPrivateSession", {}, 6000);
-				diag(`private session: client exposes ${JSON.stringify(d)}`);
-			} catch (_) {}
 		}
 	} catch (err) {
+		setPrivateState("error");
 		diag(`private session: ${err.message}`);
 	}
 }
 async function restorePrivate() {
-	if (!bridge || !privateSession.ours) return; // we didn't turn it on, so leave it alone
+	stopReassert();
+	if (!bridge || !privateSession.ours) {
+		if (!privateSession.ours) setPrivateState("off");
+		return; // we didn't turn it on, so leave it alone
+	}
 	const restoreOn = privateSession.prev === "1" || privateSession.prev === true; // was it on before we joined?
-	privateSession = { ours: false, prev: null };
+	privateSession = { ours: false, prev: null, key: null };
+	setPrivateState("off");
 	try {
 		await bridgeCommand("privateSession", { on: restoreOn }, 6000);
 		diag(`private session: ${restoreOn ? "left on (it was on before the lobby)" : "back off"}`);
 	} catch (err) {
 		diag(`private session: couldn't restore: ${err.message}`);
 	}
+}
+// Spotify tends to drop private session after a short while (the lock icon vanishes), so while
+// we're meant to be private, quietly turn it back on every so often.
+function startReassert() {
+	stopReassert();
+	privateTimer = setInterval(() => {
+		if (privateSession.ours && bridge) bridgeCommand("privateSession", { on: true }, 6000).catch(() => {});
+	}, 20000);
+}
+function stopReassert() {
+	if (privateTimer) clearInterval(privateTimer);
+	privateTimer = null;
 }
 // Idempotent (guarded by privateSession.ours), so it's safe to call on every lobby change and when
 // the setting is toggled: on while joined + enabled, restored otherwise.
@@ -2041,6 +2071,7 @@ async function settingsState() {
 		friendsAllowJoin: config.friendsAllowJoin,
 		discordYouTube: config.discordYouTube !== false,
 		privateSessionInLobby: config.privateSessionInLobby !== false,
+		privateSessionState,
 		startWithWindows: getStartWithWindows(),
 		hotkeys: config.hotkeys,
 		hotkeyDefaults: DEFAULT_CONFIG.hotkeys,

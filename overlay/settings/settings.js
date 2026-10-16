@@ -862,6 +862,20 @@ function renderSwitches(d) {
 		el.checked = boundValue(d, el.dataset.bind);
 		if (el.dataset.bind === "onlyShowOver.stayOnOtherMonitor") el.disabled = !d.onlyShowOver.enabled;
 	});
+	const pvt = $("#pvt-sub");
+	if (pvt) {
+		const s = d.privateSessionState;
+		pvt.textContent =
+			d.privateSessionInLobby === false
+				? "Keeps friends' picks out of your recommendations"
+				: s && s.startsWith("on")
+					? "On now — friends' picks won't follow you home"
+					: s === "couldn't find the toggle"
+						? "This Spotify didn't expose a private-session switch (see Setup ▸ Copy details)"
+						: s === "error"
+							? "Couldn't reach Spotify to set it"
+							: "Turns on when you join a lobby";
+	}
 }
 $$(".sw[data-bind]").forEach((el) => el.addEventListener("change", async () => render(await S.set(el.dataset.bind, el.checked))));
 

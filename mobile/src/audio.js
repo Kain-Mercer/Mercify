@@ -5,6 +5,24 @@ import { RTCPeerConnection, RTCSessionDescription, RTCIceCandidate } from "react
 import { spotify } from "./spotify"; // keep-alive notification while streaming
 import * as R from "./remote";
 
+// Route the incoming audio to the loudspeaker (and wired/Bluetooth when connected) instead of the
+// earpiece. Loaded defensively so a missing native module never crashes the app.
+let InCallManager = null;
+try {
+	InCallManager = require("react-native-incall-manager").default;
+} catch (_) {}
+function routeToSpeaker(on) {
+	if (!InCallManager) return;
+	try {
+		if (on) {
+			InCallManager.start({ media: "video" }); // media:"video" defaults the route to the loudspeaker
+			InCallManager.setForceSpeakerphoneOn(null); // null = follow the media default, so wired/Bluetooth auto-route
+		} else {
+			InCallManager.stop();
+		}
+	} catch (_) {}
+}
+
 const listeners = new Set();
 let state = { on: false, status: "off" }; // status: off | connecting | playing | error
 function emit(patch) {
@@ -28,6 +46,7 @@ function teardown() {
 	} catch (_) {}
 	pc = null;
 	remoteStream = null;
+	routeToSpeaker(false);
 }
 
 async function handleOffer(fid, data) {
@@ -40,6 +59,7 @@ async function handleOffer(fid, data) {
 		});
 		pc.addEventListener("track", (e) => {
 			remoteStream = e.streams && e.streams[0];
+			routeToSpeaker(true); // get the audio off the earpiece and onto speaker/Bluetooth
 			emit({ status: "playing" });
 		});
 		pc.addEventListener("connectionstatechange", () => {
