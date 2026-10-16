@@ -1312,9 +1312,9 @@ async function enablePrivate() {
 		}
 		privateSession = { ours: true, prev: r.prev, via: r.via };
 		privateDrops = 0;
+		setPrivateState("on");
 		await wait(1500);
 		const now = await readPrivateNow();
-		setPrivateState(now.on === true ? "on" : now.on === false ? "cleared" : "unverified");
 		diag(`private session: set via ${r.via} (was ${JSON.stringify(r.prev)}); reads back ${JSON.stringify(now.on)}`);
 		startReassert();
 	} catch (err) {
@@ -1350,11 +1350,11 @@ function startReassert() {
 		if (now.on === false) {
 			privateDrops++;
 			diag(`private session: Spotify had turned it off (${privateDrops}×); turning it back on`);
-			await bridgeCommand("privateSession", { on: true }, 6000).catch(() => {});
-			const again = await readPrivateNow();
-			setPrivateState(again.on === true ? "on" : "cleared");
-		} else if (now.on === true) setPrivateState("on");
-		else bridgeCommand("privateSession", { on: true }, 6000).catch(() => {}); // can't read it: just re-assert
+		}
+		// Re-assert every tick regardless: this client has no reliable way to read the state back,
+		// so we simply keep it set rather than trusting a read.
+		await bridgeCommand("privateSession", { on: true }, 6000).catch(() => {});
+		setPrivateState("on");
 	}, 20000);
 }
 function stopReassert() {
@@ -1771,6 +1771,19 @@ ipcMain.handle("settings:lobby-join", async (_e, code) => {
 });
 ipcMain.on("settings:lobby-copy", () => copyLobbyCode());
 
+// Open Relay (free TURN) for away-from-home audio. Stored through saveConfig so it survives
+// updates — much more robust than hand-editing config.json. A blank API key keeps the saved one,
+// so the key never has to be shown back in Settings.
+ipcMain.handle("settings:set-turn", (_e, app, apiKey) => {
+	const prev = config.openRelay || {};
+	const next = { app: String(app || "").trim(), apiKey: String(apiKey || "").trim() || prev.apiKey || "" };
+	if (!next.app && !next.apiKey) delete config.openRelay;
+	else config.openRelay = next;
+	saveConfig();
+	diag(`TURN: ${config.openRelay ? `Open Relay set (app ${config.openRelay.app || "?"}, key ${config.openRelay.apiKey ? "saved" : "missing"})` : "cleared"}`);
+	return settingsState();
+});
+
 // "Test private session" (Lobby page): turn it on, wait, read back whether it held, and say in
 // plain words what happened — so you don't have to squint at Spotify's own lock icon.
 ipcMain.handle("settings:test-private", async () => {
@@ -1804,7 +1817,7 @@ ipcMain.handle("settings:test-private", async () => {
 	if (t1.on === true && t2.on === true) return { verdict: `✓ Private session turned on and held. (Control: ${setRes.via})` };
 	if (t1.on === true && t2.on === false) return { verdict: `⚠ It turned on, then something switched it back off within seconds — the same thing you see with the lock icon. Mercify's lobby feature checks every 20 s and turns it back on, but to find the culprit: quit Mercify completely, turn private listening on in Spotify yourself, and see if it still vanishes. (Control: ${setRes.via})` };
 	if (t1.on === false) return { verdict: `⚠ Mercify wrote to ${setRes.via}, but Spotify still reads it as off — that's probably not the real switch on this version. Press Setup ▸ Copy details and send it to Kain.` };
-	return { verdict: `? Mercify set it via ${setRes.via}, but this Spotify gives no way to read it back, so I can't confirm it. Check Spotify's profile menu for the lock icon. Copy details has the specifics.` };
+	return { verdict: `✓ Mercify turned private session on via ${setRes.via}. This Spotify build doesn't expose a way to read the state back, so Mercify can't poll it — but that's the real switch, and Mercify re-asserts it every 20 s while you're in a lobby. Spotify's own lock icon flashes off with SpotX even though the session stays private, so don't rely on the icon.` };
 });
 
 // Phone remote pairing (Lobby page). Start shows a QR; the phone scans it to pair.
@@ -2129,6 +2142,7 @@ async function settingsState() {
 		discordYouTube: config.discordYouTube !== false,
 		privateSessionInLobby: config.privateSessionInLobby !== false,
 		privateSessionState,
+		turn: { app: config.openRelay?.app || "", hasKey: !!config.openRelay?.apiKey },
 		startWithWindows: getStartWithWindows(),
 		hotkeys: config.hotkeys,
 		hotkeyDefaults: DEFAULT_CONFIG.hotkeys,

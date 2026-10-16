@@ -159,6 +159,16 @@
 									<div class="row-btns"><button class="btn ghost" id="phone-pair-cancel">Cancel</button></div>
 								</div>
 								<p class="error" id="phone-error" hidden></p>
+								<div class="turn-block">
+									<h3>Audio away from home</h3>
+									<p class="hint">Listening on your phone works on your own network with no setup. To also hear it over mobile data, make a free <a href="https://dashboard.metered.ca/" target="_blank" rel="noreferrer">Open Relay</a> account and paste its app name and API key here. <span id="turn-saved" class="turn-saved" hidden>✓ Saved</span></p>
+									<label class="lbl" for="turn-app">Open Relay app name</label>
+									<input type="text" class="field" id="turn-app" placeholder="yourapp" spellcheck="false" autocomplete="off" />
+									<label class="lbl" for="turn-key">API key</label>
+									<input type="password" class="field" id="turn-key" placeholder="Leave blank to keep the saved key" spellcheck="false" autocomplete="off" />
+									<div class="row-btns"><button class="btn" id="turn-save">Save</button><button class="link" id="turn-clear">Remove</button></div>
+									<p class="hint" id="turn-result" hidden></p>
+								</div>
 							</section>
 						</div>
 						<section class="card friends" aria-label="Friends">

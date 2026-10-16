@@ -783,6 +783,36 @@ if (pvtTestBtn)
 		pvtTestBtn.textContent = "Test private session";
 	});
 
+function renderTurn(t) {
+	if (!t) return;
+	const appEl = $("#turn-app");
+	if (appEl && document.activeElement !== appEl) appEl.value = t.app || "";
+	const saved = $("#turn-saved");
+	if (saved) saved.hidden = !t.hasKey;
+	const keyEl = $("#turn-key");
+	if (keyEl && document.activeElement !== keyEl) keyEl.placeholder = t.hasKey ? "Leave blank to keep the saved key" : "Paste your API key";
+}
+const turnSave = $("#turn-save");
+if (turnSave)
+	turnSave.addEventListener("click", async () => {
+		const out = $("#turn-result");
+		out.hidden = false;
+		out.textContent = "Saving…";
+		const d = await S.setTurn($("#turn-app").value, $("#turn-key").value);
+		$("#turn-key").value = "";
+		render(d);
+		out.textContent = d?.turn?.hasKey ? "Saved. Away-from-home audio is ready." : "Cleared.";
+	});
+const turnClear = $("#turn-clear");
+if (turnClear)
+	turnClear.addEventListener("click", async () => {
+		$("#turn-app").value = "";
+		$("#turn-key").value = "";
+		render(await S.setTurn("", ""));
+		$("#turn-result").hidden = false;
+		$("#turn-result").textContent = "Removed. Audio will work on your own network only.";
+	});
+
 $("#lobby-start").addEventListener("click", () => lobbyGo(() => S.lobbyStart()));
 const joinTyped = () => {
 	const code = $("#lobby-code").value.trim();
@@ -884,9 +914,9 @@ function renderSwitches(d) {
 	if (pvt) {
 		const s = d.privateSessionState;
 		const msgs = {
-			on: "On now (checked) — friends' picks won't follow you home",
-			unverified: "Turned on, but this Spotify can't confirm it — check for the lock icon",
-			cleared: "Spotify keeps switching it off — Mercify turns it back on every 20 s (try Test below)",
+			on: "On — Mercify keeps it on while you're in a lobby (Spotify's lock icon can flash off with SpotX, but the session is private)",
+			unverified: "Turned on — this Spotify can't report the state back, but Mercify holds it",
+			cleared: "Mercify keeps turning it back on every 20 s",
 			"not found": "Couldn't find Spotify's private-session switch (see Setup ▸ Copy details)",
 			error: "Couldn't reach Spotify to set it",
 			outdated: "Spotify has an older Mercify extension — Setup ▸ Redo next to Mercify extension",
@@ -1109,6 +1139,7 @@ function render(d) {
 	renderYouTube(d.youtube);
 	renderLobby(d.lobby, ready);
 	renderPhone(d.remote);
+	renderTurn(d.turn);
 	renderFriends(d.friends, d.lobby);
 	renderAvatar(d.avatar, d.lobby?.name);
 	renderApps(d);

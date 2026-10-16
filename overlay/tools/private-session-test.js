@@ -142,6 +142,23 @@ async function boot(platform) {
 		const now = await call("isPrivateSession");
 		check("E: reads as unknown (null), not off", now.on === null);
 	}
+	// G: the real-world shape from Kain's client — a dedicated setter, a getCapabilities() that is
+	// NOT a state getter, and only an "incognito_mode_timeout" product key. We must still set via the
+	// setter, must NOT treat getCapabilities as the state, and must report state as unknown (null)
+	// rather than trusting the timeout key.
+	{
+		let on = false;
+		const api = { setPrivateSession: async (v) => (on = !!v), getCapabilities: async () => ({ canChange: true }) };
+		const ps = fakeProductState({ incognito_mode_timeout: "1", "list-private-by-default": "0" });
+		const call = await boot({ PrivateSessionAPI: api, UserAPI: { _product_state: ps } });
+		const r = await call("privateSession", { on: true });
+		check("G: sets via the dedicated setter", r.via === "Platform.PrivateSessionAPI.setPrivateSession", r.via);
+		check("G: actually turned it on", on === true);
+		check("G: did not write the timeout product key", ps.writes.length === 0, JSON.stringify(ps.writes));
+		const now = await call("isPrivateSession");
+		check("G: state reads as unknown (not a false 'on' from the timeout key)", now.on === null, JSON.stringify(now));
+	}
+
 	// F: the detector lists what's there without changing anything.
 	{
 		const ps = fakeProductState({ "private-session": "true", "social-x": "1" });

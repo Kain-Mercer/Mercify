@@ -13,7 +13,7 @@
 (function OverlayBridge() {
 	"use strict";
 
-	const VERSION = "1.6.0";
+	const VERSION = "1.7.0";
 	const DEFAULT_PORT = 7317;
 	const LOG = (...a) => console.log("[overlay-bridge]", ...a);
 
@@ -179,7 +179,7 @@
 				const named = any || PRIVATE_RE.test(name);
 				if (!named) continue;
 				if (!setter && /^(set|enable)/i.test(name)) setter = { obj, name, label: label + "." + name };
-				else if (!getter && /^(get|is)/i.test(name)) getter = { obj, name, label: label + "." + name };
+				else if (!getter && /^(get|is)/i.test(name) && !/capab/i.test(name)) getter = { obj, name, label: label + "." + name };
 				else if (!toggler && /^toggle/i.test(name)) toggler = { obj, name, label: label + "." + name };
 			}
 		}
@@ -188,7 +188,7 @@
 
 	async function privateKey() {
 		const pairs = await readProductPairs(productState());
-		const key = Object.keys(pairs).find((k) => PRIVATE_RE.test(k)) || null;
+		const key = Object.keys(pairs).find((k) => PRIVATE_RE.test(k) && !/(timeout|default|persist)/i.test(k)) || null;
 		return { key, value: key ? pairs[key] : undefined };
 	}
 

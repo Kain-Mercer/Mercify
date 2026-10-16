@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("settings", {
 	lobbyJoin: (code) => ipcRenderer.invoke("settings:lobby-join", code),
 	lobbyCopy: () => ipcRenderer.send("settings:lobby-copy"),
 	testPrivate: () => ipcRenderer.invoke("settings:test-private"),
+	setTurn: (app, apiKey) => ipcRenderer.invoke("settings:set-turn", app, apiKey),
 	remotePair: () => ipcRenderer.invoke("settings:remote-pair"),
 	remoteStopPair: () => ipcRenderer.invoke("settings:remote-stop-pair"),
 	remoteForget: (fid) => ipcRenderer.invoke("settings:remote-forget", fid),
