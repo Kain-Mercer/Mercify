@@ -32,6 +32,8 @@ Signing: builds are signed with Mercify's own key from the `ANDROID_KEYSTORE_BAS
 
 Tap **Listen on this phone** to hear the PC's sound here. The PC captures its system audio and sends it over WebRTC (`react-native-webrtc`); signalling (SDP + ICE) rides the same encrypted remote channel. NAT traversal uses Google STUN plus, when an Open Relay (metered.ca) key is set on the PC (`config.openRelay = { app, apiKey }`), its free TURN — so it works away from home. Without a key it's STUN-only: same network and friendly NATs.
 
+The phone plays it as media, not a call (`MainApplication` gives WebRTC's audio device `USAGE_MEDIA`), so it comes out the loudspeaker, wired headphones or a Bluetooth speaker over A2DP, with the media volume.
+
 v1 streams the whole system's audio (pure Electron capture, no native module). Narrowing to just Spotify needs a native WASAPI process-loopback capturer — a later change.
 
-Not done yet: scanning the QR with the camera (the typed code works now), hosting a lobby from the phone, the LAN-direct control link, Spotify-only audio capture, and routing phone audio to the loudspeaker by default (may play through the earpiece until an in-call-manager is added). The old `SpotifyListenerService` / `SpotifyModule` native code is unused by the remote and kept only for its storage + keep-alive helpers; it can be removed in a later cleanup.
+Not done yet: scanning the QR with the camera (the typed code works now), hosting a lobby from the phone, the LAN-direct control link, Spotify-only audio capture. The old `SpotifyListenerService` / `SpotifyModule` native code is unused by the remote and kept only for its storage + keep-alive helpers; it can be removed in a later cleanup.

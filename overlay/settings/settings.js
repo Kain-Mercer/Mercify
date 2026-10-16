@@ -883,16 +883,14 @@ function renderSwitches(d) {
 	const pvt = $("#pvt-sub");
 	if (pvt) {
 		const s = d.privateSessionState;
-		pvt.textContent =
-			d.privateSessionInLobby === false
-				? "Keeps friends' picks out of your recommendations"
-				: s && s.startsWith("on")
-					? "On now — friends' picks won't follow you home"
-					: s === "couldn't find the toggle"
-						? "This Spotify didn't expose a private-session switch (see Setup ▸ Copy details)"
-						: s === "error"
-							? "Couldn't reach Spotify to set it"
-							: "Turns on when you join a lobby";
+		const msgs = {
+			on: "On now (checked) — friends' picks won't follow you home",
+			unverified: "Turned on, but this Spotify can't confirm it — check for the lock icon",
+			cleared: "Spotify keeps switching it off — Mercify turns it back on every 20 s (try Test below)",
+			"not found": "Couldn't find Spotify's private-session switch (see Setup ▸ Copy details)",
+			error: "Couldn't reach Spotify to set it",
+		};
+		pvt.textContent = d.privateSessionInLobby === false ? "Keeps friends' picks out of your recommendations" : msgs[s] || "Turns on when you join a lobby";
 	}
 }
 $$(".sw[data-bind]").forEach((el) => el.addEventListener("change", async () => render(await S.set(el.dataset.bind, el.checked))));

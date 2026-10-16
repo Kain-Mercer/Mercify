@@ -1279,34 +1279,44 @@ lobby.on("toast", (text) => sendToRenderer("toast", { text }));
 // recommendations. Turn it on when you join (only if we turned it on, and only if it wasn't
 // already on), and put it back the way it was when you leave. The exact client API varies, so the
 // bridge finds the real toggle; if it can't, we just carry on without it.
-let privateSession = { ours: false, prev: null, key: null }; // ours: we enabled it; prev: value before us; key: the product-state key
-let privateSessionState = "off"; // for Settings + diagnostics: "off" | "on via <key>" | "couldn't find the toggle" | "error"
-let privateTimer = null; // re-asserts private session, since Spotify tends to drop it after a bit
+let privateSession = { ours: false, prev: null, via: null }; // ours: we enabled it; prev: true/false/null before us
+let privateSessionState = "off"; // for Settings: "off" | "on" | "unverified" | "cleared" | "not found" | "error"
+let privateTimer = null; // checks every 20 s and turns it back on if Spotify dropped it
+let privateDrops = 0; // how often Spotify turned it back off while we wanted it on (diagnostics)
 
 function setPrivateState(s) {
 	if (s === privateSessionState) return;
 	privateSessionState = s;
 	pushSettings();
 }
+async function readPrivateNow() {
+	try {
+		return await bridgeCommand("isPrivateSession", {}, 6000); // { on: true|false|null, via }
+	} catch (_) {
+		return { on: null, via: null };
+	}
+}
 
 async function enablePrivate() {
 	if (!bridge || privateSession.ours) return; // already on by us
 	// Always snapshot what the client exposes, so "Copy details" shows exactly what happened.
 	try {
-		const d = await bridgeCommand("detectPrivateSession", {}, 6000);
-		diag(`private session: client exposes ${JSON.stringify(d)}`);
+		diag(`private session: client exposes ${JSON.stringify(await bridgeCommand("detectPrivateSession", {}, 6000))}`);
 	} catch (_) {}
 	try {
 		const r = await bridgeCommand("privateSession", { on: true }, 6000);
-		if (r && r.ok) {
-			privateSession = { ours: true, prev: r.prev, key: r.via };
-			setPrivateState(`on (via ${r.via})`);
-			diag(`private session: on for the lobby (via ${r.via}; was ${JSON.stringify(r.prev)})`);
-			startReassert(); // keep it on — Spotify drops it otherwise
-		} else {
-			setPrivateState("couldn't find the toggle");
+		if (!r || !r.ok) {
+			setPrivateState("not found");
 			diag(`private session: couldn't turn on (${r && r.reason}); carrying on without it`);
+			return;
 		}
+		privateSession = { ours: true, prev: r.prev, via: r.via };
+		privateDrops = 0;
+		await wait(1500);
+		const now = await readPrivateNow();
+		setPrivateState(now.on === true ? "on" : now.on === false ? "cleared" : "unverified");
+		diag(`private session: set via ${r.via} (was ${JSON.stringify(r.prev)}); reads back ${JSON.stringify(now.on)}`);
+		startReassert();
 	} catch (err) {
 		setPrivateState("error");
 		diag(`private session: ${err.message}`);
@@ -1314,26 +1324,36 @@ async function enablePrivate() {
 }
 async function restorePrivate() {
 	stopReassert();
-	if (!bridge || !privateSession.ours) {
-		if (!privateSession.ours) setPrivateState("off");
+	if (!privateSession.ours) {
+		setPrivateState("off");
 		return; // we didn't turn it on, so leave it alone
 	}
-	const restoreOn = privateSession.prev === "1" || privateSession.prev === true; // was it on before we joined?
-	privateSession = { ours: false, prev: null, key: null };
+	const restoreOn = privateSession.prev === true; // it was already on before we joined: leave it on
+	privateSession = { ours: false, prev: null, via: null };
 	setPrivateState("off");
+	if (!bridge) return;
 	try {
 		await bridgeCommand("privateSession", { on: restoreOn }, 6000);
-		diag(`private session: ${restoreOn ? "left on (it was on before the lobby)" : "back off"}`);
+		diag(`private session: ${restoreOn ? "left on (it was on before the lobby)" : "back off"}${privateDrops ? ` — Spotify turned it off ${privateDrops}× during the lobby` : ""}`);
 	} catch (err) {
 		diag(`private session: couldn't restore: ${err.message}`);
 	}
 }
-// Spotify tends to drop private session after a short while (the lock icon vanishes), so while
-// we're meant to be private, quietly turn it back on every so often.
+// Spotify can drop private session (the lock vanishes), so while we want it on, check every 20 s and
+// turn it back on only if it's actually off — and count each time, so the logs show it happening.
 function startReassert() {
 	stopReassert();
-	privateTimer = setInterval(() => {
-		if (privateSession.ours && bridge) bridgeCommand("privateSession", { on: true }, 6000).catch(() => {});
+	privateTimer = setInterval(async () => {
+		if (!privateSession.ours || !bridge) return;
+		const now = await readPrivateNow();
+		if (now.on === false) {
+			privateDrops++;
+			diag(`private session: Spotify had turned it off (${privateDrops}×); turning it back on`);
+			await bridgeCommand("privateSession", { on: true }, 6000).catch(() => {});
+			const again = await readPrivateNow();
+			setPrivateState(again.on === true ? "on" : "cleared");
+		} else if (now.on === true) setPrivateState("on");
+		else bridgeCommand("privateSession", { on: true }, 6000).catch(() => {}); // can't read it: just re-assert
 	}, 20000);
 }
 function stopReassert() {
@@ -1754,8 +1774,6 @@ ipcMain.on("settings:lobby-copy", () => copyLobbyCode());
 // plain words what happened — so you don't have to squint at Spotify's own lock icon.
 ipcMain.handle("settings:test-private", async () => {
 	if (!bridge) return { verdict: "Spotify isn't connected, so I can't test it. Open Spotify and try again." };
-	const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-	const plan = config.spotifyPremium; // true / false / null, from Spotify's Web API (the real plan, even with SpotX)
 	let before;
 	try {
 		before = await bridgeCommand("detectPrivateSession", {}, 6000);
@@ -1763,7 +1781,7 @@ ipcMain.handle("settings:test-private", async () => {
 		return { verdict: `Couldn't reach Spotify: ${err.message}` };
 	}
 	diag(`private session test: client exposes ${JSON.stringify(before)}`);
-	if (!before || !before.service) return { verdict: "This Spotify build doesn't expose a private-session switch Mercify can reach. If you can turn private listening on manually in Spotify, tell Kain — the control lives somewhere Mercify isn't looking." };
+	const wasOn = before && before.now ? before.now.on : null;
 
 	let setRes;
 	try {
@@ -1771,21 +1789,19 @@ ipcMain.handle("settings:test-private", async () => {
 	} catch (err) {
 		return { verdict: `Couldn't set private session: ${err.message}` };
 	}
-	if (!setRes || !setRes.ok) return { verdict: `Mercify couldn't find the private-session toggle on this Spotify (${setRes && setRes.reason}). If you can toggle it manually, tell Kain so we can pin the exact control.`, before };
+	if (!setRes || !setRes.ok) return { verdict: "✗ Mercify couldn't find a private-session control on this Spotify. Press Setup ▸ Copy details and send it to Kain — it lists everything this Spotify exposes, so the real switch can be pinned." };
 
-	await wait(4000); // give Spotify's own sync a chance to clear it, like it does for you
-	const after = await bridgeCommand("detectPrivateSession", {}, 6000).catch(() => null);
-	const held = !!(after && (after.matchingKeys || []).some((k) => k.key === setRes.via && (k.value === "1" || k.value === true)));
+	const t1 = await (async () => (await wait(1500), readPrivateNow()))();
+	const t2 = await (async () => (await wait(6000), readPrivateNow()))(); // a few seconds on: did Spotify clear it?
+	diag(`private session test: set via ${setRes.via}; reads ${JSON.stringify(t1.on)} after 1.5 s, ${JSON.stringify(t2.on)} after 7.5 s`);
 
-	// Clean up: if we're not actually in a lobby keeping it on, put it back off.
-	if (!privateSession.ours) bridgeCommand("privateSession", { on: false }, 6000).catch(() => {});
+	// Clean up: put it back how it was, unless a lobby is keeping it on.
+	if (!privateSession.ours && wasOn !== true) bridgeCommand("privateSession", { on: false }, 6000).catch(() => {});
 
-	let verdict;
-	if (held) verdict = "✓ Private session turned on and is holding. You're good — lobby music won't follow you home.";
-	else if (plan === false) verdict = "⚠ Mercify switched it on, but Spotify cleared it within seconds. This account is Spotify Free: SpotX makes the app look Premium, but Spotify's servers still treat it as Free, and private session is a Premium feature — so Spotify keeps turning it back off. It can't be made to stick without Premium.";
-	else if (plan === true) verdict = "⚠ Mercify switched it on, but Spotify cleared it within seconds, which is odd for a Premium account — likely a sync race. Mercify re-asserts it every 20 s; if the lock still won't stay, tell Kain.";
-	else verdict = "⚠ Mercify switched it on, but Spotify cleared it within seconds. Mercify couldn't tell if this account is Premium or Free yet (log in and let it settle). On Free accounts private session can't stick; on Premium it should.";
-	return { verdict, held, plan, via: setRes.via };
+	if (t1.on === true && t2.on === true) return { verdict: `✓ Private session turned on and held. (Control: ${setRes.via})` };
+	if (t1.on === true && t2.on === false) return { verdict: `⚠ It turned on, then something switched it back off within seconds — the same thing you see with the lock icon. Mercify's lobby feature checks every 20 s and turns it back on, but to find the culprit: quit Mercify completely, turn private listening on in Spotify yourself, and see if it still vanishes. (Control: ${setRes.via})` };
+	if (t1.on === false) return { verdict: `⚠ Mercify wrote to ${setRes.via}, but Spotify still reads it as off — that's probably not the real switch on this version. Press Setup ▸ Copy details and send it to Kain.` };
+	return { verdict: `? Mercify set it via ${setRes.via}, but this Spotify gives no way to read it back, so I can't confirm it. Check Spotify's profile menu for the lock icon. Copy details has the specifics.` };
 });
 
 // Phone remote pairing (Lobby page). Start shows a QR; the phone scans it to pair.
