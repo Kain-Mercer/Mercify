@@ -20,6 +20,7 @@ const METHODS = [
 const problems = [];
 const problemListeners = new Set();
 function addProblem(text) {
+	console.error("[mercify] problem:", text);
 	problems.push({ t: new Date().toLocaleTimeString(), text: String(text).slice(0, 1500) });
 	for (const fn of problemListeners) fn([...problems]);
 }
@@ -116,9 +117,11 @@ function Main() {
 		let at = "Starting";
 		M.init((x) => {
 			at = x;
+			console.log("[mercify] startup:", x);
 			setStep(x);
 		}).then(
 			() => {
+				console.log("[mercify] startup done");
 				off = M.subscribe((x) => setS(x));
 				setNameText(M.getLobby().state().name || "");
 			},

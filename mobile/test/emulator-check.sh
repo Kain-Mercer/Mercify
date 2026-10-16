@@ -15,6 +15,7 @@ snap() { # name
 }
 
 adb install -r "$apk" > "$out/install.txt" 2>&1
+adb shell pm grant "$pkg" android.permission.POST_NOTIFICATIONS 2>/dev/null # as if "Allow" was tapped
 adb logcat -c
 adb shell am start -W -n "$pkg/.MainActivity" > "$out/start.txt" 2>&1
 sleep 25
