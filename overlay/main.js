@@ -71,6 +71,7 @@ const DEFAULT_CONFIG = {
 	friendsShareListening: true, // friends see the song you're playing
 	friendsAllowJoin: true, // friends can ask to join you (accepting starts a lobby)
 	discordYouTube: true, // show the YouTube video playing on your Discord profile
+	privateSessionInLobby: true, // turn Spotify's Private Session on while in a lobby, so friends' eclectic picks don't shape your recommendations
 	// Spotify Premium? true / false / null (not known yet). Set in Settings, or by the extension
 	// once Spotify says which plan the logged-in account is on. Premium gets SpotX's Premium mode.
 	spotifyPremium: null,
@@ -1270,8 +1271,52 @@ lobby.on("change", () => {
 	updateFriendsPresence();
 	prefetchLobbyVideos();
 	remote.pushState();
+	syncPrivateSession();
 });
 lobby.on("toast", (text) => sendToRenderer("toast", { text }));
+
+// Private Session while in a lobby: friends' eclectic picks shouldn't shape your own Spotify
+// recommendations. Turn it on when you join (only if we turned it on, and only if it wasn't
+// already on), and put it back the way it was when you leave. The exact client API varies, so the
+// bridge finds the real toggle; if it can't, we just carry on without it.
+let privateSession = { ours: false, prev: null }; // ours: we enabled it; prev: its value before we did
+async function enablePrivate() {
+	if (!bridge || privateSession.ours) return; // already on by us
+	try {
+		const r = await bridgeCommand("privateSession", { on: true }, 6000);
+		if (r && r.ok) {
+			privateSession = { ours: true, prev: r.prev };
+			diag(`private session: on for the lobby (via ${r.via})`);
+		} else {
+			diag(`private session: couldn't turn on (${r && r.reason}); carrying on without it`);
+			// Log what this Spotify exposes, so the exact key can be pinned from "Copy details".
+			try {
+				const d = await bridgeCommand("detectPrivateSession", {}, 6000);
+				diag(`private session: client exposes ${JSON.stringify(d)}`);
+			} catch (_) {}
+		}
+	} catch (err) {
+		diag(`private session: ${err.message}`);
+	}
+}
+async function restorePrivate() {
+	if (!bridge || !privateSession.ours) return; // we didn't turn it on, so leave it alone
+	const restoreOn = privateSession.prev === "1" || privateSession.prev === true; // was it on before we joined?
+	privateSession = { ours: false, prev: null };
+	try {
+		await bridgeCommand("privateSession", { on: restoreOn }, 6000);
+		diag(`private session: ${restoreOn ? "left on (it was on before the lobby)" : "back off"}`);
+	} catch (err) {
+		diag(`private session: couldn't restore: ${err.message}`);
+	}
+}
+// Idempotent (guarded by privateSession.ours), so it's safe to call on every lobby change and when
+// the setting is toggled: on while joined + enabled, restored otherwise.
+async function syncPrivateSession() {
+	if (!bridge) return;
+	if (lobby.state().status === "joined" && config.privateSessionInLobby) await enablePrivate();
+	else await restorePrivate();
+}
 
 // Leaving a lobby you were in pauses Spotify, so the lobby's music doesn't carry on by itself.
 // Asks for the state first (the cached one can be stale while Spotify is throttled) and only
@@ -1995,6 +2040,7 @@ async function settingsState() {
 		friendsShareListening: config.friendsShareListening,
 		friendsAllowJoin: config.friendsAllowJoin,
 		discordYouTube: config.discordYouTube !== false,
+		privateSessionInLobby: config.privateSessionInLobby !== false,
 		startWithWindows: getStartWithWindows(),
 		hotkeys: config.hotkeys,
 		hotkeyDefaults: DEFAULT_CONFIG.hotkeys,
@@ -2168,6 +2214,10 @@ ipcMain.handle("settings:set", async (_e, key, value) => {
 	else if (key === "friendsShareListening" || key === "friendsAllowJoin") {
 		config[key] = !!value;
 		friends.setOptions({ share: config.friendsShareListening, allowJoin: config.friendsAllowJoin });
+	}
+	else if (key === "privateSessionInLobby") {
+		config.privateSessionInLobby = !!value;
+		syncPrivateSession(); // apply to the lobby you're in right now
 	}
 	saveConfig();
 	tickGate();

@@ -13,7 +13,7 @@
 (function OverlayBridge() {
 	"use strict";
 
-	const VERSION = "1.4.0";
+	const VERSION = "1.5.0";
 	const DEFAULT_PORT = 7317;
 	const LOG = (...a) => console.log("[overlay-bridge]", ...a);
 
@@ -109,6 +109,82 @@
 			liked,
 			contextUri: d.context?.uri ?? d.context_uri ?? null,
 			at: Date.now(),
+		};
+	}
+
+	// ---------------------------------------------------------------- private session
+	//
+	// Private session ("private listening") keeps what you play out of your recommendations and off
+	// your profile — handy in a lobby where friends queue eclectic stuff. The client controls it
+	// through its product-state service, but the exact key differs between Spotify versions, so we
+	// never guess one: we read the live product state and only toggle a key that already exists and
+	// clearly names private/incognito listening. If none is found, we report what's there instead.
+
+	function productState() {
+		const P = Spicetify.Platform || {};
+		return P.UserAPI?._product_state || P.ProductStateAPI?.productStateApi || P.ProductStateAPI || null;
+	}
+
+	const PRIVATE_KEY_RE = /(private.?session|private.?listening|incognito)/i;
+
+	async function readProductPairs(ps) {
+		try {
+			if (typeof ps.getValues === "function") return (await ps.getValues())?.pairs ?? (await ps.getValues()) ?? {};
+		} catch (_) {}
+		try {
+			if (ps.cache && typeof ps.cache.forEach === "function") {
+				const out = {};
+				ps.cache.forEach((v, k) => (out[k] = v));
+				return out;
+			}
+		} catch (_) {}
+		return {};
+	}
+
+	// Find the real product-state key for private session on this client, or null.
+	async function privateKey(ps) {
+		const pairs = await readProductPairs(ps);
+		return Object.keys(pairs).find((k) => PRIVATE_KEY_RE.test(k)) || null;
+	}
+
+	async function putPair(ps, key, value) {
+		const body = { pairs: { [key]: value } };
+		if (typeof ps.putValues === "function") return ps.putValues(body);
+		if (typeof ps.putOverridesValues === "function") return ps.putOverridesValues(body);
+		throw new Error("product-state service can't be written on this client");
+	}
+
+	// Turn private session on/off. Returns { ok, via, prev } so the overlay can restore it on leave,
+	// or { ok:false, reason } when this client exposes no key we recognise.
+	async function setPrivateSession(on) {
+		const ps = productState();
+		if (!ps) return { ok: false, reason: "no product-state service on this Spotify" };
+		// A direct method, if this client has one.
+		for (const name of ["setPrivateSession", "setPrivateListening", "setIncognito"]) {
+			if (typeof ps[name] === "function") {
+				await ps[name](!!on);
+				return { ok: true, via: name, prev: null };
+			}
+		}
+		const pairs = await readProductPairs(ps);
+		const key = Object.keys(pairs).find((k) => PRIVATE_KEY_RE.test(k));
+		if (!key) return { ok: false, reason: "no private-session key found in product state" };
+		const prev = pairs[key];
+		await putPair(ps, key, on ? "1" : "0");
+		return { ok: true, via: key, prev };
+	}
+
+	// Read-only: what this client exposes, so the exact key can be confirmed without changing state.
+	async function detectPrivateSession() {
+		const ps = productState();
+		if (!ps) return { service: false };
+		const pairs = await readProductPairs(ps);
+		const matching = Object.keys(pairs).filter((k) => PRIVATE_KEY_RE.test(k));
+		return {
+			service: true,
+			methods: ["setPrivateSession", "setPrivateListening", "setIncognito"].filter((m) => typeof ps[m] === "function"),
+			matchingKeys: matching.map((k) => ({ key: k, value: pairs[k] })),
+			sessionishKeys: Object.keys(pairs).filter((k) => /priv|incognito|session|social/i.test(k)).slice(0, 25),
 		};
 	}
 
@@ -358,6 +434,8 @@
 			await P().playUri(uri);
 		},
 		playContext: async ({ uri }) => P().playUri(uri === "liked" ? likedContextUri() : uri),
+		privateSession: async ({ on }) => setPrivateSession(!!on),
+		detectPrivateSession: async () => detectPrivateSession(),
 		addToQueue: async ({ uri }) => Spicetify.addToQueue([{ uri }]),
 		removeFromQueue: async ({ uri, uid }) => {
 			if (typeof Spicetify.removeFromQueue !== "function") throw new Error("This Spotify can't remove songs from the queue");
@@ -459,7 +537,7 @@
 				const data = await fn(msg.args || {});
 				send({ type: "reply", id: msg.id, ok: true, data: data ?? null });
 				// Playback commands change state; push it rather than waiting for events.
-				if (!["search", "playlists", "playlistTracks", "state"].includes(msg.action)) setTimeout(pushState, 250);
+				if (!["search", "playlists", "playlistTracks", "state", "privateSession", "detectPrivateSession"].includes(msg.action)) setTimeout(pushState, 250);
 			} catch (e) {
 				send({ type: "reply", id: msg.id, ok: false, error: String(e?.message ?? e) });
 			}
