@@ -14,7 +14,7 @@ name: Build Android app
 # pushes what it saw (screen text, screenshot, log) to the android-diag branch.
 on:
   push:
-    paths: ["mobile/**", "overlay/lobby.js", "overlay/friends.js", ".github/workflows/android.yml"]
+    paths: ["mobile/**", "overlay/lobby.js", "overlay/friends.js", "overlay/remote.js", ".github/workflows/android.yml"]
   workflow_dispatch:
     inputs:
       test_release:

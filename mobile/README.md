@@ -1,41 +1,31 @@
-# Mercify for Android (test build)
+# Mercify for Android (remote)
 
-Join a listening lobby from your phone. Your phone's Spotify follows the host's song, and you can suggest songs, vote to skip and add friends, the same as on the PC.
+Control Mercify on your PC from your phone. See what's playing, play/pause/skip, nudge the volume, like a song, and join a listening lobby — all running on the PC. The phone is a remote: it doesn't play Spotify itself, so there's nothing to set up with Spotify on the phone and no Premium needed.
 
-Free Spotify works: Mercify controls the Spotify app on your phone the way your lock screen does, so it doesn't need Premium. Spotify gives free accounts a daily amount of picking your own songs, though. When that runs out, your phone can't follow the host until the next day.
+> Earlier test builds tried to drive the phone's own Spotify through notification access. That fought Spotify's foreground and needed Premium for picking songs, so the app is now a remote for the desktop client instead.
 
 ## Trying it
 
-If you installed 0.1.0 (test.1), uninstall it first: later builds are signed with Mercify's own key, and Android won't update an app to one signed with a different key.
-
 1. Download `Mercify-android-<version>.apk` from the newest `android-v...` pre-release on the Releases page and open it. Android asks to allow installing apps from your browser; allow it.
-2. Open Spotify once and play anything, so Android knows it's there.
-3. In Mercify, tap **Allow** next to "Mercify can see and control Spotify" and turn Mercify on in the list that opens (Android calls it Notification access).
-4. Pick a name, type the lobby code a PC started, and tap **Join lobby**.
-
-The **Test: how Spotify takes orders** card tries three ways of starting a song. Tell Kain which work:
-
-- **Media session**: Spotify plays the song without leaving Mercify (best, if Spotify allows it).
-- **Media ID**: another way of the same.
-- **Open link**: Spotify opens the song, like tapping a shared link. It always works, but Spotify comes to the front.
-
-**What does Spotify report?** shows what Spotify tells Android about the song playing. Send Kain a screenshot of it.
-
-Not in this build yet: hosting from the phone, YouTube videos, car mode and Discord.
+2. On your PC, open **Mercify ▸ Lobby ▸ Phone remote** and tap **Pair a phone**. It shows a QR and a short code.
+3. In the Mercify app on your phone, type that code and tap **Pair**. (QR scanning comes later; the code works now.)
+4. That's it — the now-playing card and controls drive your PC. Pairing is remembered, and works both at home and away.
 
 ## How it's built
 
-React Native. The phone runs the desktop's own `overlay/lobby.js` and `overlay/friends.js`, so lobbies and friends are one protocol on both:
+React Native. The phone runs the desktop's own `overlay/remote.js` in **device** mode; the PC runs it in **host** mode. One module, one protocol on both sides.
 
-- `src/node-crypto.js` is Node's `crypto` (as much as those two files use) on the @noble libraries; `metro.config.js` swaps it in for files in `overlay/`. `src/mqtt.js` is mqtt's React Native build.
-- `src/spotify.js` and `android/.../SpotifyModule.kt` control Spotify through its media session (notification access, `SpotifyListenerService`), with the same `command(action, args)` actions as the desktop's `playerCommand()`.
-- `LobbyService` keeps Mercify running while you're in a lobby, with a notification.
-- `src/buffer-fix.js`: Hermes ignores `Symbol.species`, so the `buffer` package's `subarray()` returns a plain Uint8Array there, which broke the friend key (0.1.0 stuck on its start screen). It's patched to stay a Buffer, as in Node.
-- `npm test` checks the crypto against Node's byte for byte and runs a phone and a PC in one lobby, through stand-in relays and through a real MQTT broker, with the phone's Buffer behaving as on Hermes. CI runs it before every build.
+- **Pairing**: the PC shows a one-time code (and a QR of the same). The phone and PC derive a private channel from it — the same X25519 → HKDF → AES-GCM scheme `friends.js` uses — so the link is end-to-end encrypted and nobody else can read it or find it on the relay.
+- **Transport**: the free public MQTT relays (`DEFAULT_RELAYS` from `lobby.js`), so it works anywhere with no port-forwarding. A LAN link can be added later with `remote.addLink()` without touching the protocol.
+- **Commands**: the phone sends actions (`togglePlay`, `next`, `seek`, `joinLobby`, …); the PC validates each against the bridge's allowlist and the same URI check `lobby.js` uses, then runs it through its own `playerCommand()`. The PC pushes its player / lobby / friends state back on every change.
+- `src/remote.js` wires `overlay/remote.js` to the phone's MQTT build (`src/mqtt.js`), the crypto shim (`src/node-crypto.js`, swapped in by `metro.config.js` for files in `overlay/`), and generic key/value storage + a keep-alive notification.
+- `src/buffer-fix.js`: Hermes ignores `Symbol.species`, so `buffer`'s `subarray()` returns a plain Uint8Array there; it's patched to stay a Buffer, as in Node.
 - If startup fails, the start screen (and a Problems card) shows the error and which step it was on.
+
+The round-trip is tested on the desktop side: `overlay/tools/remote-test.js` pairs a host and a device through a real broker and checks commands, refused actions, state and privacy. CI runs it before every Windows build.
 
 Build: the "Build Android app" workflow (`.github/workflows/android.yml`) on any branch; set `test_release` (e.g. `test.2`) to publish `android-v<version>-test.2` as a pre-release. The version is in `package.json`.
 
 Signing: builds are signed with Mercify's own key from the `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD` repository secrets (alias `mercify`). Kain keeps the keystore; if it's lost, installed copies can't be updated, only reinstalled. Without the secrets, builds fall back to React Native's public debug key.
 
-Emulator check: after each build, the workflow installs the APK on an Android emulator, opens it, grants notification access, opens it again, and pushes what it saw (`screen.txt`, screenshots, `logcat.txt`) to the `android-diag` branch (`test/emulator-check.sh`).
+Not done yet: scanning the QR with the camera (the typed code works now), hosting a lobby from the phone, and the LAN-direct link. The old `SpotifyListenerService` / `SpotifyModule` native code is unused by the remote and kept only for its storage + keep-alive helpers; it can be removed in a later cleanup.
