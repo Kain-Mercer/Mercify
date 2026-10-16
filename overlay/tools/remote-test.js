@@ -70,16 +70,28 @@ function check(label, ok, detail = "") {
 
 	await sleep(600); // let both connect to the broker
 
-	// --- 1. pairing ---
+	// --- 1. pairing (scan a QR payload: carries the code + the PC's key) ---
 	const qr = host.startPairing();
-	check("QR payload looks right", qr && qr.role === "mercify-remote" && typeof qr.pub === "string" && typeof qr.nonce === "string");
+	check("pairing payload looks right", qr && qr.role === "mercify-remote" && typeof qr.pub === "string" && typeof qr.code === "string" && qr.code.length >= 8);
 	const paired = await phone.pair(qr, { timeoutMs: 8000 }).catch((e) => ({ error: e.message }));
-	check("phone pairs from the QR alone", paired && !paired.error, paired && paired.error ? paired.error : `paired with ${paired && paired.name}`);
+	check("phone pairs from the QR payload", paired && !paired.error, paired && paired.error ? paired.error : `paired with ${paired && paired.name}`);
 	check("PC now lists one device", host.devices().length === 1, `${host.devices().length} device(s)`);
 	check("phone now lists the PC", phone.devices().length === 1);
 
 	await sleep(400);
 	check("phone got an initial state on pairing", lastState.v && lastState.v.player && lastState.v.player.name === "Blue Monday", lastState.v ? "got it" : "none");
+
+	// --- 1b. a second phone pairs by TYPING the code only (no QR, no PC key up front) ---
+	const phone2 = createRemote({ role: "device", store: memStore(), relays: [RELAY], connect: mqtt.connect, name: "spare phone" });
+	let lastState2 = null;
+	phone2.on("state", (s) => (lastState2 = s));
+	const qr2 = host.startPairing();
+	const typed = await phone2.pair(qr2.code, { timeoutMs: 8000 }).catch((e) => ({ error: e.message })); // string = typed code
+	check("a second phone pairs by typing the code alone", typed && !typed.error, typed && typed.error ? typed.error : `paired with ${typed && typed.name}`);
+	check("PC now lists two devices", host.devices().length === 2, `${host.devices().length}`);
+	await sleep(300);
+	check("typed-code phone also gets state", lastState2 && lastState2.player && lastState2.player.name === "Blue Monday");
+	phone2.close();
 
 	// --- 2. a good command round-trips and is applied ---
 	seenCmds.length = 0;
@@ -120,7 +132,7 @@ function check(label, ok, detail = "") {
 
 	// --- 7. privacy: the eavesdropper saw only ciphertext ---
 	const blob = Buffer.concat(sniffed.map((s) => s.b)).toString("latin1");
-	const leaked = ["togglePlay", "playTrack", "Blue Monday", "Temptation", "WXYZ-2345", qr.nonce, "spotify:track:aaaa"].filter((s) => blob.includes(s));
+	const leaked = ["togglePlay", "playTrack", "Blue Monday", "Temptation", "WXYZ-2345", qr.code, qr2.code, "spotify:track:aaaa"].filter((s) => blob.includes(s));
 	check("eavesdropper saw no plaintext", leaked.length === 0, leaked.length ? "leaked: " + leaked.join(", ") : `${sniffed.length} frames, all sealed`);
 	check("topics are opaque hashes", sniffed.every((s) => /^mercify\/v1\/[0-9a-f]{32}$/.test(s.t)), sniffed[0] && sniffed[0].t);
 

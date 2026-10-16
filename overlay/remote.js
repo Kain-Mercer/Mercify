@@ -31,6 +31,18 @@ const CONNECT_TIMEOUT_MS = 10000;
 // The exact set of playback actions the desktop bridge understands (overlay-bridge.js `actions`),
 // plus the two lobby actions the host handles itself. Anything else from a phone is refused.
 const BRIDGE_ACTIONS = new Set(["state", "togglePlay", "next", "prev", "seek", "setVolume", "toggleShuffle", "toggleRepeat", "toggleLike", "search", "playlists", "playlistTracks", "playTrack", "playContext", "addToQueue", "removeFromQueue"]);
+
+// A pairing code is typeable (shown on the PC, typed on the phone) or carried in a QR. Same
+// alphabet as lobby codes (no 0/O, 1/I/L); 16 chars ≈ 80 bits, single-use and short-lived.
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const CODE_LEN = 16;
+function makeCode() {
+	const bytes = crypto.randomBytes(CODE_LEN);
+	let s = "";
+	for (let i = 0; i < CODE_LEN; i++) s += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
+	return s;
+}
+const cleanCode = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 32);
 const LOBBY_ACTIONS = new Set(["joinLobby", "leaveLobby"]);
 // Spotify songs/episodes and YouTube videos, same shapes lobby.js accepts as untrusted input.
 const URI_RE = /^(spotify:(track|episode):[A-Za-z0-9]{1,64}|youtube:[A-Za-z0-9_-]{11})$/;
@@ -186,8 +198,8 @@ function createRemote({ role, store, relays, connect, name = "", control = null,
 
 	// Pairing channel comes from the nonce alone: anyone who scanned the QR can speak on it, nobody
 	// else can find it. (Short-lived and single-use; the real channel above takes over at once.)
-	function pairChannel(nonce) {
-		const ikm = Buffer.from(nonce, "base64");
+	function pairChannel(code) {
+		const ikm = Buffer.from(cleanCode(code), "utf8");
 		const derive = (what, n) => Buffer.from(crypto.hkdfSync("sha256", ikm, "mercify-pair-v1", what, n));
 		return { key: derive("key", 32), topic: "mercify/v1/" + derive("topic", 16).toString("hex") };
 	}
@@ -355,15 +367,17 @@ function createRemote({ role, store, relays, connect, name = "", control = null,
 	function startPairing() {
 		if (role !== "host") throw new Error("only the PC starts pairing");
 		stopPairing();
-		const nonce = crypto.randomBytes(16).toString("base64");
-		const { key, topic } = pairChannel(nonce);
-		pairing = { nonce, key, topic, timer: setTimeout(() => { stopPairing(); ev.emit("pair-timeout"); }, PAIR_TTL_MS) };
+		const code = makeCode();
+		const { key, topic } = pairChannel(code);
+		pairing = { code, key, topic, expiresAt: now() + PAIR_TTL_MS, timer: setTimeout(() => { stopPairing(); ev.emit("pair-timeout"); }, PAIR_TTL_MS) };
 		for (const l of links) l.subscribe(topic);
 		ev.emit("pairing", pairingPayload());
 		return pairingPayload();
 	}
+	// The phone can either scan the whole payload (QR) or just type `code`; both derive the same
+	// pairing channel. `code` is what the PC shows for typing.
 	function pairingPayload() {
-		return { v: 1, role: "mercify-remote", pub: identity.pub, nonce: pairing.nonce, name: myName, expiresAt: now() + PAIR_TTL_MS };
+		return { v: 1, role: "mercify-remote", pub: identity.pub, code: pairing.code, name: myName, expiresAt: pairing.expiresAt };
 	}
 	function stopPairing() {
 		if (!pairing) return;
@@ -388,29 +402,33 @@ function createRemote({ role, store, relays, connect, name = "", control = null,
 		pushState(peer);
 	}
 
-	// Device (phone): pair using a scanned QR payload. Resolves to the paired PC, or rejects.
-	function pair(payload, { timeoutMs = 20000 } = {}) {
-		if (role !== "device") throw new Error("only the phone pairs with a QR");
-		if (!payload || payload.role !== "mercify-remote" || typeof payload.pub !== "string" || typeof payload.nonce !== "string") {
-			return Promise.reject(new Error("that doesn't look like a Mercify pairing code"));
-		}
-		const { key, topic } = pairChannel(payload.nonce);
+	// Device (phone): pair with the PC, using either a typed code (a string) or a scanned QR
+	// payload (an object with { code, pub }). Both derive the same pairing channel from the code;
+	// with a scanned payload we also check the reply came from the expected PC. Resolves to the
+	// paired PC, or rejects.
+	function pair(codeOrPayload, { timeoutMs = 20000 } = {}) {
+		if (role !== "device") throw new Error("only the phone pairs");
+		const payload = typeof codeOrPayload === "string" ? { code: codeOrPayload } : codeOrPayload || {};
+		const code = cleanCode(payload.code);
+		const expectPub = typeof payload.pub === "string" ? payload.pub : null; // QR only
+		if (code.length < 8) return Promise.reject(new Error("that doesn't look like a pairing code"));
+		const { key, topic } = pairChannel(code);
 		return new Promise((resolve, reject) => {
 			let done = false;
-			const finish = (fn, arg) => { if (done) return; done = true; clearTimeout(timer); for (const l of links) l.unsubscribe(topic); offMsg(); fn(arg); };
-			const timer = setTimeout(() => finish(reject, new Error("the PC didn't answer — is Mercify showing the code, and on the same account of relays?")), timeoutMs);
+			const finish = (fn, arg) => { if (done) return; done = true; clearTimeout(timer); for (const l of links) { l.unsubscribe(topic); l.off?.("message", handler); } fn(arg); };
+			const timer = setTimeout(() => finish(reject, new Error("the PC didn't answer — check the code, and that Mercify on the PC is showing it")), timeoutMs);
 			const handler = (t, buf) => {
 				if (t !== topic) return;
-				const msg = open(key, buf);
-				if (!msg || msg.ty !== "paired" || msg.pub !== payload.pub) return;
-				const peer = addPeer(payload.pub, payload.name || msg.name, now());
+				const msg = open(key, buf); // only someone who knows the code can seal this
+				if (!msg || msg.ty !== "paired" || typeof msg.pub !== "string") return;
+				if (expectPub && msg.pub !== expectPub) return; // scanned a QR: must be that PC
+				const peer = addPeer(msg.pub, payload.name || msg.name, now());
 				save();
 				finish(resolve, peer ? peerView(peer) : null);
 				if (peer) { sendTo(peer, "hello", {}); ev.emit("peer", view()); } // nudge the PC to send state
 			};
-			const offMsg = () => { for (const l of links) l.off?.("message", handler); };
 			for (const l of links) { l.subscribe(topic); l.on("message", handler); }
-			// Say hello on the pairing channel (sealed with the nonce key → proves we saw the QR).
+			// Say hello on the pairing channel, sealed with the code key → proves we know the code.
 			const buf = seal(key, { f: myFid, b: boot, n: ++seq, ty: "hello", pub: identity.pub, name: myName, t: now() });
 			for (const l of links) l.publish(topic, buf);
 		});
@@ -488,4 +506,4 @@ function createRemote({ role, store, relays, connect, name = "", control = null,
 	};
 }
 
-module.exports = { createRemote, createRelayLink, fidOf, cleanName, BRIDGE_ACTIONS, LOBBY_ACTIONS, URI_RE, SPKI_X25519, _seal: seal, _open: open };
+module.exports = { createRemote, createRelayLink, fidOf, cleanName, makeCode, cleanCode, BRIDGE_ACTIONS, LOBBY_ACTIONS, URI_RE, SPKI_X25519, _seal: seal, _open: open };

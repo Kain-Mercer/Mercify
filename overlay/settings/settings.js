@@ -751,6 +751,7 @@ $("#phone-pair").addEventListener("click", async () => {
 	const r = await S.remotePair();
 	if (r && r.ok) {
 		$("#phone-qr").src = r.dataUrl;
+		$("#phone-code").textContent = (r.code || "").replace(/(.{4})/g, "$1 ").trim();
 		$("#phone-pair-start").hidden = true;
 		$("#phone-pair-live").hidden = false;
 	} else {

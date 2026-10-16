@@ -2112,3 +2112,12 @@ kbd,
 .phone-card .member .role.dim {
 	font-weight: 400;
 }
+.phone-card .phone-code {
+	text-align: center;
+	font-family: var(--mono, ui-monospace, "JetBrains Mono", monospace);
+	font-size: 18px;
+	letter-spacing: 2px;
+	font-weight: 700;
+	margin: 2px 0 8px;
+	user-select: all;
+}

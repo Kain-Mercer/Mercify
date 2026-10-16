@@ -1663,7 +1663,7 @@ ipcMain.handle("settings:remote-pair", async () => {
 		const dataUrl = await QRCode.toDataURL(JSON.stringify(payload), { margin: 1, width: 320, errorCorrectionLevel: "M" });
 		remotePairing = { expiresAt: payload.expiresAt };
 		pushSettings();
-		return { ok: true, dataUrl, expiresAt: payload.expiresAt };
+		return { ok: true, dataUrl, code: payload.code, expiresAt: payload.expiresAt };
 	} catch (err) {
 		return { ok: false, error: err.message };
 	}
