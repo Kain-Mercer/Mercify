@@ -2097,3 +2097,18 @@ kbd,
 .fr-foot .link {
 	color: var(--dim);
 }
+
+/* Phone remote (Lobby page): the pairing QR. */
+.phone-card .phone-qr {
+	display: block;
+	width: 220px;
+	max-width: 100%;
+	height: auto;
+	margin: 10px auto;
+	padding: 10px;
+	background: #fff;
+	border-radius: 12px;
+}
+.phone-card .member .role.dim {
+	font-weight: 400;
+}

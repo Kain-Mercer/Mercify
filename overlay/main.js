@@ -14,6 +14,8 @@ const setup = require("./setup");
 const updater = require("./updater");
 const { createLobby, generateCode, formatCode, DEFAULT_RELAYS } = require("./lobby");
 const { createFriends } = require("./friends");
+const { createRemote } = require("./remote");
+const QRCode = require("qrcode");
 const { createYouTube, parseId: parseYouTubeId } = require("./youtube");
 const { createDiscordPresence } = require("./discord");
 const { pathToFileURL } = require("url");
@@ -86,6 +88,7 @@ const userDir = app.getPath("userData");
 const CONFIG_PATH = path.join(userDir, "config.json");
 const LAYOUT_PATH = path.join(userDir, "layout.json");
 const FRIENDS_PATH = path.join(userDir, "friends.json");
+const REMOTE_PATH = path.join(userDir, "remote.json"); // paired phones (the Mercify remote)
 const AVATAR_PATH = path.join(userDir, "avatar.jpg"); // your profile picture, 96x96
 const AVATAR_PNG_PATH = path.join(userDir, "avatar.png"); // instead, for a picture with a transparent background
 
@@ -715,6 +718,8 @@ function startBridgeServer() {
 			sendToRenderer("bridge-status", { connected: false });
 			playerToSettings({ type: "state", state: null });
 			playerForFriends(null);
+			lastPlayerState = null;
+			remote.pushState();
 			updateTrayMenu();
 			pushSettings();
 		});
@@ -893,11 +898,14 @@ function bridgeCommand(action, args, timeoutMs = 15000) {
 
 // What's playing goes to the overlay, Settings, the lobby, friends and Discord, from Spotify or
 // YouTube alike.
+let lastPlayerState = null; // the most recent Spotify "state", for the phone remote's snapshot
 function emitPlayer(msg) {
 	sendToRenderer("bridge", msg);
 	playerToSettings(msg);
 	if (msg.type === "state") lobby.onPlayerState(msg.state), playerForFriends(msg.state), discord.update(msg.state);
 	else lobby.onPlayerProgress(msg.position, msg.at);
+	if (msg.type === "state") lastPlayerState = msg.state;
+	remote.pushState(); // mirror the change to any paired phones
 }
 
 // Discord: Spotify's own card covers Spotify; this one covers YouTube videos (see discord.js).
@@ -1257,6 +1265,7 @@ lobby.on("change", () => {
 	updateTrayMenu();
 	updateFriendsPresence();
 	prefetchLobbyVideos();
+	remote.pushState();
 });
 lobby.on("toast", (text) => sendToRenderer("toast", { text }));
 
@@ -1281,6 +1290,7 @@ function setLobbyName(name) {
 	saveConfig();
 	lobby.setName(config.lobbyName);
 	friends.setName(config.lobbyName);
+	remote.setName(config.lobbyName);
 }
 
 // ------------------------------------------------------------------ profile picture
@@ -1444,6 +1454,7 @@ let lastFriendRequests = "";
 friends.on("change", () => {
 	sendToRenderer("friends", friendsView());
 	toSettings("settings:friends", friendsView());
+	remote.pushState();
 	const reqs = JSON.stringify(friends.state().requests.map((r) => r.kind + r.fid));
 	if (reqs !== lastFriendRequests) {
 		lastFriendRequests = reqs;
@@ -1451,6 +1462,46 @@ friends.on("change", () => {
 	}
 });
 friends.on("toast", (text) => sendToRenderer("toast", { text }));
+
+// ------------------------------------------------------------------ phone remote (remote.js)
+//
+// A paired phone controls this PC: it sends playback commands (run through playerCommand(), the
+// same path as the overlay and hotkeys) and sees what's playing, the lobby and friends. Pairing
+// is a QR shown on Settings' Lobby page. No phone-side Spotify, no SpotX — the phone is a remote.
+
+// What a paired phone sees. Kept small: now playing (Spotify or the YouTube video in charge),
+// the lobby and the friends list — the same views Settings and the overlay already use.
+function remoteSnapshot() {
+	const player = yt.active ? ytState() : lastPlayerState || null;
+	return { player, lobby: lobbyView(), friends: friendsView(), name: config.lobbyName, connected: !!bridge, premium: config.spotifyPremium };
+}
+
+const remote = createRemote({
+	role: "host",
+	store: { load: () => readJSON(REMOTE_PATH, null), save: (d) => writeJSON(REMOTE_PATH, d) },
+	relays: lobbyRelays,
+	name: config.lobbyName,
+	control: {
+		command: (action, args) => playerCommand(action, args),
+		snapshot: remoteSnapshot,
+		joinLobby: (code) => lobby.join(code),
+		leaveLobby: () => lobby.leave(),
+	},
+	log: (m) => console.log("[remote]", m),
+});
+remote.setName(config.lobbyName);
+
+let remotePairing = null; // { expiresAt } while a pairing QR is showing
+remote.on("paired", (device) => {
+	sendToRenderer("toast", { text: `${device?.name || "Phone"} paired` });
+	remotePairing = null;
+	pushSettings();
+});
+remote.on("peer", () => pushSettings());
+remote.on("pair-timeout", () => {
+	remotePairing = null;
+	pushSettings();
+});
 
 // Requests show up in the overlay's Notifications panel with Accept / Decline (and in the tray
 // menu). While the overlay isn't up over the game, Windows shows a notification too.
@@ -1604,6 +1655,30 @@ ipcMain.handle("settings:lobby-join", async (_e, code) => {
 	}
 });
 ipcMain.on("settings:lobby-copy", () => copyLobbyCode());
+
+// Phone remote pairing (Lobby page). Start shows a QR; the phone scans it to pair.
+ipcMain.handle("settings:remote-pair", async () => {
+	try {
+		const payload = remote.startPairing();
+		const dataUrl = await QRCode.toDataURL(JSON.stringify(payload), { margin: 1, width: 320, errorCorrectionLevel: "M" });
+		remotePairing = { expiresAt: payload.expiresAt };
+		pushSettings();
+		return { ok: true, dataUrl, expiresAt: payload.expiresAt };
+	} catch (err) {
+		return { ok: false, error: err.message };
+	}
+});
+ipcMain.handle("settings:remote-stop-pair", () => {
+	remote.stopPairing();
+	remotePairing = null;
+	pushSettings();
+	return { ok: true };
+});
+ipcMain.handle("settings:remote-forget", (_e, fid) => {
+	remote.forget(String(fid || ""));
+	pushSettings();
+	return { ok: true, state: settingsState() };
+});
 
 // ------------------------------------------------------------------ overlay IPC
 
@@ -1908,6 +1983,7 @@ async function settingsState() {
 		theme: themeName(),
 		player: settingsPlayer,
 		friends: friendsView(),
+		remote: { devices: remote.devices(), pairing: !!remotePairing && Date.now() < remotePairing.expiresAt },
 		version: app.getVersion(),
 		youtube: { ...youtube.status(), version: youtubeVersion },
 	};

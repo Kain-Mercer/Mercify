@@ -720,6 +720,50 @@ async function lobbyGo(run) {
 		for (const id of ["#lobby-start", "#lobby-join"]) $(id).disabled = false;
 	}
 }
+// Phone remote: the paired-devices list and the pairing QR.
+function phoneTimeAgo(ts) {
+	if (!ts) return "";
+	const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+	if (s < 60) return "just now";
+	const m = Math.round(s / 60);
+	if (m < 60) return `${m} min ago`;
+	const h = Math.round(m / 60);
+	if (h < 24) return `${h} h ago`;
+	return `${Math.round(h / 24)} d ago`;
+}
+function renderPhone(r) {
+	if (!r) return;
+	const devices = r.devices || [];
+	$("#phone-devices").innerHTML = devices.length
+		? devices
+				.map((d) => {
+					const status = d.online ? '<span class="role">Online</span>' : `<span class="role dim">Last seen ${esc(phoneTimeAgo(d.lastSeen))}</span>`;
+					return `<div class="member"><b>${esc(d.name || "Phone")}</b>${status}<button class="link muted-link" data-forget="${esc(d.fid)}">Unpair</button></div>`;
+				})
+				.join("")
+		: '<p class="hint dim">No phones paired yet.</p>';
+	$("#phone-pair-start").hidden = !!r.pairing;
+	$("#phone-pair-live").hidden = !r.pairing;
+	if (!r.pairing) $("#phone-qr").removeAttribute("src");
+}
+$("#phone-pair").addEventListener("click", async () => {
+	$("#phone-error").hidden = true;
+	const r = await S.remotePair();
+	if (r && r.ok) {
+		$("#phone-qr").src = r.dataUrl;
+		$("#phone-pair-start").hidden = true;
+		$("#phone-pair-live").hidden = false;
+	} else {
+		$("#phone-error").hidden = false;
+		$("#phone-error").textContent = (r && r.error) || "Couldn't start pairing.";
+	}
+});
+$("#phone-pair-cancel").addEventListener("click", () => S.remoteStopPair());
+$("#phone-devices").addEventListener("click", (e) => {
+	const fid = e.target?.dataset?.forget;
+	if (fid) S.remoteForget(fid);
+});
+
 $("#lobby-start").addEventListener("click", () => lobbyGo(() => S.lobbyStart()));
 const joinTyped = () => {
 	const code = $("#lobby-code").value.trim();
@@ -1032,6 +1076,7 @@ function render(d) {
 	renderUpdate(d.update, d.version);
 	renderYouTube(d.youtube);
 	renderLobby(d.lobby, ready);
+	renderPhone(d.remote);
 	renderFriends(d.friends, d.lobby);
 	renderAvatar(d.avatar, d.lobby?.name);
 	renderApps(d);
