@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { AppState, PermissionsAndroid, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, Alert } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import { spotify } from "./src/spotify";
+import { spotify, nativeMissing } from "./src/spotify";
 import * as M from "./src/mercify";
 
 // Settings' Classic theme
@@ -14,6 +14,41 @@ const METHODS = [
 	{ id: "mediaId", label: "Media ID", hint: "Another media-session route" },
 	{ id: "link", label: "Open link", hint: "Always works, but flips to Spotify" },
 ];
+
+// Errors anywhere in the app's JavaScript are kept and shown (on the start screen, or in the
+// Problems card), since a test build has no other way to tell us what went wrong.
+const problems = [];
+const problemListeners = new Set();
+function addProblem(text) {
+	problems.push({ t: new Date().toLocaleTimeString(), text: String(text).slice(0, 1500) });
+	for (const fn of problemListeners) fn([...problems]);
+}
+if (global.ErrorUtils) {
+	const prev = global.ErrorUtils.getGlobalHandler();
+	global.ErrorUtils.setGlobalHandler((err, fatal) => {
+		addProblem(`${fatal ? "Fatal: " : ""}${err && err.stack ? err.stack : err}`);
+		if (prev && fatal) prev(err, fatal);
+	});
+}
+function useProblems() {
+	const [list, setList] = useState([...problems]);
+	useEffect(() => (problemListeners.add(setList), () => problemListeners.delete(setList)), []);
+	return list;
+}
+function Problems({ list }) {
+	if (!list.length) return null;
+	return (
+		<View style={[st.card, { borderColor: "rgba(255,107,107,0.5)" }]}>
+			<Text style={[st.cardTitle, { color: C.bad, marginBottom: 6 }]}>Problems</Text>
+			<Text style={st.hint}>Screenshot this and send it to Kain.</Text>
+			{list.slice(-5).map((p, i) => (
+				<Text key={i} selectable style={st.mono}>
+					{p.t} {p.text}
+				</Text>
+			))}
+		</View>
+	);
+}
 
 const fmt = (ms) => {
 	const s = Math.max(0, Math.floor((ms || 0) / 1000));
@@ -62,6 +97,8 @@ function Main() {
 	const [testUri, setTestUri] = useState("spotify:track:4cOdK2wGLETKBW3PvgPWqT");
 	const [report, setReport] = useState(null);
 	const [busy, setBusy] = useState(false);
+	const [step, setStep] = useState("Starting Mercify");
+	const problemList = useProblems();
 
 	const checkSetup = useCallback(async () => {
 		const a = await spotify.hasAccess();
@@ -75,13 +112,19 @@ function Main() {
 
 	useEffect(() => {
 		let off = () => {};
-		M.init().then(() => {
-			off = M.subscribe((x) => setS(x));
-			const first = M.getLobby().state();
-			setNameText(M.getLobby().state().name || "");
-			if (first.status === "idle") setCodeText("");
-		});
-		checkSetup();
+		if (nativeMissing) addProblem("Mercify's Spotify module didn't load (MercifySpotify is missing).");
+		let at = "Starting";
+		M.init((x) => {
+			at = x;
+			setStep(x);
+		}).then(
+			() => {
+				off = M.subscribe((x) => setS(x));
+				setNameText(M.getLobby().state().name || "");
+			},
+			(err) => addProblem(`Startup failed at "${at}": ${err && err.stack ? err.stack : err}`)
+		);
+		checkSetup().catch((err) => addProblem(`Checking Spotify: ${err.message || err}`));
 		if (Platform.OS === "android" && Platform.Version >= 33) PermissionsAndroid.request("android.permission.POST_NOTIFICATIONS").catch(() => {});
 		const sub = AppState.addEventListener("change", (x) => x === "active" && checkSetup());
 		return () => {
@@ -98,9 +141,11 @@ function Main() {
 
 	if (!s || !s.lobby) {
 		return (
-			<View style={[st.screen, { justifyContent: "center", alignItems: "center" }]}>
-				<Text style={st.dim}>Starting Mercify…</Text>
-			</View>
+			<ScrollView style={st.screen} contentContainerStyle={{ padding: 16, paddingTop: 80 }}>
+				<Text style={[st.logo, { textAlign: "center" }]}>Mercify</Text>
+				<Text style={[st.dim, { textAlign: "center", marginTop: 8, marginBottom: 24 }]}>{step}…</Text>
+				<Problems list={problemList} />
+			</ScrollView>
 		);
 	}
 
@@ -333,6 +378,8 @@ function Main() {
 					))}
 				</Card>
 			)}
+
+			<Problems list={problemList} />
 
 			{s.toasts.slice(-2).map((t) => (
 				<Text key={t.id} style={st.toast}>

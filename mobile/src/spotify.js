@@ -2,8 +2,13 @@
 // command(action, args) to control it, and state reports through onState().
 import { NativeModules, NativeEventEmitter } from "react-native";
 
-const N = NativeModules.MercifySpotify;
-const events = new NativeEventEmitter(N);
+// The Android half (SpotifyModule.kt). If it's missing, every call fails with a clear message
+// instead of "cannot read property of null".
+const N =
+	NativeModules.MercifySpotify ||
+	new Proxy({}, { get: (_, k) => (k === "addListener" || k === "removeListeners" ? () => {} : () => Promise.reject(new Error("Mercify's Spotify module didn't load (MercifySpotify is missing)"))) });
+export const nativeMissing = !NativeModules.MercifySpotify;
+const events = new NativeEventEmitter(NativeModules.MercifySpotify ? N : undefined);
 
 let method = "uri"; // how to start a song: "uri" | "mediaId" | "link" (see SpotifyModule.play)
 let last = null; // newest state from Spotify

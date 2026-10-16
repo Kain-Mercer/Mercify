@@ -30,16 +30,28 @@ function updatePresence() {
 	friends.setPresence({ track, playing: !!p?.isPlaying, inLobby: st.status === "joined", host: st.status === "joined" && st.role === "host" });
 }
 
-export function init() {
+// A native call that doesn't answer shouldn't leave Mercify on its start screen forever.
+const within = (ms, p, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${what} didn't answer in ${ms / 1000} s`)), ms))]);
+
+export function init(step = () => {}) {
 	if (ready) return ready;
 	ready = (async () => {
-		for (const k of KEYS) saved[k] = await spotify.storage.get(k);
+		step("Loading your settings");
+		for (const k of KEYS) {
+			try {
+				saved[k] = await within(3000, spotify.storage.get(k), "Settings storage");
+			} catch (err) {
+				console.warn("[mercify]", err.message);
+				saved[k] = null;
+			}
+		}
 		let friendsData = null;
 		try {
 			friendsData = saved.friends ? JSON.parse(saved.friends) : null;
 		} catch (_) {}
 		if (saved.method) spotify.setMethod(saved.method);
 
+		step("Setting up friends");
 		friends = createFriends({
 			store: { load: () => friendsData, save: (d) => spotify.storage.set("friends", JSON.stringify(d)) },
 			relays: DEFAULT_RELAYS,
@@ -52,6 +64,7 @@ export function init() {
 			},
 			log: (m) => console.log("[friends]", m),
 		});
+		step("Setting up lobbies");
 		lobby = createLobby({
 			command: (action, args) => spotify.command(action, args),
 			relays: DEFAULT_RELAYS,
@@ -106,6 +119,7 @@ export function init() {
 			} catch (_) {}
 		}, 5000);
 
+		step("Starting");
 		friends.start();
 		emit({ lobby: lobby.state(), friends: friends.state(), name, method: spotify.getMethod(), lastCode: saved.code || "" });
 	})();

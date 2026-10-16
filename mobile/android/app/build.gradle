@@ -89,6 +89,17 @@ android {
         versionName v
     }
     signingConfigs {
+        // Mercify's own key, from the build's environment (the ANDROID_KEYSTORE_BASE64 and
+        // ANDROID_KEYSTORE_PASSWORD repository secrets in CI). Without it, release builds fall
+        // back to React Native's public debug key.
+        if (System.getenv("MERCIFY_KEYSTORE")) {
+            release {
+                storeFile file(System.getenv("MERCIFY_KEYSTORE"))
+                storePassword System.getenv("MERCIFY_KEYSTORE_PASSWORD")
+                keyAlias "mercify"
+                keyPassword System.getenv("MERCIFY_KEYSTORE_PASSWORD")
+            }
+        }
         debug {
             storeFile file('debug.keystore')
             storePassword 'android'
@@ -101,9 +112,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig System.getenv("MERCIFY_KEYSTORE") ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
