@@ -1318,8 +1318,9 @@ async function enablePrivate() {
 		diag(`private session: set via ${r.via} (was ${JSON.stringify(r.prev)}); reads back ${JSON.stringify(now.on)}`);
 		startReassert();
 	} catch (err) {
-		setPrivateState("error");
-		diag(`private session: ${err.message}`);
+		const old = /unknown action/i.test(err.message);
+		setPrivateState(old ? "outdated" : "error");
+		diag(old ? `private session: Spotify is running an older Mercify extension (v${bridgeInfo?.version ?? "?"}) without this feature — Setup ▸ Redo next to Mercify extension` : `private session: ${err.message}`);
 	}
 }
 async function restorePrivate() {
@@ -1778,6 +1779,8 @@ ipcMain.handle("settings:test-private", async () => {
 	try {
 		before = await bridgeCommand("detectPrivateSession", {}, 6000);
 	} catch (err) {
+		if (/unknown action/i.test(err.message))
+			return { verdict: `✗ Spotify is still running an older Mercify extension (v${bridgeInfo?.version ?? "?"}) that doesn't have private session. Go to Setup and press Redo next to "Mercify extension" (Spotify restarts), then test again. Mercify now does this by itself when it starts.` };
 		return { verdict: `Couldn't reach Spotify: ${err.message}` };
 	}
 	diag(`private session test: client exposes ${JSON.stringify(before)}`);
@@ -2663,7 +2666,17 @@ app.whenReady().then(async () => {
 
 	if (setup.IS_WIN) {
 		migrateLoginItem();
-		const s = await setup.status({ premium: config.spotifyPremium });
+		let s = await setup.status({ premium: config.spotifyPremium });
+		// A Mercify update can ship a newer Spotify extension (new commands like private session).
+		// Put it into Spotify straight away rather than waiting for someone to press Redo on Setup —
+		// otherwise Spotify keeps running the old one and the new features silently do nothing.
+		if (s.spotify && s.spicetify && s.extension === "outdated" && !setup.isSetupRunning()) {
+			diag(`Spotify extension is out of date (v${s.appliedVersion ?? "?"} → v${s.bundledVersion ?? "?"}): updating it`);
+			const running = await setup.isSpotifyRunning();
+			const ok = await setup.applyExtension(setupLogLine, { reopen: running }).catch((err) => (diag(`extension update: ${err.message}`), false));
+			diag(`extension update ${ok ? "done" : "didn't finish — Setup ▸ Redo next to Mercify extension"}`);
+			s = await setup.status({ premium: config.spotifyPremium });
+		}
 		if (config.launchSpotify && s.spotify) setup.startSpotify({ minimized: config.minimiseSpotify });
 		// Set up, but Spotify hasn't connected: it's probably at its login screen, started minimised
 		// where nobody sees it. Bring it up once, so you can log in.

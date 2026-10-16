@@ -889,6 +889,7 @@ function renderSwitches(d) {
 			cleared: "Spotify keeps switching it off — Mercify turns it back on every 20 s (try Test below)",
 			"not found": "Couldn't find Spotify's private-session switch (see Setup ▸ Copy details)",
 			error: "Couldn't reach Spotify to set it",
+			outdated: "Spotify has an older Mercify extension — Setup ▸ Redo next to Mercify extension",
 		};
 		pvt.textContent = d.privateSessionInLobby === false ? "Keeps friends' picks out of your recommendations" : msgs[s] || "Turns on when you join a lobby";
 	}
