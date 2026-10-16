@@ -19,6 +19,11 @@ const { WebSocketServer, createWebSocketStream } = require(path.join(B, "ws"));
   // as on the phone: the global Buffer is the npm "buffer" package (src/polyfills.js)
   for (const f of ["lobby.js", "friends.js"]) fs.writeFileSync(path.join(dir, f), 'const Buffer = require("npm-buffer").Buffer;\n' + fs.readFileSync(path.join(ROOT, "overlay", f), "utf8"));
   const NPM_BUFFER = path.join(ROOT, "mobile/node_modules/buffer/index.js");
+  // Like on Hermes, which ignores Symbol.species: subarray() gives a plain Uint8Array...
+  const NpmBuffer = require(NPM_BUFFER).Buffer;
+  Object.defineProperty(NpmBuffer, Symbol.species, { get: () => Uint8Array, configurable: true });
+  // ...unless src/buffer-fix.js is applied, as src/polyfills.js does (NO_BUFFER_FIX=1 to see it fail).
+  if (!process.env.NO_BUFFER_FIX) require(path.join(ROOT, "mobile/src/buffer-fix.js"))(NpmBuffer);
   const res = Module._resolveFilename;
   Module._resolveFilename = function (r, parent, ...rest) {
     const from = parent && parent.filename;
@@ -34,6 +39,18 @@ const { WebSocketServer, createWebSocketStream } = require(path.join(B, "ws"));
   const phoneMqtt = require(path.join(ROOT, "mobile/src/mqtt.js"));
   console.log("phone mqtt connect:", typeof phoneMqtt.connect);
   const phoneLobbyMod = require(path.join(dir, "lobby.js"));
+  const phoneFriendsMod = require(path.join(dir, "friends.js"));
+  const pcFriendsMod = require(path.join(ROOT, "overlay/friends.js"));
+  let phoneFriends = null;
+  try {
+    phoneFriends = phoneFriendsMod.createFriends({ store: { load: () => null, save() {} }, relays: [RELAY], connect: phoneMqtt.connect, lobbyCode: async () => "" });
+  } catch (e) {
+    console.log("FAIL  phone creates its friend key:", e.message);
+    process.exit(1);
+  }
+  const pubOk = /^[A-Za-z0-9+/]{43}=$/.test(phoneFriends.pub) && pcFriendsMod.fidOf(phoneFriends.pub) === phoneFriends.fid;
+  console.log(pubOk ? "PASS" : "FAIL", " phone's friend key is valid and the PC computes the same friend id", phoneFriends.pub);
+  if (!pubOk) process.exit(1);
   const pcLobbyMod = require(path.join(ROOT, "overlay/lobby.js"));
   const pcMqtt = require(require.resolve("mqtt", { paths: [path.join(ROOT, "mobile")] }));
 
