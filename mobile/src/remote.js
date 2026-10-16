@@ -8,6 +8,7 @@ const { createRemote } = require("../../overlay/remote");
 const { DEFAULT_RELAYS } = require("../../overlay/lobby");
 
 const listeners = new Set();
+const signalListeners = new Set();
 let snap = { paired: [], state: null, started: false };
 function emit(patch) {
 	snap = { ...snap, ...patch };
@@ -47,6 +48,9 @@ export function init(step = () => {}) {
 		});
 		remote.on("state", (state) => emit({ state }));
 		remote.on("peer", () => emit({ paired: remote.devices() }));
+		remote.on("signal", (s) => {
+			for (const fn of signalListeners) fn(s);
+		});
 		emit({ started: true, paired: remote.devices() });
 	})();
 	return ready;
@@ -91,3 +95,17 @@ export async function setName(n) {
 	} catch (_) {}
 }
 export const devices = () => (remote ? remote.devices() : []);
+
+// WebRTC audio signalling (used by src/audio.js).
+export const onSignal = (fn) => {
+	signalListeners.add(fn);
+	return () => signalListeners.delete(fn);
+};
+export async function signal(fid, kind, data) {
+	await ready;
+	remote.sendSignal(fid, kind, data);
+}
+export const pcFid = () => {
+	const d = remote ? remote.devices() : [];
+	return d.length ? d[0].fid : null;
+};

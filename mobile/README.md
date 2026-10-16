@@ -28,4 +28,10 @@ Build: the "Build Android app" workflow (`.github/workflows/android.yml`) on any
 
 Signing: builds are signed with Mercify's own key from the `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD` repository secrets (alias `mercify`). Kain keeps the keystore; if it's lost, installed copies can't be updated, only reinstalled. Without the secrets, builds fall back to React Native's public debug key.
 
-Not done yet: scanning the QR with the camera (the typed code works now), hosting a lobby from the phone, and the LAN-direct link. The old `SpotifyListenerService` / `SpotifyModule` native code is unused by the remote and kept only for its storage + keep-alive helpers; it can be removed in a later cleanup.
+## Audio to the phone
+
+Tap **Listen on this phone** to hear the PC's sound here. The PC captures its system audio and sends it over WebRTC (`react-native-webrtc`); signalling (SDP + ICE) rides the same encrypted remote channel. NAT traversal uses Google STUN plus, when an Open Relay (metered.ca) key is set on the PC (`config.openRelay = { app, apiKey }`), its free TURN — so it works away from home. Without a key it's STUN-only: same network and friendly NATs.
+
+v1 streams the whole system's audio (pure Electron capture, no native module). Narrowing to just Spotify needs a native WASAPI process-loopback capturer — a later change.
+
+Not done yet: scanning the QR with the camera (the typed code works now), hosting a lobby from the phone, the LAN-direct control link, Spotify-only audio capture, and routing phone audio to the loudspeaker by default (may play through the earpiece until an in-call-manager is added). The old `SpotifyListenerService` / `SpotifyModule` native code is unused by the remote and kept only for its storage + keep-alive helpers; it can be removed in a later cleanup.

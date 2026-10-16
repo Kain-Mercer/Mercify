@@ -33,6 +33,7 @@
       "renderer/**",
       "settings/**",
       "player/**",
+      "audio/**",
       "splash/**",
       "assets/**",
       "package.json",

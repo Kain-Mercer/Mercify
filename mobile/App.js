@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { AppState, PermissionsAndroid, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, Image } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import * as R from "./src/remote";
+import * as Audio from "./src/audio";
 
 // Settings' Classic theme
 const C = { bg: "#0d0f13", card: "#15181e", row: "#1b1f26", line: "rgba(255,255,255,0.07)", field: "#0d0f13", fieldLine: "rgba(255,255,255,0.12)", text: "#f2f3f5", dim: "#b4b8c1", faint: "#8b909b", accent: "#1ed760", onAccent: "#06240f", warn: "#ffb547", bad: "#ff6b6b" };
@@ -193,6 +194,18 @@ function LobbyCard({ lobby }) {
 	);
 }
 
+function ListenCard() {
+	const [a, setA] = useState(Audio.get());
+	useEffect(() => Audio.subscribe(setA), []);
+	const label = a.on ? (a.status === "playing" ? "Listening — tap to stop" : a.status === "error" ? "Couldn't connect — tap to retry" : "Connecting…") : "Listen on this phone";
+	return (
+		<Card title="Audio">
+			<Text style={st.hint}>Hear your PC's sound on this phone. Works on your home network; away from home needs a TURN key set on the PC.</Text>
+			<Button title={label} kind={a.on && a.status === "playing" ? "danger" : "primary"} onPress={() => Audio.toggle()} />
+		</Card>
+	);
+}
+
 function RemoteScreen({ snap }) {
 	const pc = (snap.paired || [])[0];
 	const online = pc && pc.online;
@@ -206,6 +219,7 @@ function RemoteScreen({ snap }) {
 				</View>
 			</Card>
 			<NowPlaying player={snap.state && snap.state.player} />
+			<ListenCard />
 			<LobbyCard lobby={snap.state && snap.state.lobby} />
 			<Button title="Unpair this PC" kind="danger" small onPress={() => pc && R.forget(pc.fid)} />
 		</>

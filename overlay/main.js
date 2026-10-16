@@ -5,7 +5,7 @@
 // - shows only while a chosen app (e.g. WoW) is in front
 // - global hotkeys, tray menu, Settings window with built-in setup, config + layout persistence
 
-const { app, BrowserWindow, globalShortcut, ipcMain, screen, Tray, Menu, nativeImage, shell, Notification, clipboard, dialog, net } = require("electron");
+const { app, BrowserWindow, globalShortcut, ipcMain, screen, Tray, Menu, nativeImage, shell, Notification, clipboard, dialog, net, session, desktopCapturer } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { WebSocketServer } = require("ws");
@@ -15,6 +15,7 @@ const updater = require("./updater");
 const { createLobby, generateCode, formatCode, DEFAULT_RELAYS } = require("./lobby");
 const { createFriends } = require("./friends");
 const { createRemote } = require("./remote");
+const { createAudioHost } = require("./audio");
 const QRCode = require("qrcode");
 const { createYouTube, parseId: parseYouTubeId } = require("./youtube");
 const { createDiscordPresence } = require("./discord");
@@ -75,6 +76,9 @@ const DEFAULT_CONFIG = {
 	spotifyPremium: null,
 	theme: "classic", // the look of Settings and the overlay: "classic", "neon", "light" or "vice"
 	// lobbyRelays: ["wss://..."], // optional: use your own MQTT-over-WebSocket relays instead of the public ones
+	// Audio to the phone works on your own network with no setup. To also hear it away from home,
+	// make a free Open Relay account (metered.ca), then set your app name and API key here:
+	// openRelay: { app: "yourapp", apiKey: "..." },
 };
 
 // Themes (Settings and the overlay) and Settings' background in each (the window's colour before
@@ -1503,6 +1507,21 @@ remote.on("pair-timeout", () => {
 	pushSettings();
 });
 
+// Audio to the phone (audio.js): when a paired phone asks to listen, stream the PC's system audio
+// to it over WebRTC. config.openRelay = { app, apiKey } enables free TURN for away-from-home;
+// without it, STUN only (same-network + friendly NATs).
+const audio = createAudioHost({
+	BrowserWindow,
+	net,
+	remote,
+	preloadPath: path.join(__dirname, "preload-audio.js"),
+	log: diag,
+	config,
+});
+ipcMain.on("audio:offer", (_e, p) => audio.fromRenderer("audio:offer", p));
+ipcMain.on("audio:ice", (_e, p) => audio.fromRenderer("audio:ice", p));
+ipcMain.on("audio:error", (_e, p) => audio.fromRenderer("audio:error", p));
+
 // Requests show up in the overlay's Notifications panel with Accept / Decline (and in the tray
 // menu). While the overlay isn't up over the game, Windows shows a notification too.
 friends.on("join-request", ({ name }) => {
@@ -2475,6 +2494,17 @@ updater.on("before-install", () => foreground.stop());
 
 app.whenReady().then(async () => {
 	if (await launchUpdateGate()) return; // updating: the new version starts by itself
+	// Let the hidden audio-sender window capture the system's audio (loopback). Only that window
+	// calls getDisplayMedia; we hand back a screen source for the video it immediately drops.
+	session.defaultSession.setDisplayMediaRequestHandler(
+		(request, callback) => {
+			desktopCapturer
+				.getSources({ types: ["screen"] })
+				.then((sources) => callback(sources[0] ? { video: sources[0], audio: "loopback" } : {}))
+				.catch(() => callback({}));
+		},
+		{ useSystemPicker: false }
+	);
 	updater.start();
 	foreground.start();
 	lobby.setAvatar(avatar);
