@@ -807,7 +807,7 @@ $("#app-pick").addEventListener("click", async () => {
 
 // ---------------------------------------------------------------- switches bound to settings
 
-const DEFAULT_ON = new Set(["friendsShareListening", "friendsAllowJoin", "onlyShowOver.stayOnOtherMonitor"]);
+const DEFAULT_ON = new Set(["friendsShareListening", "friendsAllowJoin", "discordYouTube", "onlyShowOver.stayOnOtherMonitor"]);
 const boundValue = (d, key) => {
 	const v = key.split(".").reduce((o, k) => o?.[k], d);
 	return DEFAULT_ON.has(key) ? v !== false : !!v;

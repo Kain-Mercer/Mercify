@@ -73,6 +73,10 @@ jobs:
       - name: Test YouTube support
         run: node tools/youtube-test.js
 
+      # Discord presence for YouTube videos, against a stand-in Discord pipe.
+      - name: Test Discord presence
+        run: node tools/discord-test.js
+
       - name: Build installer and portable exe
         run: npm run dist
 

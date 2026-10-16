@@ -144,6 +144,7 @@ Meme edits, remixes and anything else that isn't on Spotify can play through Mer
 - **Paste a YouTube link** into the search bar and click the video (or press `Enter`). Or search as usual and press **Search YouTube for "…"** at the end of the results.
 - The video's thumbnail shows in place of the album art. Play/pause, skip, the seek bar and the volume work as usual; shuffle, repeat and like are for Spotify songs.
 - Spotify pauses while a video plays, and carries on when it ends.
+- **On Discord,** your profile shows "Listening to" the video's title while it plays, with the thumbnail, the channel and a progress bar, in place of Spotify's card (which comes back when Spotify plays again). Turn it off with **Show YouTube videos on Discord** on Settings' Friends page.
 - **In a listening lobby,** add videos to the session playlist like songs. Everyone's Mercify fetches each video ahead of time, so it plays in step for everyone even on a slow connection. Everyone in the lobby needs Mercify 1.30 or newer.
 - The first video downloads [yt-dlp](https://github.com/yt-dlp/yt-dlp) (about 18 MB), the tool that fetches YouTube's audio. It updates itself once a day, since YouTube changes often; if videos stop working, give it a day, or press **Update yt-dlp** on Settings' Setup page.
 - Videos are downloaded to a temporary folder to play, and deleted after a couple of days.

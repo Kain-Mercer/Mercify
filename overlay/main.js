@@ -15,6 +15,7 @@ const updater = require("./updater");
 const { createLobby, generateCode, formatCode, DEFAULT_RELAYS } = require("./lobby");
 const { createFriends } = require("./friends");
 const { createYouTube, parseId: parseYouTubeId } = require("./youtube");
+const { createDiscordPresence } = require("./discord");
 const { pathToFileURL } = require("url");
 
 // ------------------------------------------------------------------ uninstalling
@@ -66,6 +67,7 @@ const DEFAULT_CONFIG = {
 	lobbyName: "", // your name in listening lobbies
 	friendsShareListening: true, // friends see the song you're playing
 	friendsAllowJoin: true, // friends can ask to join you (accepting starts a lobby)
+	discordYouTube: true, // show the YouTube video playing on your Discord profile
 	// Spotify Premium? true / false / null (not known yet). Set in Settings, or by the extension
 	// once Spotify says which plan the logged-in account is on. Premium gets SpotX's Premium mode.
 	spotifyPremium: null,
@@ -889,13 +891,20 @@ function bridgeCommand(action, args, timeoutMs = 15000) {
 	});
 }
 
-// What's playing goes to the overlay, Settings, the lobby and friends, from Spotify or YouTube alike.
+// What's playing goes to the overlay, Settings, the lobby, friends and Discord, from Spotify or
+// YouTube alike.
 function emitPlayer(msg) {
 	sendToRenderer("bridge", msg);
 	playerToSettings(msg);
-	if (msg.type === "state") lobby.onPlayerState(msg.state), playerForFriends(msg.state);
+	if (msg.type === "state") lobby.onPlayerState(msg.state), playerForFriends(msg.state), discord.update(msg.state);
 	else lobby.onPlayerProgress(msg.position, msg.at);
 }
+
+// Discord: Spotify's own card covers Spotify; this one covers YouTube videos (see discord.js).
+// The application (named Mercify on Discord's Developer Portal) only needs its id here.
+const DISCORD_CLIENT_ID = "1560470833867268149";
+const discord = createDiscordPresence({ clientId: DISCORD_CLIENT_ID, log: (m) => diag(m) });
+discord.setEnabled(config.discordYouTube !== false);
 
 // ------------------------------------------------------------------ YouTube (yt-dlp)
 //
@@ -1891,6 +1900,7 @@ async function settingsState() {
 		minimiseSpotify: config.minimiseSpotify,
 		friendsShareListening: config.friendsShareListening,
 		friendsAllowJoin: config.friendsAllowJoin,
+		discordYouTube: config.discordYouTube !== false,
 		startWithWindows: getStartWithWindows(),
 		hotkeys: config.hotkeys,
 		hotkeyDefaults: DEFAULT_CONFIG.hotkeys,
@@ -2054,6 +2064,11 @@ ipcMain.handle("settings:set", async (_e, key, value) => {
 		config.theme = value;
 		if (settingsWin && !settingsWin.isDestroyed()) settingsWin.setBackgroundColor(THEME_BG[value]);
 		sendToRenderer("theme", value); // the overlay's panels follow straight away
+	}
+	else if (key === "discordYouTube") {
+		config.discordYouTube = !!value;
+		discord.setEnabled(config.discordYouTube);
+		if (yt.active) emitYouTube(); // show it straight away when turned on
 	}
 	else if (key === "friendsShareListening" || key === "friendsAllowJoin") {
 		config[key] = !!value;
