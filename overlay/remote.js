@@ -276,6 +276,13 @@ function createRemote({ role, store, relays, connect, name = "", control = null,
 			ev.emit("state", msg.state || null);
 			return;
 		}
+		// Opaque signalling, either direction: the audio layer (WebRTC) carries its SDP offer /
+		// answer / ICE candidates over the already-encrypted channel, so remote.js stays unaware
+		// of WebRTC. `kind` is the sender's label; `data` is its payload.
+		if (msg.ty === "signal") {
+			ev.emit("signal", { fid: peer.fid, kind: typeof msg.kind === "string" ? msg.kind : "", data: msg.data });
+			return;
+		}
 		if (msg.ty === "bye") {
 			// The other side unpaired us. Drop them.
 			forget(peer.fid, false);
@@ -444,6 +451,13 @@ function createRemote({ role, store, relays, connect, name = "", control = null,
 		return id;
 	}
 
+	// Send an opaque signalling payload to one paired peer (by fid) or all of them. Used by the
+	// WebRTC audio layer on both sides; remote.js just relays it on the encrypted channel.
+	function sendSignal(fidOrNull, kind, data) {
+		const targets = fidOrNull ? [peers.get(fidOrNull)].filter(Boolean) : [...peers.values()];
+		for (const p of targets) sendTo(p, "signal", { kind, data });
+	}
+
 	// --- housekeeping -----------------------------------------------------
 
 	const beat = setInterval(() => {
@@ -494,6 +508,8 @@ function createRemote({ role, store, relays, connect, name = "", control = null,
 		// device
 		pair,
 		send,
+		// both (WebRTC audio signalling)
+		sendSignal,
 		// both
 		devices: () => view().peers,
 		view,

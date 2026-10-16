@@ -136,6 +136,17 @@ function check(label, ok, detail = "") {
 	check("eavesdropper saw no plaintext", leaked.length === 0, leaked.length ? "leaked: " + leaked.join(", ") : `${sniffed.length} frames, all sealed`);
 	check("topics are opaque hashes", sniffed.every((s) => /^mercify\/v1\/[0-9a-f]{32}$/.test(s.t)), sniffed[0] && sniffed[0].t);
 
+	// --- 7b. WebRTC-style signalling relays both ways ---
+	const hostSignals = [];
+	const phoneSignals = [];
+	host.on("signal", (s) => hostSignals.push(s));
+	phone.on("signal", (s) => phoneSignals.push(s));
+	phone.send && phone.sendSignal(host.fid, "offer", { sdp: "v=0 fake-offer" });
+	host.sendSignal(phone.fid, "answer", { sdp: "v=0 fake-answer" });
+	await sleep(400);
+	check("phone→PC signal arrives", hostSignals.some((s) => s.kind === "offer" && s.data && s.data.sdp === "v=0 fake-offer"));
+	check("PC→phone signal arrives", phoneSignals.some((s) => s.kind === "answer" && s.data && s.data.sdp === "v=0 fake-answer"));
+
 	// --- 8. revoke ---
 	host.forget(phone.fid);
 	await sleep(300);
