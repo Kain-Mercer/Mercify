@@ -1750,6 +1750,44 @@ ipcMain.handle("settings:lobby-join", async (_e, code) => {
 });
 ipcMain.on("settings:lobby-copy", () => copyLobbyCode());
 
+// "Test private session" (Lobby page): turn it on, wait, read back whether it held, and say in
+// plain words what happened — so you don't have to squint at Spotify's own lock icon.
+ipcMain.handle("settings:test-private", async () => {
+	if (!bridge) return { verdict: "Spotify isn't connected, so I can't test it. Open Spotify and try again." };
+	const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+	const plan = config.spotifyPremium; // true / false / null, from Spotify's Web API (the real plan, even with SpotX)
+	let before;
+	try {
+		before = await bridgeCommand("detectPrivateSession", {}, 6000);
+	} catch (err) {
+		return { verdict: `Couldn't reach Spotify: ${err.message}` };
+	}
+	diag(`private session test: client exposes ${JSON.stringify(before)}`);
+	if (!before || !before.service) return { verdict: "This Spotify build doesn't expose a private-session switch Mercify can reach. If you can turn private listening on manually in Spotify, tell Kain — the control lives somewhere Mercify isn't looking." };
+
+	let setRes;
+	try {
+		setRes = await bridgeCommand("privateSession", { on: true }, 6000);
+	} catch (err) {
+		return { verdict: `Couldn't set private session: ${err.message}` };
+	}
+	if (!setRes || !setRes.ok) return { verdict: `Mercify couldn't find the private-session toggle on this Spotify (${setRes && setRes.reason}). If you can toggle it manually, tell Kain so we can pin the exact control.`, before };
+
+	await wait(4000); // give Spotify's own sync a chance to clear it, like it does for you
+	const after = await bridgeCommand("detectPrivateSession", {}, 6000).catch(() => null);
+	const held = !!(after && (after.matchingKeys || []).some((k) => k.key === setRes.via && (k.value === "1" || k.value === true)));
+
+	// Clean up: if we're not actually in a lobby keeping it on, put it back off.
+	if (!privateSession.ours) bridgeCommand("privateSession", { on: false }, 6000).catch(() => {});
+
+	let verdict;
+	if (held) verdict = "✓ Private session turned on and is holding. You're good — lobby music won't follow you home.";
+	else if (plan === false) verdict = "⚠ Mercify switched it on, but Spotify cleared it within seconds. This account is Spotify Free: SpotX makes the app look Premium, but Spotify's servers still treat it as Free, and private session is a Premium feature — so Spotify keeps turning it back off. It can't be made to stick without Premium.";
+	else if (plan === true) verdict = "⚠ Mercify switched it on, but Spotify cleared it within seconds, which is odd for a Premium account — likely a sync race. Mercify re-asserts it every 20 s; if the lock still won't stay, tell Kain.";
+	else verdict = "⚠ Mercify switched it on, but Spotify cleared it within seconds. Mercify couldn't tell if this account is Premium or Free yet (log in and let it settle). On Free accounts private session can't stick; on Premium it should.";
+	return { verdict, held, plan, via: setRes.via };
+});
+
 // Phone remote pairing (Lobby page). Start shows a QR; the phone scans it to pair.
 ipcMain.handle("settings:remote-pair", async () => {
 	try {

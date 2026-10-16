@@ -765,6 +765,24 @@ $("#phone-devices").addEventListener("click", (e) => {
 	if (fid) S.remoteForget(fid);
 });
 
+const pvtTestBtn = $("#pvt-test");
+if (pvtTestBtn)
+	pvtTestBtn.addEventListener("click", async () => {
+		const out = $("#pvt-test-result");
+		pvtTestBtn.disabled = true;
+		pvtTestBtn.textContent = "Testing…";
+		out.hidden = false;
+		out.textContent = "Turning private session on and watching whether Spotify keeps it…";
+		try {
+			const r = await S.testPrivate();
+			out.textContent = (r && r.verdict) || "No result.";
+		} catch (e) {
+			out.textContent = "Test failed: " + (e.message || e);
+		}
+		pvtTestBtn.disabled = false;
+		pvtTestBtn.textContent = "Test private session";
+	});
+
 $("#lobby-start").addEventListener("click", () => lobbyGo(() => S.lobbyStart()));
 const joinTyped = () => {
 	const code = $("#lobby-code").value.trim();
