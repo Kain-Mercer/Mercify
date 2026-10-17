@@ -720,6 +720,99 @@ async function lobbyGo(run) {
 		for (const id of ["#lobby-start", "#lobby-join"]) $(id).disabled = false;
 	}
 }
+// Phone remote: the paired-devices list and the pairing QR.
+function phoneTimeAgo(ts) {
+	if (!ts) return "";
+	const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+	if (s < 60) return "just now";
+	const m = Math.round(s / 60);
+	if (m < 60) return `${m} min ago`;
+	const h = Math.round(m / 60);
+	if (h < 24) return `${h} h ago`;
+	return `${Math.round(h / 24)} d ago`;
+}
+function renderPhone(r) {
+	if (!r) return;
+	const devices = r.devices || [];
+	$("#phone-devices").innerHTML = devices.length
+		? devices
+				.map((d) => {
+					const status = d.online ? '<span class="role">Online</span>' : `<span class="role dim">Last seen ${esc(phoneTimeAgo(d.lastSeen))}</span>`;
+					return `<div class="member"><b>${esc(d.name || "Phone")}</b>${status}<button class="link muted-link" data-forget="${esc(d.fid)}">Unpair</button></div>`;
+				})
+				.join("")
+		: '<p class="hint dim">No phones paired yet.</p>';
+	$("#phone-pair-start").hidden = !!r.pairing;
+	$("#phone-pair-live").hidden = !r.pairing;
+	if (!r.pairing) $("#phone-qr").removeAttribute("src");
+}
+$("#phone-pair").addEventListener("click", async () => {
+	$("#phone-error").hidden = true;
+	const r = await S.remotePair();
+	if (r && r.ok) {
+		$("#phone-qr").src = r.dataUrl;
+		$("#phone-code").textContent = (r.code || "").replace(/(.{4})/g, "$1 ").trim();
+		$("#phone-pair-start").hidden = true;
+		$("#phone-pair-live").hidden = false;
+	} else {
+		$("#phone-error").hidden = false;
+		$("#phone-error").textContent = (r && r.error) || "Couldn't start pairing.";
+	}
+});
+$("#phone-pair-cancel").addEventListener("click", () => S.remoteStopPair());
+$("#phone-devices").addEventListener("click", (e) => {
+	const fid = e.target?.dataset?.forget;
+	if (fid) S.remoteForget(fid);
+});
+
+const pvtTestBtn = $("#pvt-test");
+if (pvtTestBtn)
+	pvtTestBtn.addEventListener("click", async () => {
+		const out = $("#pvt-test-result");
+		pvtTestBtn.disabled = true;
+		pvtTestBtn.textContent = "Testing…";
+		out.hidden = false;
+		out.textContent = "Turning private session on and watching whether Spotify keeps it…";
+		try {
+			const r = await S.testPrivate();
+			out.textContent = (r && r.verdict) || "No result.";
+		} catch (e) {
+			out.textContent = "Test failed: " + (e.message || e);
+		}
+		pvtTestBtn.disabled = false;
+		pvtTestBtn.textContent = "Test private session";
+	});
+
+function renderTurn(t) {
+	if (!t) return;
+	const appEl = $("#turn-app");
+	if (appEl && document.activeElement !== appEl) appEl.value = t.app || "";
+	const saved = $("#turn-saved");
+	if (saved) saved.hidden = !t.hasKey;
+	const keyEl = $("#turn-key");
+	if (keyEl && document.activeElement !== keyEl) keyEl.placeholder = t.hasKey ? "Leave blank to keep the saved key" : "Paste your API key";
+}
+const turnSave = $("#turn-save");
+if (turnSave)
+	turnSave.addEventListener("click", async () => {
+		const out = $("#turn-result");
+		out.hidden = false;
+		out.textContent = "Saving…";
+		const d = await S.setTurn($("#turn-app").value, $("#turn-key").value);
+		$("#turn-key").value = "";
+		render(d);
+		out.textContent = d?.turn?.hasKey ? "Saved. Away-from-home audio is ready." : "Cleared.";
+	});
+const turnClear = $("#turn-clear");
+if (turnClear)
+	turnClear.addEventListener("click", async () => {
+		$("#turn-app").value = "";
+		$("#turn-key").value = "";
+		render(await S.setTurn("", ""));
+		$("#turn-result").hidden = false;
+		$("#turn-result").textContent = "Removed. Audio will work on your own network only.";
+	});
+
 $("#lobby-start").addEventListener("click", () => lobbyGo(() => S.lobbyStart()));
 const joinTyped = () => {
 	const code = $("#lobby-code").value.trim();
@@ -817,6 +910,19 @@ function renderSwitches(d) {
 		el.checked = boundValue(d, el.dataset.bind);
 		if (el.dataset.bind === "onlyShowOver.stayOnOtherMonitor") el.disabled = !d.onlyShowOver.enabled;
 	});
+	const pvt = $("#pvt-sub");
+	if (pvt) {
+		const s = d.privateSessionState;
+		const msgs = {
+			on: "On — Mercify keeps it on while you're in a lobby (Spotify's lock icon can flash off with SpotX, but the session is private)",
+			unverified: "Turned on — this Spotify can't report the state back, but Mercify holds it",
+			cleared: "Mercify keeps turning it back on every 20 s",
+			"not found": "Couldn't find Spotify's private-session switch (see Setup ▸ Copy details)",
+			error: "Couldn't reach Spotify to set it",
+			outdated: "Spotify has an older Mercify extension — Setup ▸ Redo next to Mercify extension",
+		};
+		pvt.textContent = d.privateSessionInLobby === false ? "Keeps friends' picks out of your recommendations" : msgs[s] || "Turns on when you join a lobby";
+	}
 }
 $$(".sw[data-bind]").forEach((el) => el.addEventListener("change", async () => render(await S.set(el.dataset.bind, el.checked))));
 
@@ -1032,6 +1138,8 @@ function render(d) {
 	renderUpdate(d.update, d.version);
 	renderYouTube(d.youtube);
 	renderLobby(d.lobby, ready);
+	renderPhone(d.remote);
+	renderTurn(d.turn);
 	renderFriends(d.friends, d.lobby);
 	renderAvatar(d.avatar, d.lobby?.name);
 	renderApps(d);

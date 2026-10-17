@@ -2097,3 +2097,32 @@ kbd,
 .fr-foot .link {
 	color: var(--dim);
 }
+
+/* Phone remote (Lobby page): the pairing QR. */
+.phone-card .phone-qr {
+	display: block;
+	width: 220px;
+	max-width: 100%;
+	height: auto;
+	margin: 10px auto;
+	padding: 10px;
+	background: #fff;
+	border-radius: 12px;
+}
+.phone-card .member .role.dim {
+	font-weight: 400;
+}
+.phone-card .phone-code {
+	text-align: center;
+	font-family: var(--mono, ui-monospace, "JetBrains Mono", monospace);
+	font-size: 18px;
+	letter-spacing: 2px;
+	font-weight: 700;
+	margin: 2px 0 8px;
+	user-select: all;
+}
+
+/* Away-from-home audio (TURN) block in the Phone remote card. */
+.turn-block { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--row-line); display: flex; flex-direction: column; gap: 6px; }
+.turn-block h3 { margin: 0; font-size: 13px; font-weight: 700; color: var(--text); }
+.turn-saved { color: var(--accent, #1ed760); font-weight: 700; }

@@ -77,6 +77,16 @@ jobs:
       - name: Test Discord presence
         run: node tools/discord-test.js
 
+      # The phone remote: a PC and a phone pair over a QR and talk through a real broker
+      # (pairing, command round-trip, refused actions/uris, state push, eavesdropper, revoke).
+      - name: Test phone remote
+        run: node tools/remote-test.js
+
+      # Private session through the Spicetify bridge, against fake Spotify clients of each shape
+      # (product-state key in either format, a dedicated namespace, toggle-only, none at all).
+      - name: Test private session
+        run: node tools/private-session-test.js
+
       - name: Build installer and portable exe
         run: npm run dist
 

@@ -1,21 +1,24 @@
 {
   "name": "mercify",
   "productName": "Mercify",
-  "version": "1.31.0",
+  "version": "1.32.0",
   "description": "Mercify: a Discord-style in-game overlay for the Spotify desktop client (SpotX + Spicetify).",
   "main": "main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
     "demo": "node tools/mock-bridge.js",
+    "test": "node tools/remote-test.js",
     "dist": "electron-builder --win nsis portable --x64 --publish never"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
     "mqtt": "^5.16.0",
+    "qrcode": "^1.5.4",
     "ws": "^8.22.0"
   },
   "devDependencies": {
+    "aedes": "^0.51.3",
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3"
   },
@@ -30,6 +33,7 @@
       "renderer/**",
       "settings/**",
       "player/**",
+      "audio/**",
       "splash/**",
       "assets/**",
       "package.json",

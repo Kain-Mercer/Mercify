@@ -13,7 +13,7 @@
 (function OverlayBridge() {
 	"use strict";
 
-	const VERSION = "1.4.0";
+	const VERSION = "1.7.0";
 	const DEFAULT_PORT = 7317;
 	const LOG = (...a) => console.log("[overlay-bridge]", ...a);
 
@@ -109,6 +109,145 @@
 			liked,
 			contextUri: d.context?.uri ?? d.context_uri ?? null,
 			at: Date.now(),
+		};
+	}
+
+	// ---------------------------------------------------------------- private session
+	//
+	// Private session ("private listening") keeps what you play out of your recommendations and off
+	// your profile — handy in a lobby where friends queue eclectic stuff. Where the client keeps the
+	// switch differs between Spotify versions, so we never guess: we look for (1) a Platform namespace
+	// or method that names private/incognito listening, then (2) a product-state key that does. We
+	// write in the same format the client already uses ("1"/"0", "true"/"false" or a boolean), and we
+	// read it back, so "on" is only ever reported when it really is.
+
+	const PRIVATE_RE = /private|incognito/i;
+	const asBool = (v) => v === true || v === "1" || v === "true" || v === 1;
+	const formatLike = (prev, on) => (typeof prev === "boolean" ? !!on : prev === "true" || prev === "false" ? (on ? "true" : "false") : on ? "1" : "0");
+	const fnNames = (o) => {
+		const out = new Set();
+		for (let p = o; p && p !== Object.prototype; p = Object.getPrototypeOf(p)) {
+			for (const k of Object.getOwnPropertyNames(p)) {
+				try {
+					if (k !== "constructor" && typeof o[k] === "function") out.add(k);
+				} catch (_) {}
+			}
+		}
+		return [...out];
+	};
+
+	function productState() {
+		const P = Spicetify.Platform || {};
+		return P.UserAPI?._product_state || P.ProductStateAPI?.productStateApi || P.ProductStateAPI || null;
+	}
+
+	async function readProductPairs(ps) {
+		if (!ps) return {};
+		try {
+			if (typeof ps.getValues === "function") {
+				const v = await ps.getValues();
+				return v?.pairs ?? v ?? {};
+			}
+		} catch (_) {}
+		try {
+			if (ps.cache && typeof ps.cache.forEach === "function") {
+				const out = {};
+				ps.cache.forEach((v, k) => (out[k] = v));
+				return out;
+			}
+		} catch (_) {}
+		return {};
+	}
+
+	// Dedicated controls: Platform namespaces named private/incognito, plus private/incognito-named
+	// methods on UserAPI and the product-state service. Returns { setter, getter, toggler } as
+	// { obj, name, label } (any may be null).
+	function privateControls() {
+		const P = Spicetify.Platform || {};
+		const places = [];
+		for (const ns of Object.keys(P)) {
+			try {
+				if (PRIVATE_RE.test(ns) && P[ns] && typeof P[ns] === "object") places.push({ obj: P[ns], label: "Platform." + ns, any: true });
+			} catch (_) {}
+		}
+		if (P.UserAPI) places.push({ obj: P.UserAPI, label: "Platform.UserAPI", any: false });
+		const ps = productState();
+		if (ps) places.push({ obj: ps, label: "productState", any: false });
+		let setter = null, getter = null, toggler = null;
+		for (const { obj, label, any } of places) {
+			for (const name of fnNames(obj)) {
+				const named = any || PRIVATE_RE.test(name);
+				if (!named) continue;
+				if (!setter && /^(set|enable)/i.test(name)) setter = { obj, name, label: label + "." + name };
+				else if (!getter && /^(get|is)/i.test(name) && !/capab/i.test(name)) getter = { obj, name, label: label + "." + name };
+				else if (!toggler && /^toggle/i.test(name)) toggler = { obj, name, label: label + "." + name };
+			}
+		}
+		return { setter, getter, toggler };
+	}
+
+	async function privateKey() {
+		const pairs = await readProductPairs(productState());
+		const key = Object.keys(pairs).find((k) => PRIVATE_RE.test(k) && !/(timeout|default|persist)/i.test(k)) || null;
+		return { key, value: key ? pairs[key] : undefined };
+	}
+
+	// Is private session on? true / false, or null when this client gives us no way to tell.
+	async function readPrivate() {
+		const { getter } = privateControls();
+		if (getter) {
+			try {
+				const v = await getter.obj[getter.name]();
+				if (typeof v === "boolean" || v === "1" || v === "0" || v === "true" || v === "false") return { on: asBool(v), via: getter.label };
+				if (v && typeof v === "object" && "enabled" in v) return { on: !!v.enabled, via: getter.label };
+			} catch (_) {}
+		}
+		const { key, value } = await privateKey();
+		if (key) return { on: asBool(value), via: "productState:" + key };
+		return { on: null, via: null };
+	}
+
+	async function putPair(ps, key, value) {
+		const body = { pairs: { [key]: value } };
+		if (typeof ps.putValues === "function") return ps.putValues(body);
+		if (typeof ps.putOverridesValues === "function") return ps.putOverridesValues(body);
+		throw new Error("product-state service can't be written on this client");
+	}
+
+	// Turn private session on/off. Returns { ok, via, prev } (prev: true/false/null, its state before),
+	// or { ok:false, reason } when this client exposes nothing we recognise.
+	async function setPrivateSession(on) {
+		const before = await readPrivate();
+		const { setter, toggler } = privateControls();
+		if (setter) {
+			await setter.obj[setter.name](!!on);
+			return { ok: true, via: setter.label, prev: before.on };
+		}
+		if (toggler && before.on !== null) {
+			if (before.on !== !!on) await toggler.obj[toggler.name]();
+			return { ok: true, via: toggler.label, prev: before.on };
+		}
+		const ps = productState();
+		const { key, value } = await privateKey();
+		if (!ps || !key) return { ok: false, reason: "no private-session control found on this Spotify" };
+		await putPair(ps, key, formatLike(value, on));
+		return { ok: true, via: "productState:" + key, prev: asBool(value) };
+	}
+
+	// Read-only: everything private/incognito-ish this client exposes, so the real control can be
+	// pinned without changing anything.
+	async function detectPrivateSession() {
+		const P = Spicetify.Platform || {};
+		const { setter, getter, toggler } = privateControls();
+		const pairs = await readProductPairs(productState());
+		return {
+			now: await readPrivate(),
+			controls: { setter: setter?.label ?? null, getter: getter?.label ?? null, toggler: toggler?.label ?? null },
+			namespaces: Object.keys(P).filter((k) => PRIVATE_RE.test(k)),
+			userApiMethods: P.UserAPI ? fnNames(P.UserAPI).filter((n) => PRIVATE_RE.test(n)) : [],
+			productStateKeys: Object.keys(pairs).filter((k) => PRIVATE_RE.test(k)).map((k) => ({ key: k, value: pairs[k] })),
+			sessionishKeys: Object.keys(pairs).filter((k) => /priv|incognito|session|social/i.test(k)).slice(0, 25),
+			allNamespaces: Object.keys(P).slice(0, 80),
 		};
 	}
 
@@ -358,6 +497,9 @@
 			await P().playUri(uri);
 		},
 		playContext: async ({ uri }) => P().playUri(uri === "liked" ? likedContextUri() : uri),
+		privateSession: async ({ on }) => setPrivateSession(!!on),
+		detectPrivateSession: async () => detectPrivateSession(),
+		isPrivateSession: async () => readPrivate(),
 		addToQueue: async ({ uri }) => Spicetify.addToQueue([{ uri }]),
 		removeFromQueue: async ({ uri, uid }) => {
 			if (typeof Spicetify.removeFromQueue !== "function") throw new Error("This Spotify can't remove songs from the queue");
@@ -459,7 +601,7 @@
 				const data = await fn(msg.args || {});
 				send({ type: "reply", id: msg.id, ok: true, data: data ?? null });
 				// Playback commands change state; push it rather than waiting for events.
-				if (!["search", "playlists", "playlistTracks", "state"].includes(msg.action)) setTimeout(pushState, 250);
+				if (!["search", "playlists", "playlistTracks", "state", "privateSession", "detectPrivateSession", "isPrivateSession"].includes(msg.action)) setTimeout(pushState, 250);
 			} catch (e) {
 				send({ type: "reply", id: msg.id, ok: false, error: String(e?.message ?? e) });
 			}

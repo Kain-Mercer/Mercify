@@ -1,0 +1,177 @@
+name: Build Android app
+
+# Builds the Android app (mobile/) as an APK. Every push that touches mobile/ (or the lobby and
+# friends code it shares with the desktop) attaches the APK to the run (Actions tab -> the run ->
+# Artifacts). "Run workflow" with test_release set (e.g. test.1) also publishes it as the
+# pre-release android-v<version>-test.1, so it can be downloaded on a phone. Pre-releases are
+# never "latest", so the desktop app's updates aren't affected.
+#
+# Signing: with the ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD repository secrets
+# (key alias "mercify"), builds are signed with Mercify's own key; without them, with React
+# Native's public debug key. Phones only accept an update signed with the same key.
+#
+# After the build, the "emulator" job installs the APK on an Android emulator, opens it, and
+# pushes what it saw (screen text, screenshot, log) to the android-diag branch.
+on:
+  push:
+    paths: ["mobile/**", "overlay/lobby.js", "overlay/friends.js", "overlay/remote.js", ".github/workflows/android.yml"]
+  workflow_dispatch:
+    inputs:
+      test_release:
+        description: "Pre-release name, e.g. test.1 (publishes android-v<version>-test.1)"
+        required: false
+        default: ""
+      release:
+        description: "Publish as a full release android-v<version> (the newest on the Releases page)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    outputs:
+      apk: ${{ steps.apk.outputs.name }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Read version
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Install
+        run: npm ci
+
+      - name: Phone/PC compatibility tests
+        run: npm test
+
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/mercify.keystore"
+            echo "MERCIFY_KEYSTORE=$RUNNER_TEMP/mercify.keystore" >> "$GITHUB_ENV"
+            echo "MERCIFY_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "Signing with Mercify's own key"
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD secrets: signing with React Native's public debug key"
+          fi
+
+      - name: Build APK
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64
+
+      - name: Name the APK
+        id: apk
+        run: |
+          name="Mercify-android-${{ steps.version.outputs.version }}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Check the APK
+        run: |
+          apk="${{ steps.apk.outputs.name }}"
+          fail() { echo "::error::$1"; exit 1; }
+          unzip -p "$apk" assets/index.android.bundle | grep -aq "mercify-lobby-v1" || fail "the JS bundle doesn't contain overlay/lobby.js"
+          unzip -p "$apk" 'classes*.dex' | grep -aq "MercifySpotifyState" || fail "SpotifyModule isn't in the app"
+          aapt=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          "$aapt" dump xmltree "$apk" --file AndroidManifest.xml > manifest.txt
+          grep -q "SpotifyListenerService" manifest.txt || fail "notification access service missing from the manifest"
+          grep -q "BIND_NOTIFICATION_LISTENER_SERVICE" manifest.txt || fail "notification listener permission missing"
+          grep -q "LobbyService" manifest.txt || fail "LobbyService missing from the manifest"
+          "$aapt" dump badging "$apk" | grep -E "^package|sdkVersion|native-code"
+          signer=$("$ANDROID_HOME"/build-tools/$(ls "$ANDROID_HOME"/build-tools | sort -V | tail -1)/apksigner verify --print-certs "$apk" | grep "certificate DN" | head -1)
+          echo "Signed by: $signer"
+          echo "::notice::APK $(du -h "$apk" | cut -f1), signed by ${signer#*: }"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: mobile/${{ steps.apk.outputs.name }}
+
+      - name: Publish test pre-release
+        if: ${{ inputs.test_release != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="android-v${{ steps.version.outputs.version }}-${{ inputs.test_release }}"
+          gh release create "$tag" "${{ steps.apk.outputs.name }}" \
+            -R "${{ github.repository }}" --target "${{ github.sha }}" \
+            --prerelease --latest=false \
+            --title "Mercify for Android ${{ steps.version.outputs.version }} (${{ inputs.test_release }})" \
+            --notes "Test build of the Android app. Install the APK on your phone (allow installing from your browser when asked). See mobile/README.md on the ${{ github.ref_name }} branch."
+
+      - name: Publish release
+        if: ${{ inputs.release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="android-v${{ steps.version.outputs.version }}"
+          gh release create "$tag" "${{ steps.apk.outputs.name }}" \
+            -R "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "Mercify for Android ${{ steps.version.outputs.version }}" \
+            --notes "Mercify for Android: a remote for the desktop app, with listen-along audio. Install the APK on your phone (allow installing from your browser when asked)."
+
+  emulator:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+          path: apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Open the app on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: bash mobile/test/emulator-check.sh "apk/${{ needs.build.outputs.apk }}" diag
+
+      - name: Push what the emulator saw to android-diag
+        if: always()
+        run: |
+          [ -d diag ] || exit 0
+          cd diag
+          printf 'Commit %s on %s, run %s\n' "${{ github.sha }}" "${{ github.ref_name }}" "${{ github.run_id }}" > RUN.txt
+          git init -q -b android-diag
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Emulator check for ${{ github.sha }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" android-diag

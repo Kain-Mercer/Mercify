@@ -5,7 +5,7 @@
 // - shows only while a chosen app (e.g. WoW) is in front
 // - global hotkeys, tray menu, Settings window with built-in setup, config + layout persistence
 
-const { app, BrowserWindow, globalShortcut, ipcMain, screen, Tray, Menu, nativeImage, shell, Notification, clipboard, dialog, net } = require("electron");
+const { app, BrowserWindow, globalShortcut, ipcMain, screen, Tray, Menu, nativeImage, shell, Notification, clipboard, dialog, net, session, desktopCapturer } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { WebSocketServer } = require("ws");
@@ -14,6 +14,9 @@ const setup = require("./setup");
 const updater = require("./updater");
 const { createLobby, generateCode, formatCode, DEFAULT_RELAYS } = require("./lobby");
 const { createFriends } = require("./friends");
+const { createRemote } = require("./remote");
+const { createAudioHost } = require("./audio");
+const QRCode = require("qrcode");
 const { createYouTube, parseId: parseYouTubeId } = require("./youtube");
 const { createDiscordPresence } = require("./discord");
 const { pathToFileURL } = require("url");
@@ -68,11 +71,15 @@ const DEFAULT_CONFIG = {
 	friendsShareListening: true, // friends see the song you're playing
 	friendsAllowJoin: true, // friends can ask to join you (accepting starts a lobby)
 	discordYouTube: true, // show the YouTube video playing on your Discord profile
+	privateSessionInLobby: true, // turn Spotify's Private Session on while in a lobby, so friends' eclectic picks don't shape your recommendations
 	// Spotify Premium? true / false / null (not known yet). Set in Settings, or by the extension
 	// once Spotify says which plan the logged-in account is on. Premium gets SpotX's Premium mode.
 	spotifyPremium: null,
 	theme: "classic", // the look of Settings and the overlay: "classic", "neon", "light" or "vice"
 	// lobbyRelays: ["wss://..."], // optional: use your own MQTT-over-WebSocket relays instead of the public ones
+	// Audio to the phone works on your own network with no setup. To also hear it away from home,
+	// make a free Open Relay account (metered.ca), then set your app name and API key here:
+	// openRelay: { app: "yourapp", apiKey: "..." },
 };
 
 // Themes (Settings and the overlay) and Settings' background in each (the window's colour before
@@ -86,6 +93,7 @@ const userDir = app.getPath("userData");
 const CONFIG_PATH = path.join(userDir, "config.json");
 const LAYOUT_PATH = path.join(userDir, "layout.json");
 const FRIENDS_PATH = path.join(userDir, "friends.json");
+const REMOTE_PATH = path.join(userDir, "remote.json"); // paired phones (the Mercify remote)
 const AVATAR_PATH = path.join(userDir, "avatar.jpg"); // your profile picture, 96x96
 const AVATAR_PNG_PATH = path.join(userDir, "avatar.png"); // instead, for a picture with a transparent background
 
@@ -715,6 +723,8 @@ function startBridgeServer() {
 			sendToRenderer("bridge-status", { connected: false });
 			playerToSettings({ type: "state", state: null });
 			playerForFriends(null);
+			lastPlayerState = null;
+			remote.pushState();
 			updateTrayMenu();
 			pushSettings();
 		});
@@ -893,11 +903,14 @@ function bridgeCommand(action, args, timeoutMs = 15000) {
 
 // What's playing goes to the overlay, Settings, the lobby, friends and Discord, from Spotify or
 // YouTube alike.
+let lastPlayerState = null; // the most recent Spotify "state", for the phone remote's snapshot
 function emitPlayer(msg) {
 	sendToRenderer("bridge", msg);
 	playerToSettings(msg);
 	if (msg.type === "state") lobby.onPlayerState(msg.state), playerForFriends(msg.state), discord.update(msg.state);
 	else lobby.onPlayerProgress(msg.position, msg.at);
+	if (msg.type === "state") lastPlayerState = msg.state;
+	remote.pushState(); // mirror the change to any paired phones
 }
 
 // Discord: Spotify's own card covers Spotify; this one covers YouTube videos (see discord.js).
@@ -1257,8 +1270,104 @@ lobby.on("change", () => {
 	updateTrayMenu();
 	updateFriendsPresence();
 	prefetchLobbyVideos();
+	remote.pushState();
+	syncPrivateSession();
 });
 lobby.on("toast", (text) => sendToRenderer("toast", { text }));
+
+// Private Session while in a lobby: friends' eclectic picks shouldn't shape your own Spotify
+// recommendations. Turn it on when you join (only if we turned it on, and only if it wasn't
+// already on), and put it back the way it was when you leave. The exact client API varies, so the
+// bridge finds the real toggle; if it can't, we just carry on without it.
+let privateSession = { ours: false, prev: null, via: null }; // ours: we enabled it; prev: true/false/null before us
+let privateSessionState = "off"; // for Settings: "off" | "on" | "unverified" | "cleared" | "not found" | "error"
+let privateTimer = null; // checks every 20 s and turns it back on if Spotify dropped it
+let privateDrops = 0; // how often Spotify turned it back off while we wanted it on (diagnostics)
+
+function setPrivateState(s) {
+	if (s === privateSessionState) return;
+	privateSessionState = s;
+	pushSettings();
+}
+async function readPrivateNow() {
+	try {
+		return await bridgeCommand("isPrivateSession", {}, 6000); // { on: true|false|null, via }
+	} catch (_) {
+		return { on: null, via: null };
+	}
+}
+
+async function enablePrivate() {
+	if (!bridge || privateSession.ours) return; // already on by us
+	// Always snapshot what the client exposes, so "Copy details" shows exactly what happened.
+	try {
+		diag(`private session: client exposes ${JSON.stringify(await bridgeCommand("detectPrivateSession", {}, 6000))}`);
+	} catch (_) {}
+	try {
+		const r = await bridgeCommand("privateSession", { on: true }, 6000);
+		if (!r || !r.ok) {
+			setPrivateState("not found");
+			diag(`private session: couldn't turn on (${r && r.reason}); carrying on without it`);
+			return;
+		}
+		privateSession = { ours: true, prev: r.prev, via: r.via };
+		privateDrops = 0;
+		setPrivateState("on");
+		await wait(1500);
+		const now = await readPrivateNow();
+		diag(`private session: set via ${r.via} (was ${JSON.stringify(r.prev)}); reads back ${JSON.stringify(now.on)}`);
+		startReassert();
+	} catch (err) {
+		const old = /unknown action/i.test(err.message);
+		setPrivateState(old ? "outdated" : "error");
+		diag(old ? `private session: Spotify is running an older Mercify extension (v${bridgeInfo?.version ?? "?"}) without this feature — Setup ▸ Redo next to Mercify extension` : `private session: ${err.message}`);
+	}
+}
+async function restorePrivate() {
+	stopReassert();
+	if (!privateSession.ours) {
+		setPrivateState("off");
+		return; // we didn't turn it on, so leave it alone
+	}
+	const restoreOn = privateSession.prev === true; // it was already on before we joined: leave it on
+	privateSession = { ours: false, prev: null, via: null };
+	setPrivateState("off");
+	if (!bridge) return;
+	try {
+		await bridgeCommand("privateSession", { on: restoreOn }, 6000);
+		diag(`private session: ${restoreOn ? "left on (it was on before the lobby)" : "back off"}${privateDrops ? ` — Spotify turned it off ${privateDrops}× during the lobby` : ""}`);
+	} catch (err) {
+		diag(`private session: couldn't restore: ${err.message}`);
+	}
+}
+// Spotify can drop private session (the lock vanishes), so while we want it on, check every 20 s and
+// turn it back on only if it's actually off — and count each time, so the logs show it happening.
+function startReassert() {
+	stopReassert();
+	privateTimer = setInterval(async () => {
+		if (!privateSession.ours || !bridge) return;
+		const now = await readPrivateNow();
+		if (now.on === false) {
+			privateDrops++;
+			diag(`private session: Spotify had turned it off (${privateDrops}×); turning it back on`);
+		}
+		// Re-assert every tick regardless: this client has no reliable way to read the state back,
+		// so we simply keep it set rather than trusting a read.
+		await bridgeCommand("privateSession", { on: true }, 6000).catch(() => {});
+		setPrivateState("on");
+	}, 20000);
+}
+function stopReassert() {
+	if (privateTimer) clearInterval(privateTimer);
+	privateTimer = null;
+}
+// Idempotent (guarded by privateSession.ours), so it's safe to call on every lobby change and when
+// the setting is toggled: on while joined + enabled, restored otherwise.
+async function syncPrivateSession() {
+	if (!bridge) return;
+	if (lobby.state().status === "joined" && config.privateSessionInLobby) await enablePrivate();
+	else await restorePrivate();
+}
 
 // Leaving a lobby you were in pauses Spotify, so the lobby's music doesn't carry on by itself.
 // Asks for the state first (the cached one can be stale while Spotify is throttled) and only
@@ -1281,6 +1390,7 @@ function setLobbyName(name) {
 	saveConfig();
 	lobby.setName(config.lobbyName);
 	friends.setName(config.lobbyName);
+	remote.setName(config.lobbyName);
 }
 
 // ------------------------------------------------------------------ profile picture
@@ -1444,6 +1554,7 @@ let lastFriendRequests = "";
 friends.on("change", () => {
 	sendToRenderer("friends", friendsView());
 	toSettings("settings:friends", friendsView());
+	remote.pushState();
 	const reqs = JSON.stringify(friends.state().requests.map((r) => r.kind + r.fid));
 	if (reqs !== lastFriendRequests) {
 		lastFriendRequests = reqs;
@@ -1451,6 +1562,61 @@ friends.on("change", () => {
 	}
 });
 friends.on("toast", (text) => sendToRenderer("toast", { text }));
+
+// ------------------------------------------------------------------ phone remote (remote.js)
+//
+// A paired phone controls this PC: it sends playback commands (run through playerCommand(), the
+// same path as the overlay and hotkeys) and sees what's playing, the lobby and friends. Pairing
+// is a QR shown on Settings' Lobby page. No phone-side Spotify, no SpotX — the phone is a remote.
+
+// What a paired phone sees. Kept small: now playing (Spotify or the YouTube video in charge),
+// the lobby and the friends list — the same views Settings and the overlay already use.
+function remoteSnapshot() {
+	const player = yt.active ? ytState() : lastPlayerState || null;
+	return { player, lobby: lobbyView(), friends: friendsView(), name: config.lobbyName, connected: !!bridge, premium: config.spotifyPremium };
+}
+
+const remote = createRemote({
+	role: "host",
+	store: { load: () => readJSON(REMOTE_PATH, null), save: (d) => writeJSON(REMOTE_PATH, d) },
+	relays: lobbyRelays,
+	name: config.lobbyName,
+	control: {
+		command: (action, args) => playerCommand(action, args),
+		snapshot: remoteSnapshot,
+		joinLobby: (code) => lobby.join(code),
+		leaveLobby: () => lobby.leave(),
+	},
+	log: (m) => console.log("[remote]", m),
+});
+remote.setName(config.lobbyName);
+
+let remotePairing = null; // { expiresAt } while a pairing QR is showing
+remote.on("paired", (device) => {
+	sendToRenderer("toast", { text: `${device?.name || "Phone"} paired` });
+	remotePairing = null;
+	pushSettings();
+});
+remote.on("peer", () => pushSettings());
+remote.on("pair-timeout", () => {
+	remotePairing = null;
+	pushSettings();
+});
+
+// Audio to the phone (audio.js): when a paired phone asks to listen, stream the PC's system audio
+// to it over WebRTC. config.openRelay = { app, apiKey } enables free TURN for away-from-home;
+// without it, STUN only (same-network + friendly NATs).
+const audio = createAudioHost({
+	BrowserWindow,
+	net,
+	remote,
+	preloadPath: path.join(__dirname, "preload-audio.js"),
+	log: diag,
+	config,
+});
+ipcMain.on("audio:offer", (_e, p) => audio.fromRenderer("audio:offer", p));
+ipcMain.on("audio:ice", (_e, p) => audio.fromRenderer("audio:ice", p));
+ipcMain.on("audio:error", (_e, p) => audio.fromRenderer("audio:error", p));
 
 // Requests show up in the overlay's Notifications panel with Accept / Decline (and in the tray
 // menu). While the overlay isn't up over the game, Windows shows a notification too.
@@ -1604,6 +1770,79 @@ ipcMain.handle("settings:lobby-join", async (_e, code) => {
 	}
 });
 ipcMain.on("settings:lobby-copy", () => copyLobbyCode());
+
+// Open Relay (free TURN) for away-from-home audio. Stored through saveConfig so it survives
+// updates — much more robust than hand-editing config.json. A blank API key keeps the saved one,
+// so the key never has to be shown back in Settings.
+ipcMain.handle("settings:set-turn", (_e, app, apiKey) => {
+	const prev = config.openRelay || {};
+	const next = { app: String(app || "").trim(), apiKey: String(apiKey || "").trim() || prev.apiKey || "" };
+	if (!next.app && !next.apiKey) delete config.openRelay;
+	else config.openRelay = next;
+	saveConfig();
+	diag(`TURN: ${config.openRelay ? `Open Relay set (app ${config.openRelay.app || "?"}, key ${config.openRelay.apiKey ? "saved" : "missing"})` : "cleared"}`);
+	return settingsState();
+});
+
+// "Test private session" (Lobby page): turn it on, wait, read back whether it held, and say in
+// plain words what happened — so you don't have to squint at Spotify's own lock icon.
+ipcMain.handle("settings:test-private", async () => {
+	if (!bridge) return { verdict: "Spotify isn't connected, so I can't test it. Open Spotify and try again." };
+	let before;
+	try {
+		before = await bridgeCommand("detectPrivateSession", {}, 6000);
+	} catch (err) {
+		if (/unknown action/i.test(err.message))
+			return { verdict: `✗ Spotify is still running an older Mercify extension (v${bridgeInfo?.version ?? "?"}) that doesn't have private session. Go to Setup and press Redo next to "Mercify extension" (Spotify restarts), then test again. Mercify now does this by itself when it starts.` };
+		return { verdict: `Couldn't reach Spotify: ${err.message}` };
+	}
+	diag(`private session test: client exposes ${JSON.stringify(before)}`);
+	const wasOn = before && before.now ? before.now.on : null;
+
+	let setRes;
+	try {
+		setRes = await bridgeCommand("privateSession", { on: true }, 6000);
+	} catch (err) {
+		return { verdict: `Couldn't set private session: ${err.message}` };
+	}
+	if (!setRes || !setRes.ok) return { verdict: "✗ Mercify couldn't find a private-session control on this Spotify. Press Setup ▸ Copy details and send it to Kain — it lists everything this Spotify exposes, so the real switch can be pinned." };
+
+	const t1 = await (async () => (await wait(1500), readPrivateNow()))();
+	const t2 = await (async () => (await wait(6000), readPrivateNow()))(); // a few seconds on: did Spotify clear it?
+	diag(`private session test: set via ${setRes.via}; reads ${JSON.stringify(t1.on)} after 1.5 s, ${JSON.stringify(t2.on)} after 7.5 s`);
+
+	// Clean up: put it back how it was, unless a lobby is keeping it on.
+	if (!privateSession.ours && wasOn !== true) bridgeCommand("privateSession", { on: false }, 6000).catch(() => {});
+
+	if (t1.on === true && t2.on === true) return { verdict: `✓ Private session turned on and held. (Control: ${setRes.via})` };
+	if (t1.on === true && t2.on === false) return { verdict: `⚠ It turned on, then something switched it back off within seconds — the same thing you see with the lock icon. Mercify's lobby feature checks every 20 s and turns it back on, but to find the culprit: quit Mercify completely, turn private listening on in Spotify yourself, and see if it still vanishes. (Control: ${setRes.via})` };
+	if (t1.on === false) return { verdict: `⚠ Mercify wrote to ${setRes.via}, but Spotify still reads it as off — that's probably not the real switch on this version. Press Setup ▸ Copy details and send it to Kain.` };
+	return { verdict: `✓ Mercify turned private session on via ${setRes.via}. This Spotify build doesn't expose a way to read the state back, so Mercify can't poll it — but that's the real switch, and Mercify re-asserts it every 20 s while you're in a lobby. Spotify's own lock icon flashes off with SpotX even though the session stays private, so don't rely on the icon.` };
+});
+
+// Phone remote pairing (Lobby page). Start shows a QR; the phone scans it to pair.
+ipcMain.handle("settings:remote-pair", async () => {
+	try {
+		const payload = remote.startPairing();
+		const dataUrl = await QRCode.toDataURL(JSON.stringify(payload), { margin: 1, width: 320, errorCorrectionLevel: "M" });
+		remotePairing = { expiresAt: payload.expiresAt };
+		pushSettings();
+		return { ok: true, dataUrl, code: payload.code, expiresAt: payload.expiresAt };
+	} catch (err) {
+		return { ok: false, error: err.message };
+	}
+});
+ipcMain.handle("settings:remote-stop-pair", () => {
+	remote.stopPairing();
+	remotePairing = null;
+	pushSettings();
+	return { ok: true };
+});
+ipcMain.handle("settings:remote-forget", (_e, fid) => {
+	remote.forget(String(fid || ""));
+	pushSettings();
+	return { ok: true, state: settingsState() };
+});
 
 // ------------------------------------------------------------------ overlay IPC
 
@@ -1901,6 +2140,9 @@ async function settingsState() {
 		friendsShareListening: config.friendsShareListening,
 		friendsAllowJoin: config.friendsAllowJoin,
 		discordYouTube: config.discordYouTube !== false,
+		privateSessionInLobby: config.privateSessionInLobby !== false,
+		privateSessionState,
+		turn: { app: config.openRelay?.app || "", hasKey: !!config.openRelay?.apiKey },
 		startWithWindows: getStartWithWindows(),
 		hotkeys: config.hotkeys,
 		hotkeyDefaults: DEFAULT_CONFIG.hotkeys,
@@ -1908,6 +2150,7 @@ async function settingsState() {
 		theme: themeName(),
 		player: settingsPlayer,
 		friends: friendsView(),
+		remote: { devices: remote.devices(), pairing: !!remotePairing && Date.now() < remotePairing.expiresAt },
 		version: app.getVersion(),
 		youtube: { ...youtube.status(), version: youtubeVersion },
 	};
@@ -2073,6 +2316,10 @@ ipcMain.handle("settings:set", async (_e, key, value) => {
 	else if (key === "friendsShareListening" || key === "friendsAllowJoin") {
 		config[key] = !!value;
 		friends.setOptions({ share: config.friendsShareListening, allowJoin: config.friendsAllowJoin });
+	}
+	else if (key === "privateSessionInLobby") {
+		config.privateSessionInLobby = !!value;
+		syncPrivateSession(); // apply to the lobby you're in right now
 	}
 	saveConfig();
 	tickGate();
@@ -2399,6 +2646,17 @@ updater.on("before-install", () => foreground.stop());
 
 app.whenReady().then(async () => {
 	if (await launchUpdateGate()) return; // updating: the new version starts by itself
+	// Let the hidden audio-sender window capture the system's audio (loopback). Only that window
+	// calls getDisplayMedia; we hand back a screen source for the video it immediately drops.
+	session.defaultSession.setDisplayMediaRequestHandler(
+		(request, callback) => {
+			desktopCapturer
+				.getSources({ types: ["screen"] })
+				.then((sources) => callback(sources[0] ? { video: sources[0], audio: "loopback" } : {}))
+				.catch(() => callback({}));
+		},
+		{ useSystemPicker: false }
+	);
 	updater.start();
 	foreground.start();
 	lobby.setAvatar(avatar);
@@ -2422,7 +2680,17 @@ app.whenReady().then(async () => {
 
 	if (setup.IS_WIN) {
 		migrateLoginItem();
-		const s = await setup.status({ premium: config.spotifyPremium });
+		let s = await setup.status({ premium: config.spotifyPremium });
+		// A Mercify update can ship a newer Spotify extension (new commands like private session).
+		// Put it into Spotify straight away rather than waiting for someone to press Redo on Setup —
+		// otherwise Spotify keeps running the old one and the new features silently do nothing.
+		if (s.spotify && s.spicetify && s.extension === "outdated" && !setup.isSetupRunning()) {
+			diag(`Spotify extension is out of date (v${s.appliedVersion ?? "?"} → v${s.bundledVersion ?? "?"}): updating it`);
+			const running = await setup.isSpotifyRunning();
+			const ok = await setup.applyExtension(setupLogLine, { reopen: running }).catch((err) => (diag(`extension update: ${err.message}`), false));
+			diag(`extension update ${ok ? "done" : "didn't finish — Setup ▸ Redo next to Mercify extension"}`);
+			s = await setup.status({ premium: config.spotifyPremium });
+		}
 		if (config.launchSpotify && s.spotify) setup.startSpotify({ minimized: config.minimiseSpotify });
 		// Set up, but Spotify hasn't connected: it's probably at its login screen, started minimised
 		// where nobody sees it. Bring it up once, so you can log in.

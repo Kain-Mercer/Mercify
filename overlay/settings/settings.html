@@ -145,6 +145,31 @@
 									<p class="error" id="avatar-error" hidden></p>
 								</div>
 							</section>
+							<section class="card phone-card" id="phone-card" aria-label="Phone remote">
+								<h2>Phone remote</h2>
+								<p class="hint">Control Mercify from your phone — play, skip, pick songs and join lobbies. Pair once, then it works at home and away.</p>
+								<div id="phone-devices" class="members"></div>
+								<div id="phone-pair-start">
+									<div class="row-btns"><button class="btn" id="phone-pair">Pair a phone</button></div>
+								</div>
+								<div id="phone-pair-live" hidden>
+									<p class="hint">In the Mercify app on your phone, tap <b>Pair with PC</b> and either scan this or type the code. It expires in a few minutes.</p>
+									<img id="phone-qr" class="phone-qr" alt="Pairing QR code" />
+									<div class="phone-code" id="phone-code" aria-label="Pairing code"></div>
+									<div class="row-btns"><button class="btn ghost" id="phone-pair-cancel">Cancel</button></div>
+								</div>
+								<p class="error" id="phone-error" hidden></p>
+								<div class="turn-block">
+									<h3>Audio away from home</h3>
+									<p class="hint">Listening on your phone works on your own network with no setup. To also hear it over mobile data, make a free <a href="https://dashboard.metered.ca/" target="_blank" rel="noreferrer">Open Relay</a> account and paste its app name and API key here. <span id="turn-saved" class="turn-saved" hidden>✓ Saved</span></p>
+									<label class="lbl" for="turn-app">Open Relay app name</label>
+									<input type="text" class="field" id="turn-app" placeholder="yourapp" spellcheck="false" autocomplete="off" />
+									<label class="lbl" for="turn-key">API key</label>
+									<input type="password" class="field" id="turn-key" placeholder="Leave blank to keep the saved key" spellcheck="false" autocomplete="off" />
+									<div class="row-btns"><button class="btn" id="turn-save">Save</button><button class="link" id="turn-clear">Remove</button></div>
+									<p class="hint" id="turn-result" hidden></p>
+								</div>
+							</section>
 						</div>
 						<section class="card friends" aria-label="Friends">
 							<h2>Friends</h2>
@@ -152,6 +177,8 @@
 							<div class="toggles">
 								<label class="toggle"><span>Share what I'm playing</span><input type="checkbox" class="sw" data-bind="friendsShareListening" /></label>
 								<label class="toggle"><span>Allow join requests</span><input type="checkbox" class="sw" data-bind="friendsAllowJoin" /></label>
+								<label class="toggle"><span>Private session in a lobby<small class="sub" id="pvt-sub">Keeps friends' picks out of your recommendations</small></span><input type="checkbox" class="sw" data-bind="privateSessionInLobby" /></label>
+								<div class="pvt-test"><button class="link" id="pvt-test">Test private session</button><p class="hint" id="pvt-test-result" hidden></p></div>
 								<label class="toggle"><span>Show YouTube videos on Discord</span><input type="checkbox" class="sw" data-bind="discordYouTube" /></label>
 							</div>
 						</section>
