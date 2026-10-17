@@ -21,6 +21,10 @@ on:
         description: "Pre-release name, e.g. test.1 (publishes android-v<version>-test.1)"
         required: false
         default: ""
+      release:
+        description: "Publish as a full release android-v<version> (the newest on the Releases page)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -121,6 +125,17 @@ jobs:
             --prerelease --latest=false \
             --title "Mercify for Android ${{ steps.version.outputs.version }} (${{ inputs.test_release }})" \
             --notes "Test build of the Android app. Install the APK on your phone (allow installing from your browser when asked). See mobile/README.md on the ${{ github.ref_name }} branch."
+
+      - name: Publish release
+        if: ${{ inputs.release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="android-v${{ steps.version.outputs.version }}"
+          gh release create "$tag" "${{ steps.apk.outputs.name }}" \
+            -R "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "Mercify for Android ${{ steps.version.outputs.version }}" \
+            --notes "Mercify for Android: a remote for the desktop app, with listen-along audio. Install the APK on your phone (allow installing from your browser when asked)."
 
   emulator:
     needs: build
