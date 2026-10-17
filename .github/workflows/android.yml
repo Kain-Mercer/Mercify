@@ -134,6 +134,7 @@ jobs:
           tag="android-v${{ steps.version.outputs.version }}"
           gh release create "$tag" "${{ steps.apk.outputs.name }}" \
             -R "${{ github.repository }}" --target "${{ github.sha }}" \
+            --latest=false \
             --title "Mercify for Android ${{ steps.version.outputs.version }}" \
             --notes "Mercify for Android: a remote for the desktop app, with listen-along audio. Install the APK on your phone (allow installing from your browser when asked)."
 
