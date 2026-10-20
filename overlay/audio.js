@@ -107,7 +107,8 @@ function createAudioHost({ BrowserWindow, net, remote, preloadPath, spcapPath, l
 				log(`audio: capturing Spotify only (pid ${r.status.pid})`);
 			} else {
 				if (r.child) try { r.child.kill(); } catch (_) {}
-				log(`audio: Spotify-only capture unavailable (${r.status && r.status.error}); using whole-system audio`);
+				const st = r.status || {};
+				log(`audio: Spotify-only capture unavailable (${st.error}${st.hr ? " " + st.hr : ""}); using whole-system audio`);
 			}
 		}
 
