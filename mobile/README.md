@@ -8,7 +8,7 @@ Control Mercify on your PC from your phone. See what's playing, play/pause/skip,
 
 1. Download `Mercify-android-<version>.apk` from the newest `android-v...` pre-release on the Releases page and open it. Android asks to allow installing apps from your browser; allow it.
 2. On your PC, open **Mercify ▸ Lobby ▸ Phone remote** and tap **Pair a phone**. It shows a QR and a short code.
-3. In the Mercify app on your phone, type that code and tap **Pair**. (QR scanning comes later; the code works now.)
+3. In the Mercify app on your phone, tap **Scan QR code** and point it at the PC (or type the code).
 4. That's it — the now-playing card and controls drive your PC. Pairing is remembered, and works both at home and away.
 
 ## How it's built
@@ -37,3 +37,10 @@ The phone plays it as media, not a call (`MainApplication` gives WebRTC's audio 
 v1 streams the whole system's audio (pure Electron capture, no native module). Narrowing to just Spotify needs a native WASAPI process-loopback capturer — a later change.
 
 Not done yet: scanning the QR with the camera (the typed code works now), hosting a lobby from the phone, the LAN-direct control link, Spotify-only audio capture. The old `SpotifyListenerService` / `SpotifyModule` native code is unused by the remote and kept only for its storage + keep-alive helpers; it can be removed in a later cleanup.
+
+## Themes, search, QR
+
+- **Search**: the remote can search Spotify and play or queue a result on the PC (`remote.request("search", …)` returns the PC's results over the encrypted channel).
+- **Themes**: the four desktop looks (Classic / Neon / Light / Vice) are in `App.js` as flat palettes, applied through a small theme context and chosen with the Theme card; the choice is remembered.
+- **QR pairing**: `src/QRScanner.js` uses `react-native-camera-kit` to read the pairing QR (the typed code still works). Needs the CAMERA permission.
+- **Icon**: the launcher icon and in-app mark come from the desktop app's icon.
