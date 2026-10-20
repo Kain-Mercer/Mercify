@@ -18,6 +18,7 @@
     "mqtt": "^5.16.1",
     "react": "19.3.0",
     "react-native": "0.88.0",
+    "react-native-camera-kit": "^18.0.1",
     "react-native-get-random-values": "^2.0.0",
     "react-native-safe-area-context": "^5.5.2",
     "react-native-webrtc": "^124.0.5"
