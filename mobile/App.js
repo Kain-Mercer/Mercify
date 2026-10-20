@@ -7,7 +7,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import * as R from "./src/remote";
 import * as Audio from "./src/audio";
 import { spotify } from "./src/spotify";
-import QRScanner from "./src/QRScanner";
+import QRScanner, { cameraAvailable } from "./src/QRScanner";
 
 // The desktop app's four themes (overlay/settings/settings.css), as flat palettes. warn/bad are
 // shared across them.
@@ -176,11 +176,15 @@ function PairScreen({ onPaired }) {
 
 	return (
 		<Card title="Pair with your PC">
-			<Text style={st.hint}>On your PC, open Mercify ▸ Lobby ▸ Phone remote and tap “Pair a phone”. Scan the QR it shows, or type the code.</Text>
-			<Button title="Scan QR code" kind="primary" onPress={() => setScanning(true)} disabled={busy} />
-			<Text style={[st.hint, { textAlign: "center" }]}>or</Text>
+			<Text style={st.hint}>On your PC, open Mercify ▸ Lobby ▸ Phone remote and tap “Pair a phone”.{cameraAvailable ? " Scan the QR it shows, or type the code." : " Type the code it shows here."}</Text>
+			{cameraAvailable ? (
+				<>
+					<Button title="Scan QR code" kind="primary" onPress={() => setScanning(true)} disabled={busy} />
+					<Text style={[st.hint, { textAlign: "center" }]}>or</Text>
+				</>
+			) : null}
 			<TextInput value={code} onChangeText={(t) => setCode(t.toUpperCase())} placeholder="PC code" placeholderTextColor={C.faint} autoCapitalize="characters" autoCorrect={false} style={st.field} />
-			<Button title={busy ? "Pairing…" : "Pair with code"} onPress={() => pairWith(code.trim())} disabled={busy || code.trim().length < 8} />
+			<Button title={busy ? "Pairing…" : "Pair"} kind={cameraAvailable ? "plain" : "primary"} onPress={() => pairWith(code.trim())} disabled={busy || code.trim().length < 8} />
 			{err ? <Text style={st.error}>{err}</Text> : null}
 		</Card>
 	);

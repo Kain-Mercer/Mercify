@@ -9,6 +9,9 @@ try {
 	Camera = require("react-native-camera-kit").Camera;
 } catch (_) {}
 
+// Whether a camera module is in this build, so the UI can hide the Scan button when it isn't.
+export const cameraAvailable = !!Camera;
+
 function Centered({ color, children }) {
 	return (
 		<View style={styles.center}>
