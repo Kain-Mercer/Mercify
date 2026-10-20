@@ -276,6 +276,15 @@ function createRemote({ role, store, relays, connect, name = "", control = null,
 			ev.emit("state", msg.state || null);
 			return;
 		}
+		// The PC's reply to a command we sent with request() (e.g. search results).
+		if (role === "device" && msg.ty === "ack") {
+			const p = pending.get(msg.id);
+			if (!p) return;
+			pending.delete(msg.id);
+			clearTimeout(p.timer);
+			msg.ok ? p.resolve(msg.data ?? null) : p.reject(new Error(msg.error || "command failed"));
+			return;
+		}
 		// Opaque signalling, either direction: the audio layer (WebRTC) carries its SDP offer /
 		// answer / ICE candidates over the already-encrypted channel, so remote.js stays unaware
 		// of WebRTC. `kind` is the sender's label; `data` is its payload.
@@ -444,11 +453,29 @@ function createRemote({ role, store, relays, connect, name = "", control = null,
 	// --- device-side command sending -------------------------------------
 
 	let cmdId = 0;
+	const pending = new Map(); // id -> { resolve, reject, timer } : request()s awaiting the PC's ack
 	function send(action, args = {}) {
 		if (role !== "device") throw new Error("only the phone sends commands");
 		const id = ++cmdId;
 		for (const p of peers.values()) sendTo(p, "cmd", { id, action, args });
 		return id;
+	}
+
+	// Like send(), but returns a Promise that resolves with the PC's reply data (e.g. search
+	// results, playlists). Rejects on error or if no paired PC answers in time.
+	function request(action, args = {}, timeoutMs = 12000) {
+		if (role !== "device") throw new Error("only the phone sends commands");
+		const first = [...peers.values()][0];
+		if (!first) return Promise.reject(new Error("not paired with a PC"));
+		const id = ++cmdId;
+		return new Promise((resolve, reject) => {
+			const timer = setTimeout(() => {
+				pending.delete(id);
+				reject(new Error("the PC didn't answer"));
+			}, timeoutMs);
+			pending.set(id, { resolve, reject, timer });
+			sendTo(first, "cmd", { id, action, args });
+		});
 	}
 
 	// Send an opaque signalling payload to one paired peer (by fid) or all of them. Used by the
@@ -508,6 +535,7 @@ function createRemote({ role, store, relays, connect, name = "", control = null,
 		// device
 		pair,
 		send,
+		request,
 		// both (WebRTC audio signalling)
 		sendSignal,
 		// both

@@ -206,6 +206,59 @@ function ListenCard() {
 	);
 }
 
+function SearchCard() {
+	const [q, setQ] = useState("");
+	const [busy, setBusy] = useState(false);
+	const [err, setErr] = useState("");
+	const [tracks, setTracks] = useState([]);
+	const [queued, setQueued] = useState({}); // uri -> true, for brief "Queued" feedback
+
+	const run = async () => {
+		const query = q.trim();
+		if (!query) return;
+		setErr("");
+		setBusy(true);
+		try {
+			const res = await R.request("search", { query });
+			setTracks((res && res.tracks ? res.tracks : []).filter((t) => t && t.uri).slice(0, 25));
+		} catch (e) {
+			setErr(e.message || String(e));
+			setTracks([]);
+		}
+		setBusy(false);
+	};
+	const queue = async (uri) => {
+		try {
+			await R.send("addToQueue", { uri });
+			setQueued((m) => ({ ...m, [uri]: true }));
+			setTimeout(() => setQueued((m) => ({ ...m, [uri]: false })), 1500);
+		} catch (_) {}
+	};
+
+	return (
+		<Card title="Search">
+			<View style={st.searchRow}>
+				<TextInput value={q} onChangeText={setQ} onSubmitEditing={run} returnKeyType="search" placeholder="Songs to play on your PC" placeholderTextColor={C.faint} style={[st.field, { flex: 1, letterSpacing: 0 }]} />
+				<Button title={busy ? "…" : "Go"} kind="primary" small onPress={run} disabled={busy || !q.trim()} />
+			</View>
+			{err ? <Text style={st.error}>{err}</Text> : null}
+			{tracks.map((t) => (
+				<View key={t.uri} style={st.result}>
+					{t.image ? <Image source={{ uri: t.image }} style={st.resultArt} /> : <View style={[st.resultArt, st.artPh]} />}
+					<Pressable style={{ flex: 1, minWidth: 0 }} onPress={() => R.send("playTrack", { uri: t.uri })}>
+						<Text numberOfLines={1} style={st.resultTitle}>{t.name}</Text>
+						<Text numberOfLines={1} style={st.resultArtist}>{(t.artists || []).join(", ")}</Text>
+					</Pressable>
+					<Pressable onPress={() => queue(t.uri)} style={st.queueBtn}>
+						<Text style={st.queueText}>{queued[t.uri] ? "✓" : "＋"}</Text>
+					</Pressable>
+				</View>
+			))}
+			{!busy && !err && tracks.length === 0 ? <Text style={st.hint}>Tap a result to play it on the PC now, or ＋ to add it to the queue.</Text> : null}
+		</Card>
+	);
+}
+
 function RemoteScreen({ snap }) {
 	const pc = (snap.paired || [])[0];
 	const online = pc && pc.online;
@@ -219,6 +272,7 @@ function RemoteScreen({ snap }) {
 				</View>
 			</Card>
 			<NowPlaying player={snap.state && snap.state.player} />
+			<SearchCard />
 			<ListenCard />
 			<LobbyCard lobby={snap.state && snap.state.lobby} />
 			<Button title="Unpair this PC" kind="danger" small onPress={() => pc && R.forget(pc.fid)} />
@@ -330,4 +384,12 @@ const st = StyleSheet.create({
 	iconText: { color: C.text, fontSize: 20 },
 
 	subRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" },
+
+	searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+	result: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 6 },
+	resultArt: { width: 44, height: 44, borderRadius: 6, backgroundColor: C.row },
+	resultTitle: { color: C.text, fontSize: 15, fontWeight: "600" },
+	resultArtist: { color: C.dim, fontSize: 12, marginTop: 1 },
+	queueBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: C.row, borderWidth: 1, borderColor: C.fieldLine },
+	queueText: { color: C.accent, fontSize: 20, fontWeight: "700" },
 });
