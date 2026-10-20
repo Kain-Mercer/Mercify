@@ -51,9 +51,16 @@ typedef struct {
 
 static const int RATE = 48000, CH = 2;
 
+// IAgileObject is a marker interface (no methods) — reporting it makes the object agile so
+// ActivateAudioInterfaceAsync will accept it; without it the call returns E_ILLEGAL_METHOD_CALL.
+#ifndef __IAgileObject_INTERFACE_DEFINED__
+MIDL_INTERFACE("94ea2b94-e9cc-49e0-c0ff-ee64ca8f5b90") IAgileObject : public IUnknown {};
+#endif
+DEFINE_GUID(IID_IAgileObject_local, 0x94ea2b94, 0xe9cc, 0x49e0, 0xc0, 0xff, 0xee, 0x64, 0xca, 0x8f, 0x5b, 0x90);
+
 // Completion handler for ActivateAudioInterfaceAsync: just signals an event; the result is read
-// from the async operation afterwards.
-struct ActivateHandler : public IActivateAudioInterfaceCompletionHandler {
+// from the async operation afterwards. Agile (IAgileObject) so the async infra will accept it.
+struct ActivateHandler : public IActivateAudioInterfaceCompletionHandler, public IAgileObject {
 	HANDLE done;
 	LONG ref = 1;
 	ActivateHandler() { done = CreateEventW(NULL, FALSE, FALSE, NULL); }
@@ -63,7 +70,12 @@ struct ActivateHandler : public IActivateAudioInterfaceCompletionHandler {
 	}
 	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **o) override {
 		if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_IActivateAudioInterfaceCompletionHandler)) {
-			*o = this;
+			*o = static_cast<IActivateAudioInterfaceCompletionHandler *>(this);
+			InterlockedIncrement(&ref);
+			return S_OK;
+		}
+		if (IsEqualIID(riid, IID_IAgileObject_local)) {
+			*o = static_cast<IAgileObject *>(this);
 			InterlockedIncrement(&ref);
 			return S_OK;
 		}
