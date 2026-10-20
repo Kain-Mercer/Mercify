@@ -6,18 +6,56 @@
 // Open Relay (metered.ca) API key is set, its free TURN — fetched here so the key stays on the PC
 // and the phone only ever sees short-lived credentials inside the offer.
 //
-// v1 captures the whole system's audio (pure Electron, no native module). Narrowing it to just
-// Spotify needs a native WASAPI process-loopback capturer — a later change; nothing else here
-// would move.
+// Two capture sources (config.audioSource):
+//   "system"  (default) — the whole system's audio, via Chromium's loopback getDisplayMedia.
+//   "spotify" — ONLY Spotify, via the native bin/spcap.exe (WASAPI process loopback). spcap streams
+//               raw float32 PCM on stdout; we forward it to the sender window, which turns it into
+//               a WebRTC track. If spcap can't start, we fall back to whole-system audio.
 //
 // One listener at a time: a new "listen-start" replaces any current session.
 
 const path = require("path");
+const { spawn } = require("child_process");
 
 const STUN = [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }];
 
-function createAudioHost({ BrowserWindow, net, remote, preloadPath, log = () => {}, config = {} }) {
-	let session = null; // { fid, win, ready } — the phone currently listening
+function createAudioHost({ BrowserWindow, net, remote, preloadPath, spcapPath, log = () => {}, config = {} }) {
+	let session = null; // { fid, win, child, source } — the phone currently listening
+
+	// Start the native Spotify-only capturer and wait for its first status line. Resolves with the
+	// parsed status ({ ok, pid, ... } or { ok:0, error }) or a timeout error.
+	function startSpcap() {
+		return new Promise((resolve) => {
+			let child;
+			try {
+				child = spawn(spcapPath, [], { windowsHide: true });
+			} catch (err) {
+				resolve({ child: null, status: { ok: 0, error: err.message } });
+				return;
+			}
+			let buf = "";
+			let settled = false;
+			const timer = setTimeout(() => finish({ ok: 0, error: "no response from capturer" }), 4000);
+			const finish = (status) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timer);
+				resolve({ child, status });
+			};
+			child.stderr.on("data", (d) => {
+				buf += d.toString();
+				const nl = buf.indexOf("\n");
+				if (nl < 0) return;
+				try {
+					finish(JSON.parse(buf.slice(0, nl)));
+				} catch (_) {
+					finish({ ok: 0, error: "bad status from capturer" });
+				}
+			});
+			child.on("error", (err) => finish({ ok: 0, error: err.message }));
+			child.on("exit", (code) => finish({ ok: 0, error: "capturer exited (" + code + ")" }));
+		});
+	}
 
 	// Open Relay free TURN, fetched with the PC's API key (config.openRelay = { apiKey, app }).
 	// Falls back to STUN-only (LAN + friendly-NAT) when no key is set.
@@ -42,8 +80,11 @@ function createAudioHost({ BrowserWindow, net, remote, preloadPath, log = () => 
 
 	function stop(reason) {
 		if (!session) return;
-		const { fid, win } = session;
+		const { fid, win, child } = session;
 		session = null;
+		try {
+			if (child) child.kill();
+		} catch (_) {}
 		try {
 			if (win && !win.isDestroyed()) win.destroy();
 		} catch (_) {}
@@ -54,6 +95,23 @@ function createAudioHost({ BrowserWindow, net, remote, preloadPath, log = () => 
 	async function start(fid) {
 		stop("replaced");
 		const ice = await iceServers();
+
+		// Spotify-only capture, if asked for and the native capturer is available.
+		let source = "system";
+		let child = null;
+		if (config.audioSource === "spotify" && spcapPath) {
+			const r = await startSpcap();
+			if (r.status && r.status.ok) {
+				source = "spotify";
+				child = r.child;
+				log(`audio: capturing Spotify only (pid ${r.status.pid})`);
+			} else {
+				if (r.child) try { r.child.kill(); } catch (_) {}
+				const st = r.status || {};
+				log(`audio: Spotify-only capture unavailable (${st.error}${st.hr ? " " + st.hr : ""}); using whole-system audio`);
+			}
+		}
+
 		const win = new BrowserWindow({
 			show: false,
 			width: 240,
@@ -67,15 +125,26 @@ function createAudioHost({ BrowserWindow, net, remote, preloadPath, log = () => 
 				backgroundThrottling: false,
 			},
 		});
-		session = { fid, win, ice, ready: false };
+		session = { fid, win, ice, child, source };
 		win.on("closed", () => {
 			if (session && session.win === win) session = null;
 		});
 		win.loadFile(path.join(__dirname, "audio", "sender.html"));
 		win.webContents.once("did-finish-load", () => {
-			if (session && session.win === win) win.webContents.send("audio:start", { iceServers: ice });
+			if (session && session.win === win) win.webContents.send("audio:start", { iceServers: ice, source });
 		});
-		log(`audio: starting for ${fid}`);
+
+		// Forward the capturer's PCM to the sender window, which turns it into a WebRTC track.
+		if (child) {
+			child.stdout.on("data", (chunk) => {
+				if (session && session.win === win && !win.isDestroyed()) win.webContents.send("audio:pcm", chunk);
+			});
+			child.stderr.on("data", (d) => log(`spcap: ${String(d).trim()}`));
+			child.on("exit", () => {
+				if (session && session.child === child) stop("capturer-exited");
+			});
+		}
+		log(`audio: starting for ${fid} (${source})`);
 	}
 
 	// --- messages from the sender window (renderer) -> relay to the phone ---
