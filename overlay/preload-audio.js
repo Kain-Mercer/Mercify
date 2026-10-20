@@ -5,6 +5,7 @@ const on = (channel) => (cb) => ipcRenderer.on(channel, (_e, payload) => cb(payl
 
 contextBridge.exposeInMainWorld("audio", {
 	onStart: on("audio:start"),
+	onPcm: (cb) => ipcRenderer.on("audio:pcm", (_e, chunk) => cb(chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk))),
 	onAnswer: on("audio:answer"),
 	onIce: on("audio:ice"),
 	onStop: on("audio:stop"),

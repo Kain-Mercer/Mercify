@@ -72,6 +72,7 @@ const DEFAULT_CONFIG = {
 	friendsAllowJoin: true, // friends can ask to join you (accepting starts a lobby)
 	discordYouTube: true, // show the YouTube video playing on your Discord profile
 	privateSessionInLobby: true, // turn Spotify's Private Session on while in a lobby, so friends' eclectic picks don't shape your recommendations
+	audioSource: "system", // what "listen on your phone" streams: "system" (whole PC) or "spotify" (only Spotify, via spcap.exe)
 	// Spotify Premium? true / false / null (not known yet). Set in Settings, or by the extension
 	// once Spotify says which plan the logged-in account is on. Premium gets SpotX's Premium mode.
 	spotifyPremium: null,
@@ -1611,6 +1612,7 @@ const audio = createAudioHost({
 	net,
 	remote,
 	preloadPath: path.join(__dirname, "preload-audio.js"),
+	spcapPath: app.isPackaged ? path.join(process.resourcesPath, "spcap.exe") : path.join(__dirname, "bin", "spcap.exe"),
 	log: diag,
 	config,
 });
@@ -2143,6 +2145,7 @@ async function settingsState() {
 		privateSessionInLobby: config.privateSessionInLobby !== false,
 		privateSessionState,
 		turn: { app: config.openRelay?.app || "", hasKey: !!config.openRelay?.apiKey },
+		spotifyOnlyAudio: config.audioSource === "spotify",
 		startWithWindows: getStartWithWindows(),
 		hotkeys: config.hotkeys,
 		hotkeyDefaults: DEFAULT_CONFIG.hotkeys,
@@ -2321,6 +2324,7 @@ ipcMain.handle("settings:set", async (_e, key, value) => {
 		config.privateSessionInLobby = !!value;
 		syncPrivateSession(); // apply to the lobby you're in right now
 	}
+	else if (key === "spotifyOnlyAudio") config.audioSource = value ? "spotify" : "system";
 	saveConfig();
 	tickGate();
 	updateTrayMenu();

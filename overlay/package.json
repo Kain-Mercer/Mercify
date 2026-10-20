@@ -48,6 +48,10 @@
       {
         "from": "bin/fgwatch.exe",
         "to": "fgwatch.exe"
+      },
+      {
+        "from": "bin/spcap.exe",
+        "to": "spcap.exe"
       }
     ],
     "win": {
