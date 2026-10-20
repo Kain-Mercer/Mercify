@@ -1,0 +1,13 @@
+Mercify
+REMOTE
+Pair with your PC
+On your PC, open Mercify ▸ Lobby ▸ Phone remote and tap “Pair a phone”. Scan the QR it shows, or type the code.
+Scan QR code
+or
+PC code
+Pair
+Theme
+Classic
+Neon
+Light
+Vice

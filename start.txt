@@ -1,0 +1,14 @@
+Starting: Intent { cmp=com.kainmercer.mercify/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.kainmercer.mercify/.MainActivity
+TotalTime: 1601
+WaitTime: 1615
+Complete
+Starting: Intent { cmp=com.kainmercer.mercify/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.kainmercer.mercify/.MainActivity
+TotalTime: 1240
+WaitTime: 1252
+Complete
