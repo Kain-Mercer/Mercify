@@ -78,25 +78,66 @@ struct ActivateHandler : public IActivateAudioInterfaceCompletionHandler {
 	}
 };
 
-static DWORD findSpotify() {
-	DWORD pid = 0;
+static void status(const char *json) { fprintf(stderr, "%s\n", json); fflush(stderr); }
+
+struct Proc { DWORD pid, ppid; wchar_t exe[MAX_PATH]; };
+static Proc g_procs[2048];
+static int g_nproc = 0;
+static char g_diag[8192];
+
+static void snapshotProcs() {
+	g_nproc = 0;
 	HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	if (snap == INVALID_HANDLE_VALUE) return 0;
+	if (snap == INVALID_HANDLE_VALUE) return;
 	PROCESSENTRY32W e;
 	e.dwSize = sizeof(e);
 	if (Process32FirstW(snap, &e)) {
 		do {
-			if (_wcsicmp(e.szExeFile, L"Spotify.exe") == 0) {
-				pid = e.th32ProcessID;
-				break;
-			}
+			if (g_nproc >= 2048) break;
+			g_procs[g_nproc].pid = e.th32ProcessID;
+			g_procs[g_nproc].ppid = e.th32ParentProcessID;
+			wcsncpy(g_procs[g_nproc].exe, e.szExeFile, MAX_PATH - 1);
+			g_procs[g_nproc].exe[MAX_PATH - 1] = 0;
+			g_nproc++;
 		} while (Process32NextW(snap, &e));
 	}
 	CloseHandle(snap);
-	return pid;
 }
+static const Proc *byPid(DWORD pid) {
+	for (int i = 0; i < g_nproc; i++) if (g_procs[i].pid == pid) return &g_procs[i];
+	return NULL;
+}
+static bool isSpotify(const wchar_t *exe) { return _wcsicmp(exe, L"Spotify.exe") == 0; }
 
-static void status(const char *json) { fprintf(stderr, "%s\n", json); fflush(stderr); }
+// The root Spotify.exe: a Spotify process whose parent isn't itself Spotify (the main window
+// process). Falls back to any Spotify.exe. Also fills g_diag with the tree for debugging.
+static DWORD findSpotify() {
+	snapshotProcs();
+	DWORD root = 0, any = 0;
+	for (int i = 0; i < g_nproc; i++) {
+		if (!isSpotify(g_procs[i].exe)) continue;
+		if (!any) any = g_procs[i].pid;
+		const Proc *par = byPid(g_procs[i].ppid);
+		if (!par || !isSpotify(par->exe)) { root = g_procs[i].pid; break; }
+	}
+	DWORD target = root ? root : any;
+
+	// Build a diagnostic line: the target, its parent, and its direct non-Spotify children (the
+	// likely culprits — e.g. a browser launched from Spotify ends up in its process tree).
+	char *p = g_diag;
+	const Proc *t = byPid(target);
+	const Proc *par = t ? byPid(t->ppid) : NULL;
+	p += snprintf(p, 256, "{\"diag\":\"spotify-tree\",\"target\":%lu,\"parent\":\"%ls(%lu)\",\"children\":[",
+		(unsigned long)target, par ? par->exe : L"?", (unsigned long)(t ? t->ppid : 0));
+	bool first = true;
+	for (int i = 0; i < g_nproc && (p - g_diag) < 7000; i++) {
+		if (g_procs[i].ppid != target) continue;
+		p += snprintf(p, 128, "%s\"%ls(%lu)\"", first ? "" : ",", g_procs[i].exe, (unsigned long)g_procs[i].pid);
+		first = false;
+	}
+	snprintf(p, 64, "]}");
+	return target;
+}
 
 int wmain(int argc, wchar_t **argv) {
 	DWORD pid = 0;
@@ -172,6 +213,7 @@ int wmain(int argc, wchar_t **argv) {
 	char ready[128];
 	snprintf(ready, sizeof(ready), "{\"ok\":1,\"pid\":%lu,\"format\":\"f32le\",\"rate\":%d,\"ch\":%d}", (unsigned long)pid, RATE, CH);
 	status(ready);
+	if (g_diag[0]) status(g_diag); // the Spotify process tree, for debugging what's in the capture
 
 	const UINT32 frameBytes = fmt.nBlockAlign;
 	const UINT32 silenceFrames = RATE / 50; // 20 ms of silence to emit when the app is quiet
