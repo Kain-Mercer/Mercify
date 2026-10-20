@@ -78,6 +78,11 @@ export async function send(action, args = {}) {
 	await ready;
 	return remote.send(action, args);
 }
+// Send a command and wait for the PC's reply (search results, playlists, …).
+export async function request(action, args = {}) {
+	await ready;
+	return remote.request(action, args);
+}
 export async function forget(fid) {
 	await ready;
 	remote.forget(fid);

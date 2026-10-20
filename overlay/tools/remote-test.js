@@ -52,6 +52,7 @@ function check(label, ok, detail = "") {
 			seenCmds.push({ action, args });
 			if (action === "togglePlay") playing = !playing;
 			if (action === "state") return snapshot();
+			if (action === "search") return { tracks: [{ uri: "spotify:track:cccccccccccccccccccccc", name: "Found " + args.query, artists: ["X"] }] };
 			return null;
 		},
 		joinLobby: async (code) => seenCmds.push({ action: "joinLobby", args: { code } }),
@@ -117,6 +118,12 @@ function check(label, ok, detail = "") {
 	await sleep(400);
 	check("disallowed action never reached command()", !seenCmds.some((c) => c.action === "rm_rf_everything"));
 	check("bad uris never reached command()", !seenCmds.some((c) => c.action === "playTrack"), `${seenCmds.length} slipped through`);
+
+	// --- 4b. request() returns the PC's reply data (e.g. search results) ---
+	const res = await phone.request("search", { query: "blue" }).catch((e) => ({ error: e.message }));
+	check("request() gets search results back", res && res.tracks && res.tracks[0] && res.tracks[0].name === "Found blue", res && res.error ? res.error : JSON.stringify(res && res.tracks));
+	const bad = await phone.request("rm_rf", {}).then(() => "resolved").catch((e) => e.message);
+	check("request() for a disallowed action rejects", /not allowed/.test(bad), bad);
 
 	// --- 5. a lobby action is handled by the host ---
 	seenCmds.length = 0;
