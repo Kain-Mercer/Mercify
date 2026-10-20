@@ -79,6 +79,11 @@ struct ActivateHandler : public IActivateAudioInterfaceCompletionHandler {
 };
 
 static void status(const char *json) { fprintf(stderr, "%s\n", json); fflush(stderr); }
+static void statusHr(const char *where, HRESULT hr) {
+	char b[256];
+	snprintf(b, sizeof(b), "{\"ok\":0,\"error\":\"%s\",\"hr\":\"0x%08lX\"}", where, (unsigned long)hr);
+	status(b);
+}
 
 struct Proc { DWORD pid, ppid; wchar_t exe[MAX_PATH]; };
 static Proc g_procs[2048];
@@ -150,7 +155,7 @@ int wmain(int argc, wchar_t **argv) {
 	if (!pid) { status("{\"ok\":0,\"error\":\"Spotify isn't running\"}"); return 2; }
 
 	HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-	if (FAILED(hr)) { status("{\"ok\":0,\"error\":\"CoInitializeEx failed\"}"); return 3; }
+	if (FAILED(hr)) { statusHr("CoInitializeEx", hr); return 3; }
 
 	// Format we ask the virtual loopback device to give us: 48 kHz stereo float32.
 	WAVEFORMATEX fmt;
@@ -177,13 +182,13 @@ int wmain(int argc, wchar_t **argv) {
 	ActivateHandler *handler = new ActivateHandler();
 	IActivateAudioInterfaceAsyncOperation *op = NULL;
 	hr = ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, IID_IAudioClient, &prop, handler, &op);
-	if (FAILED(hr)) { status("{\"ok\":0,\"error\":\"ActivateAudioInterfaceAsync failed\"}"); return 4; }
+	if (FAILED(hr)) { statusHr("ActivateAudioInterfaceAsync", hr); return 4; }
 	WaitForSingleObject(handler->done, INFINITE);
 
 	HRESULT activateHr = E_FAIL;
 	IUnknown *unk = NULL;
 	hr = op->GetActivateResult(&activateHr, &unk);
-	if (FAILED(hr) || FAILED(activateHr) || !unk) { status("{\"ok\":0,\"error\":\"process loopback not available (needs Windows 10 2004+)\"}"); return 5; }
+	if (FAILED(hr) || FAILED(activateHr) || !unk) { statusHr("GetActivateResult", FAILED(hr) ? hr : activateHr); return 5; }
 
 	IAudioClient *client = NULL;
 	unk->QueryInterface(IID_IAudioClient, (void **)&client);
@@ -194,7 +199,7 @@ int wmain(int argc, wchar_t **argv) {
 	// the shared-mode periods must be 0.
 	REFERENCE_TIME dur = 2000000; // 200 ms in 100-ns units
 	hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK, dur, 0, &fmt, NULL);
-	if (FAILED(hr)) { status("{\"ok\":0,\"error\":\"IAudioClient::Initialize failed\"}"); return 7; }
+	if (FAILED(hr)) { statusHr("Initialize", hr); return 7; }
 
 	HANDLE ev = CreateEventW(NULL, FALSE, FALSE, NULL);
 	client->SetEventHandle(ev);
@@ -208,7 +213,7 @@ int wmain(int argc, wchar_t **argv) {
 	FILE *out = stdout;
 
 	hr = client->Start();
-	if (FAILED(hr)) { status("{\"ok\":0,\"error\":\"IAudioClient::Start failed\"}"); return 9; }
+	if (FAILED(hr)) { statusHr("Start", hr); return 9; }
 
 	char ready[128];
 	snprintf(ready, sizeof(ready), "{\"ok\":1,\"pid\":%lu,\"format\":\"f32le\",\"rate\":%d,\"ch\":%d}", (unsigned long)pid, RATE, CH);
