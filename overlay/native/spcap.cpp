@@ -62,7 +62,7 @@ struct ActivateHandler : public IActivateAudioInterfaceCompletionHandler {
 		return S_OK;
 	}
 	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **o) override {
-		if (riid == IID_IUnknown || riid == __uuidof(IActivateAudioInterfaceCompletionHandler)) {
+		if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_IActivateAudioInterfaceCompletionHandler)) {
 			*o = this;
 			InterlockedIncrement(&ref);
 			return S_OK;
@@ -176,7 +176,7 @@ int wmain(int argc, wchar_t **argv) {
 
 	ActivateHandler *handler = new ActivateHandler();
 	IActivateAudioInterfaceAsyncOperation *op = NULL;
-	hr = ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, __uuidof(IAudioClient), &prop, handler, &op);
+	hr = ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, IID_IAudioClient, &prop, handler, &op);
 	if (FAILED(hr)) { status("{\"ok\":0,\"error\":\"ActivateAudioInterfaceAsync failed\"}"); return 4; }
 	WaitForSingleObject(handler->done, INFINITE);
 
@@ -186,7 +186,7 @@ int wmain(int argc, wchar_t **argv) {
 	if (FAILED(hr) || FAILED(activateHr) || !unk) { status("{\"ok\":0,\"error\":\"process loopback not available (needs Windows 10 2004+)\"}"); return 5; }
 
 	IAudioClient *client = NULL;
-	unk->QueryInterface(__uuidof(IAudioClient), (void **)&client);
+	unk->QueryInterface(IID_IAudioClient, (void **)&client);
 	unk->Release();
 	if (!client) { status("{\"ok\":0,\"error\":\"no IAudioClient\"}"); return 6; }
 
@@ -200,7 +200,7 @@ int wmain(int argc, wchar_t **argv) {
 	client->SetEventHandle(ev);
 
 	IAudioCaptureClient *cap = NULL;
-	hr = client->GetService(__uuidof(IAudioCaptureClient), (void **)&cap);
+	hr = client->GetService(IID_IAudioCaptureClient, (void **)&cap);
 	if (FAILED(hr) || !cap) { status("{\"ok\":0,\"error\":\"no capture client\"}"); return 8; }
 
 	// stdout must be binary, or Windows mangles 0x0A bytes.
