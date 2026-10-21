@@ -9,6 +9,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { EventEmitter } = require("events");
+const Module = require("module");
 const { createYouTube, parseId } = require("../youtube");
 const { createLobby, generateCode, formatCode } = require("../lobby");
 
@@ -118,9 +119,10 @@ function fakeConnect(url) {
 }
 
 // A member with a stand-in player that does what it's told and reports back, like Mercify's.
-function member(name) {
+function member(name, make = createLobby, opts = {}) {
 	const m = { calls: [], player: { uri: null, name: "", artists: [], isPlaying: false, position: 0, at: Date.now(), duration: 180000, empty: true } };
-	m.lobby = createLobby({
+	m.lobby = make({
+		...opts,
 		relays: RELAYS,
 		connect: fakeConnect,
 		connectTimeoutMs: 2000,
@@ -165,10 +167,40 @@ async function lobby() {
 	await Promise.all([host.lobby.leave(), listener.lobby.leave()]);
 }
 
+// Mercify before 1.30.0 takes only Spotify songs and drops anything else without a word.
+function oldLobbyModule() {
+	const file = require.resolve("../lobby");
+	const src = fs.readFileSync(file, "utf8").replace(/^const URI_RE = .*$/m, "const URI_RE = /^spotify:(track|episode):[A-Za-z0-9]{1,64}$/;");
+	const mod = new Module(file, module);
+	mod.filename = file;
+	mod.paths = Module._nodeModulePaths(path.dirname(file));
+	mod._compile(src, file);
+	return mod.exports;
+}
+
+async function oldHost() {
+	const host = member("Old host", oldLobbyModule().createLobby);
+	const listener = member("Listener", createLobby, { suggestCheckMs: 1500 });
+	const toasts = [];
+	listener.lobby.on("toast", (t) => toasts.push(t));
+	const code = formatCode(generateCode());
+	await host.lobby.join(code);
+	await sleep(200);
+	await listener.lobby.join(code);
+	await sleep(3500);
+	await listener.lobby.queueAdd({ uri: "youtube:G5KxZ5Lc_YA", name: "Fake meme edit", artists: ["Fake Channel"], duration: 64000 });
+	await listener.lobby.queueAdd({ uri: "spotify:track:4uLU6hMCjMI75M1A2tKUQC", name: "A song", artists: ["Someone"], duration: 200000 });
+	await sleep(2500);
+	check("an old host drops the video but takes the song", host.lobby.state().queue.map((q) => q.uri).join() === "spotify:track:4uLU6hMCjMI75M1A2tKUQC");
+	check("the listener is told the video didn't make it, and why", toasts.length === 1 && /Fake meme edit.*didn't make it.*Old host's Mercify.*1\.30\.0/.test(toasts[0]), JSON.stringify(toasts));
+	await Promise.all([host.lobby.leave(), listener.lobby.leave()]);
+}
+
 (async () => {
 	try {
 		await ytdlp();
 		await lobby();
+		await oldHost();
 	} catch (e) {
 		check("no crash", false, e.stack);
 	}

@@ -48,6 +48,7 @@ const QUEUE_MAX = 100;
 const HISTORY_MAX = 50;
 const QUEUE_RESEND_MS = 15000; // host repeats the list now and then, in case a message was lost
 const ADVANCE_EARLY_MS = 350; // start the next queued song this long before the current one ends
+const SUGGEST_CHECK_MS = QUEUE_RESEND_MS + 3000; // listener: by now the host's list should show what we added
 
 // Spotify songs and episodes, and YouTube videos (played by Mercify itself, see youtube.js)
 const URI_RE = /^(spotify:(track|episode):[A-Za-z0-9]{1,64}|youtube:[A-Za-z0-9_-]{11})$/;
@@ -139,8 +140,9 @@ const senior = (a, b) => (a.joinedAt !== b.joinedAt ? a.joinedAt < b.joinedAt : 
  * @param {(msg: string) => void} [opts.log]
  * @param {string} [opts.friendPub]  our friends public key (friends.js), told to the other members
  * @param {Function} [opts.connect]  mqtt.connect, or a stand-in for tests
+ * @param {number} [opts.suggestCheckMs]  how long a listener waits to see its additions in the host's list
  */
-function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace = false, connectTimeoutMs = CONNECT_TIMEOUT_MS, friendPub = null, connect = mqtt.connect }) {
+function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace = false, connectTimeoutMs = CONNECT_TIMEOUT_MS, friendPub = null, connect = mqtt.connect, suggestCheckMs = SUGGEST_CHECK_MS }) {
 	const ev = new EventEmitter();
 
 	let name = "";
@@ -181,6 +183,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 	let advancing = false; // we're starting the next queued song ourselves
 	let hostLast = null; // host: { uri, name, artists, image, duration, position } of the current song
 	let manualUntil = 0; // host just picked a song themselves (in Mercify): don't override it
+	let suggestChecks = []; // listener: timers checking that the host really added what we sent
 
 	// Our own player, kept up to date by the app.
 	let player = null; // { uri, name, artists, image, position, at, isPlaying, duration }
@@ -784,6 +787,8 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 	function stopTimers() {
 		timers.forEach(clearInterval);
 		timers = [];
+		suggestChecks.forEach(clearTimeout);
+		suggestChecks = [];
 		clearTimeout(followTimer);
 		clearTimeout(advanceTimer);
 	}
@@ -933,6 +938,7 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 		if (!hostId) return Promise.reject(new Error("There's no host right now"));
 		send("suggest", { to: hostId, uri: item.uri, trackName: item.name, artists: item.artists, image: item.image, duration: item.duration });
 		note(`You added “${item.name}”`);
+		checkSuggested([item], `“${item.name}”`);
 		return Promise.resolve();
 	}
 
@@ -953,7 +959,30 @@ function createLobby({ command, relays = DEFAULT_RELAYS, log = () => {}, trace =
 			items: items.map((i) => ({ uri: i.uri, trackName: i.name, artists: i.artists, image: i.image, duration: i.duration })),
 		});
 		note(`You added ${label ? `“${label}”` : "songs"} (${items.length} song${items.length === 1 ? "" : "s"})`);
+		checkSuggested(items, label ? `“${label}”` : "Your songs");
 		return Promise.resolve(items.length);
+	}
+
+	// A host drops what it can't take without a word (a full list, or a YouTube video sent to a
+	// Mercify older than 1.30.0), so check the host's list a little later and say so if it's missing.
+	function checkSuggested(items, what) {
+		const t = setTimeout(() => {
+			suggestChecks = suggestChecks.filter((x) => x !== t);
+			if (status !== "joined" || role !== "listener") return;
+			const listed = new Set([...queue, ...history, ...(nowItem ? [nowItem] : [])].filter((q) => q.byId === me.id).map((q) => q.uri));
+			const missing = items.filter((i) => !listed.has(i.uri) && i.uri !== hostTrack?.uri);
+			if (!missing.length) return;
+			const host = members.get(hostId)?.name || "The host";
+			const many = items.length > 1 ? ` (${missing.length} of ${items.length} songs)` : "";
+			const why =
+				queue.length >= QUEUE_MAX
+					? "The session playlist is full."
+					: missing.every((i) => i.uri.startsWith("youtube:"))
+						? `${host}'s Mercify may be too old to play YouTube videos: they need 1.30.0 or newer.`
+						: "Try adding it again.";
+			note(`${what} didn't make it into the session playlist${many}. ${why}`, true);
+		}, suggestCheckMs);
+		suggestChecks.push(t);
 	}
 
 	function queueRemove(qid) {
